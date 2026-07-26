@@ -1,0 +1,6 @@
+[
+  { "type": "file", "name": "comparison-with-changesets", "label": "Comparison with changesets" },
+  { "type": "file", "name": "design-decisions", "label": "Design decisions" },
+  { "type": "file", "name": "roadmap", "label": "Roadmap" },
+  { "type": "file", "name": "troubleshooting", "label": "Troubleshooting" }
+]

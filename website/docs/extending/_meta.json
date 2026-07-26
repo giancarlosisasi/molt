@@ -1,0 +1,4 @@
+[
+  { "type": "file", "name": "changelog-plugins", "label": "Changelog plugins" },
+  { "type": "file", "name": "custom-generators", "label": "Custom generators" }
+]

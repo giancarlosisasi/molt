@@ -1,0 +1,6 @@
+[
+  { "type": "file", "name": "installation", "label": "Installation" },
+  { "type": "file", "name": "quickstart-single-package", "label": "Quickstart: single package" },
+  { "type": "file", "name": "quickstart-monorepo", "label": "Quickstart: monorepo" },
+  { "type": "file", "name": "the-release-workflow", "label": "The release workflow" }
+]

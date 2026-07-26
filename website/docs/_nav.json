@@ -1,0 +1,45 @@
+[
+  {
+    "text": "Introduction",
+    "link": "/introduction/what-is-molt",
+    "activeMatch": "/introduction/"
+  },
+  {
+    "text": "Getting Started",
+    "link": "/getting-started/installation",
+    "activeMatch": "/getting-started/"
+  },
+  {
+    "text": "Concepts",
+    "link": "/concepts/changesets",
+    "activeMatch": "/concepts/"
+  },
+  {
+    "text": "Guides",
+    "link": "/guides/adding-a-changeset",
+    "activeMatch": "/guides/"
+  },
+  {
+    "text": "CLI",
+    "link": "/cli/overview",
+    "activeMatch": "/cli/"
+  },
+  {
+    "text": "Config",
+    "link": "/config/config-file",
+    "activeMatch": "/config/"
+  },
+  {
+    "text": "Integrations",
+    "items": [
+      { "text": "Ecosystems", "link": "/ecosystems/overview" },
+      { "text": "Forges", "link": "/forges/overview" },
+      { "text": "Extending", "link": "/extending/changelog-plugins" }
+    ]
+  },
+  {
+    "text": "Reference",
+    "link": "/reference/comparison-with-changesets",
+    "activeMatch": "/reference/"
+  }
+]

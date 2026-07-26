@@ -1,0 +1,78 @@
+---
+title: The release workflow
+---
+
+# The release workflow
+
+molt splits releasing into three verbs on two clocks: `add` records intent as you work, `version` consumes accumulated intent into concrete releases, and `publish` ships them.
+
+If [The changesets model](/introduction/the-changesets-model) explains *why* intent-based versioning works, this page explains *how* to run it day to day -- as a solo maintainer and as a team on a pull-request flow.
+
+## Three verbs
+
+| Verb | When | What it does |
+|---|---|---|
+| [`molt add`](/cli/add) | Continuously, once per meaningful change | Writes a changeset: affected packages, bump types, a summary. |
+| [`molt version`](/cli/version) | In a batch, whenever you decide to release | Consumes every pending changeset: bumps versions, propagates to dependents, writes changelogs, updates the lockfile, deletes the changesets. |
+| [`molt publish`](/cli/publish) | Right after versioning | Builds and uploads exactly the packages whose versions changed, and tags them. |
+
+Two supporting verbs round it out: [`molt status`](/cli/status) shows what a release *would* contain, and any mutating command accepts `--dry-run` to print its plan without touching disk.
+
+## The two clocks
+
+The idea that makes everything click is that adding intent and consuming intent run on **two independent clocks**.
+
+- **The development clock** ticks once per meaningful change, driven by whoever wrote it. Ten pull requests over two weeks drop ten changesets into `.changeset/`.
+- **The release clock** ticks whenever *you* decide to release. `molt version` drains the whole `.changeset/` buffer at once and computes the correct version for every affected package.
+
+```text
+   development clock  --->  .changeset/  --->  release clock
+   molt add (many)          the buffer         molt version (one batch)
+```
+
+Nobody has to pick a final version number when they open a pull request, because the number depends on *everything* that ships in the release -- which is not known until release time. A package with a pending `minor` and a pending `patch` moves once, by the higher bump. Three changesets do not mean three releases; they mean one release that reflects the most significant change, with all three summaries in the changelog.
+
+## The team flow: changesets in pull requests
+
+On a team, the changeset is a reviewable artifact that travels with the code.
+
+1. **A contributor opens a PR** with their change and a changeset committed alongside it (`molt add`). A reviewer can see at a glance that this PR intends, say, a minor bump to `acme-core`.
+2. **CI gates the PR** with [`molt status`](/guides/status). It fails when a versionable package changed but no changeset was added -- a prompt to run `molt add`, or `molt add --empty` if the change genuinely needs no release.
+3. **Changesets accumulate** on the default branch as PRs merge. Nothing is released yet; intent is just piling up in `.changeset/`.
+4. **A release job runs `molt version`** and opens a "Version Packages" pull request containing the version bumps, changelog updates, and lockfile changes -- with the changesets consumed. This PR is the human-readable preview of the next release.
+5. **Merging that PR triggers `molt publish`**, which builds and uploads the changed packages and pushes their tags.
+
+Steps 4 and 5 are wired up for you by the [GitHub Action](/guides/ci-github-action); the same shape works on any forge, since the [forge is a seam](/forges/overview).
+
+```text
+  feature PRs (molt add)          release PR (molt version)         merge
+  ----------------------  --->    -------------------------  --->   -----------------
+  changesets accumulate           bumps + changelogs, previewed     molt publish ships
+```
+
+## When to use --dry-run
+
+Every mutating command -- `add`, `version`, `publish`, `yank` -- can build its [plan](/guides/dry-run-and-plans) and print it *without executing*. Reach for `--dry-run` when you want to look before you leap:
+
+- **Before a release**, `molt version --dry-run` shows every version bump and file it would write. `molt status` answers the same question and is the read-only, CI-friendly form.
+- **Before publishing**, `molt publish --dry-run` shows exactly which packages and versions would be uploaded, and in what order.
+- **In CI or a script**, pass `--output json` to get the plan as a machine-readable object you can gate on.
+
+Because the plan is the same value molt would otherwise execute, a dry run is a faithful preview, not an approximation.
+
+## A note on exit codes
+
+molt's exit codes are designed for CI, and a couple are worth internalizing:
+
+- `molt version` exits **1** when there are no pending changesets. There is nothing to release, and that is treated as a failure so a misconfigured pipeline does not silently "succeed".
+- `molt status` exits **1** when a package changed but no changeset covers it (the CI gate above), and **0** when there is genuinely nothing to release.
+- `molt publish` exits **0** when there is nothing new to upload.
+
+The full contract is in the [CLI overview](/cli/overview).
+
+## Where to go next
+
+- [Adding a changeset](/guides/adding-a-changeset) -- interactive and non-interactive `molt add`.
+- [Versioning](/guides/versioning) -- everything `molt version` does, and how to preview it.
+- [CI: GitHub Action](/guides/ci-github-action) -- automate steps 4 and 5.
+- [Dry runs and plans](/guides/dry-run-and-plans) -- the plan object behind every command.

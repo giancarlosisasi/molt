@@ -1,0 +1,12 @@
+[
+  { "type": "file", "name": "adding-a-changeset", "label": "Adding a changeset" },
+  { "type": "file", "name": "versioning", "label": "Versioning" },
+  { "type": "file", "name": "status", "label": "Checking status" },
+  { "type": "file", "name": "dry-run-and-plans", "label": "Dry runs & plans" },
+  { "type": "file", "name": "dependency-propagation", "label": "Dependency propagation" },
+  { "type": "file", "name": "publishing", "label": "Publishing" },
+  { "type": "file", "name": "yank", "label": "Yanking a release" },
+  { "type": "file", "name": "changelog-templates", "label": "Changelog templates" },
+  { "type": "file", "name": "ci-github-action", "label": "CI: GitHub Action" },
+  { "type": "file", "name": "migrating-from-changesets", "label": "Migrating from changesets" }
+]

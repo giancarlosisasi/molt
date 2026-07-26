@@ -1,0 +1,6 @@
+[
+  { "type": "file", "name": "config-file", "label": "The config file" },
+  { "type": "file", "name": "options", "label": "Options reference" },
+  { "type": "file", "name": "changeset-format", "label": "Changeset file format" },
+  { "type": "file", "name": "json-schema", "label": "JSON schema" }
+]

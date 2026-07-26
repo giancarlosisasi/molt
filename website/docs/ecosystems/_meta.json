@@ -1,0 +1,9 @@
+[
+  { "type": "file", "name": "overview", "label": "Overview" },
+  { "type": "file", "name": "uv", "label": "uv" },
+  {
+    "type": "file",
+    "name": "poetry-hatch-pdm-setuptools",
+    "label": "Poetry, Hatch, PDM & setuptools"
+  }
+]

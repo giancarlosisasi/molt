@@ -1,0 +1,114 @@
+---
+title: Changelog plugins
+---
+
+# Changelog plugins
+
+molt resolves its changelog generator through a Python **entry point**, so third parties can publish and ship a generator without molt ever knowing it exists.
+
+Every line molt writes into a `CHANGELOG.md` comes from a *changelog generator*: a small, named piece of code that turns one changeset (and the releases it caused) into Markdown. molt ships two -- `git` and `github` -- and treats them exactly like a plugin you wrote yourself. This page explains the plugin seam, the contract a generator implements, and how to point your config at one. To build one end to end, see [Custom generators](/extending/custom-generators).
+
+## Why entry points
+
+changesets names its generator with an npm module path:
+
+```json
+{ "changelog": ["@changesets/changelog-github", { "repo": "acme/widgets" }] }
+```
+
+molt does the idiomatic Python equivalent -- a [`importlib.metadata`](https://docs.python.org/3/library/importlib.metadata.html) **entry point** in the `molt.changelog` group. A generator package declares itself:
+
+```toml
+# in the generator's own pyproject.toml
+[project.entry-points."molt.changelog"]
+emoji = "molt_changelog_emoji:generator"
+```
+
+Once that package is installed, `emoji` is a name molt can resolve -- with no code change and no import path baked into your config. This is the same mechanism pytest, Sphinx, and `console_scripts` use, and it satisfies molt's rule that **configuration must be readable without executing user code**: your config names a plugin, it does not point at a file that gets run just to parse settings. Executable config and arbitrary shell hooks are deliberately refused (see [Why molt](/introduction/why-molt) and [Design decisions](/reference/design-decisions)); a typed, named plugin is the sanctioned extension point instead.
+
+molt's own `git` and `github` generators are registered exactly this way, so there is no privileged built-in path -- a plugin you publish is a first-class peer of the defaults.
+
+## The contract
+
+A generator implements two functions -- the direct descendants of changesets' `getReleaseLine` and `getDependencyReleaseLine`. One renders a line for *this package changed*; the other renders a line for *a dependency of this package changed*.
+
+```python
+from typing import Protocol
+from molt.changelog import Changeset, DependencyRelease, Forge
+
+class ChangelogGenerator(Protocol):
+    def get_release_line(
+        self,
+        changeset: Changeset,      # id, summary, and commit sha if known
+        bump: str,                 # "major" | "minor" | "patch"
+        options: dict | None,      # the options table from config, verbatim
+        forge: Forge | None,       # injected forge adapter, or None
+    ) -> str: ...
+
+    def get_dependency_release_line(
+        self,
+        changesets: list[Changeset],
+        dependencies: list[DependencyRelease],  # the internal deps that moved
+        options: dict | None,
+        forge: Forge | None,
+    ) -> str: ...
+```
+
+Both functions may be **sync or async** -- molt inspects each at call time, so a generator that needs the network (resolving commit authors, PR numbers) can be `async def` while the plain `git` generator stays synchronous.
+
+Key points:
+
+- **You return lines, not layout.** A function returns the text for one bullet. molt owns the surrounding structure -- the `## <version>` heading, the `### Major/Minor/Patch Changes` sections, ordering, and blank-line spacing. That structural layer is a separate, Jinja2-templated concern; see [Changelog templates](/guides/changelog-templates).
+- **Forge info is injected, not imported.** When the active [forge](/forges/overview) is GitHub, molt passes a `Forge` adapter as the `forge` argument, so the generator resolves commit -> author and PR links through molt's cached, rate-limited client instead of opening its own. A generator that does not need a forge simply ignores the argument; `forge` is `None` when no forge is configured. See [GitHub](/forges/github) for what the adapter exposes.
+- **Options pass through verbatim.** Whatever you put in the config options table arrives as the `options` dict, untouched. A generator validates its own options (and may declare a typed options model so molt can check them at startup rather than mid-release).
+- **Errors abort before any write.** If a generator raises, molt fails the whole `version` run before touching a single file -- consistent with its [atomic, buffer-then-flush](/reference/design-decisions) discipline. You never get a half-written changelog.
+
+Unlike changesets -- whose changelog plugins only ever see the two callback arguments -- molt also exposes the surrounding [release plan](/concepts/release-plan) to a generator that wants it, closing a gap changesets flagged as future work in 2020 and never shipped.
+
+## Choosing a generator
+
+The generator is selected by the `changelog` option in `[tool.molt]`. It accepts the same three shapes changesets uses, in TOML:
+
+```toml
+# A bare name -> the entry point "git" (the default)
+[tool.molt]
+changelog = "git"
+```
+
+```toml
+# A name plus an options table, passed through to the generator
+[tool.molt]
+changelog = ["github", { repo = "acme/widgets" }]
+```
+
+```toml
+# Disable changelog writing entirely
+[tool.molt]
+changelog = false
+```
+
+molt resolves the `changelog` name in three ways, in order -- mirroring changesets' "installed package or local path" duality:
+
+1. **Entry point** -- a name in the `molt.changelog` group (`git`, `github`, or any installed plugin). The normal case.
+2. **Dotted path** -- `my_pkg.changelog:generator`, for an in-repo generator on `sys.path` you have not packaged.
+3. **File path** -- `./changelog.py`, resolved relative to the `.changeset/` directory first, then the project root, for a one-off script.
+
+Full option details live in the [Options reference](/config/options).
+
+## The default generators
+
+molt ships two, both registered as entry points:
+
+| Name | What it produces | Needs a forge? |
+|---|---|---|
+| `git` | Plain bullets, optionally prefixed with the 7-character commit sha (`- a1b2c3d: Fix the thing`). Dependency bumps render as `- Updated dependencies` followed by an indented `- pkg@version` list. **The default.** | No |
+| `github` | The `git` output enriched with links: commit and pull-request links, and `Thanks @author!` attribution, resolved through molt's cached GitHub client. | Yes -- see [GitHub](/forges/github) |
+
+The `git` generator works with no configuration and no network, which is why it is the default. `github` adds the links most public projects want; point `changelog` at it and give it a `repo` (or let it read `GITHUB_REPOSITORY` in CI).
+
+## Where to go next
+
+- [Custom generators](/extending/custom-generators) -- write, register, and configure your own generator, with a worked Jinja2 example.
+- [Changelog templates](/guides/changelog-templates) -- customize the *structure* of an entry (headings, dates, sections) without writing a plugin.
+- [GitHub](/forges/github) -- what the injected forge adapter provides.
+- [Options reference](/config/options) -- the full `changelog` option.

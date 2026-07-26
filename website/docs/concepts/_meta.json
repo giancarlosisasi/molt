@@ -1,0 +1,9 @@
+[
+  { "type": "file", "name": "changesets", "label": "Changesets" },
+  { "type": "file", "name": "release-plan", "label": "The release plan" },
+  { "type": "file", "name": "versioning-pep440", "label": "Versioning & PEP 440" },
+  { "type": "file", "name": "linked-vs-fixed", "label": "Linked vs fixed packages" },
+  { "type": "file", "name": "prerelease", "label": "Prerelease mode" },
+  { "type": "file", "name": "snapshots", "label": "Snapshot releases" },
+  { "type": "file", "name": "glossary", "label": "Glossary" }
+]

@@ -1,0 +1,12 @@
+[
+  { "type": "file", "name": "overview", "label": "Overview" },
+  { "type": "file", "name": "init", "label": "molt init" },
+  { "type": "file", "name": "add", "label": "molt add" },
+  { "type": "file", "name": "version", "label": "molt version" },
+  { "type": "file", "name": "status", "label": "molt status" },
+  { "type": "file", "name": "publish", "label": "molt publish" },
+  { "type": "file", "name": "pack", "label": "molt pack" },
+  { "type": "file", "name": "yank", "label": "molt yank" },
+  { "type": "file", "name": "git-tag", "label": "molt git-tag" },
+  { "type": "file", "name": "pre", "label": "molt pre" }
+]

@@ -1,0 +1,96 @@
+[project]
+name = "molt-cli"
+version = "0.1.0"
+description = "Changeset-driven versioning and changelogs for Python monorepos"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Giancarlos Isasi" }]
+keywords = ["changesets", "versioning", "monorepo", "changelog", "release", "uv"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Version Control",
+]
+dependencies = [
+    # PEP 440 / PEP 508 versions, specifiers, parsing, ordering and matching.
+    # molt.versioning.ranges wraps it to pin the prerelease flag to the constraint's own
+    # opt-in rather than PEP 440's resolver-oriented fallback; see roadmap/research/README.md 4.1.
+    "packaging>=24.0",
+]
+
+[project.scripts]
+# The distribution is `molt-cli` (the `molt` name is squatted on PyPI by a dead 2012 project),
+# but the command users type is `molt`. See roadmap/tech-stack.md §1.
+molt = "molt.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/giancarlosisasi/molt"
+Repository = "https://github.com/giancarlosisasi/molt"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/molt"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0",
+    "pytest-cov>=7.0",
+    "hypothesis>=6.100",
+    "ruff>=0.15",
+    "pyrefly>=1.1",
+    # Test infrastructure for the engine/forge/publish suites (research doc 07 §4/§5).
+    "syrupy>=5.5",   # snapshot tests: release plans, changelogs, GraphQL queries
+    "respx>=0.22",   # httpx mocking for the forge (GitHub GraphQL) + PyPI JSON API
+    "tomlkit>=0.13", # comment-preserving TOML for the tmp_project workspace builder
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "TID"]
+
+[tool.pyrefly]
+project-includes = ["src", "tests"]
+# The repo root, so shared test-only helpers resolve as `tests.<pkg>.<module>` (the same dotted
+# path pytest's `pythonpath` setting below makes importable). Without this pyrefly's only import
+# root is `src`, and every `from tests...` line needs a missing-import suppression.
+search-path = [".", "src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# import-mode=importlib lets same-named test modules coexist across packages
+# (e.g. tests/apply/test_deliberately_not_ported.py and tests/changelog/...) without
+# __init__.py files or the legacy "import file mismatch" collection error.
+addopts = "-q --import-mode=importlib"
+# import-mode=importlib does not put the test directories on sys.path, so shared test-only helper
+# modules (e.g. tests/engine/fake_state.py) are imported via their full dotted path from the repo
+# root: `from tests.engine.fake_state import FakeFullState`.
+pythonpath = ["."]
+# Test-type markers. The milestone map (roadmap/research/test-suite/MILESTONES.md) uses these so
+# /opsx:propose can pick a build-order step's conformance gate by kind, e.g. `-m "unit or property"`.
+markers = [
+    "unit: pure in-memory logic; no filesystem, subprocess, or network",
+    "functional: a command/function exercised end-to-end over a tmp workspace (tmp_project), no external processes",
+    "integration: spawns real external tools via subprocess (git, python -m build)",
+    "e2e: full pipeline against a fake index or the action loop",
+    "property: hypothesis-driven invariant test",
+    "snapshot: syrupy snapshot assertion",
+    "not_ported: changesets behavior molt deliberately does NOT port; kept skipped as an audit record",
+    "network: uses mocked HTTP (respx) for the forge or PyPI; never hits the real network",
+    "git: requires the real git binary via the git_repo fixture",
+    "slow: expensive test excluded from the fast default loop",
+]
+
+[tool.coverage.run]
+source = ["src/molt"]

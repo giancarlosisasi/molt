@@ -1,0 +1,5 @@
+[
+  { "type": "file", "name": "overview", "label": "Overview" },
+  { "type": "file", "name": "github", "label": "GitHub" },
+  { "type": "file", "name": "gitlab-gitea-others", "label": "GitLab, Gitea & others" }
+]
