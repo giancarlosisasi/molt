@@ -239,7 +239,7 @@ def test_writes_one_ndjson_event_per_tag(
     """Row 2 (`index.test.ts:44-82`), adapted to snake_case.
 
     Upstream pins the exact bytes -- two ``JSON.stringify`` lines plus a trailing ``""`` element,
-    i.e. a terminating newline (``utils/output.ts:22``). molt keeps the format and renames
+    i.e. a terminating newline (``utils/output.ts:29``). molt keeps the format and renames
     ``packageName`` to ``package_name`` (see the module docstring). The trailing newline and the
     absence of CRLF are asserted on bytes: an NDJSON stream a consumer reads line-by-line must not
     depend on the writer's platform.
