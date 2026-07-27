@@ -1,0 +1,24 @@
+# LF in the repository and LF in the working tree, on every platform.
+#
+# molt is Windows-correct from day one, and that cuts both ways: the tool writes changeset files,
+# changelogs and pyproject edits with LF regardless of host (research doc 02 section 12.6), and the
+# repository storing it has to do the same. Without this, `core.autocrlf` decides -- so the same
+# file lands CRLF for a Windows contributor and LF for everyone else, and a byte-exact test or a
+# regenerated syrupy snapshot flips the whole file in the diff.
+#
+# `text=auto eol=lf` is the same rule tests/conftest.py writes into every fixture git repo it
+# creates, so the fixtures and the real repository now agree.
+* text=auto eol=lf
+
+# Binary, never normalized. None are tracked today; listed so adding one cannot corrupt it.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.whl binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
