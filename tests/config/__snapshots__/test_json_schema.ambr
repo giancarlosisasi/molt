@@ -168,10 +168,6 @@
         'enum': list([
           'auto',
           'uv',
-          'poetry',
-          'hatch',
-          'pdm',
-          'setuptools',
         ]),
         'title': 'Ecosystem',
         'type': 'string',

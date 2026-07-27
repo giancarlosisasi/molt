@@ -62,6 +62,14 @@ _DROPPED_OPTIONS: dict[str, str] = {
 #: Sub-tables whose keys are canonicalized and checked the same way the top level is.
 _NESTED_MODELS = {"snapshot": SnapshotOptions, "private_packages": PrivatePackages}
 
+#: Backends molt recognizes but cannot run yet; scheduled after the 0.1 MVP.
+#:
+#: Caught here rather than by the model's ``Literal`` so the message can say *planned* instead of
+#: pydantic's "Input should be 'auto' or 'uv'", which reads like the name is wrong forever. Caught
+#: here rather than at discovery so the generated schema never advertises them -- an editor
+#: completing a backend that fails two steps later is worse than one that never offers it.
+_PLANNED_ECOSYSTEMS = ("poetry", "hatch", "pdm", "setuptools")
+
 
 def parse_config(
     data: Any, *, package_names: Sequence[str] = (), workspace: Any = None
@@ -150,6 +158,7 @@ def _canonicalize(
         if isinstance(table, Mapping):
             payload[field] = _canonicalize_nested(field, dict(table), model, warnings, errors)
     _normalize_format(payload, warnings)
+    _check_ecosystem(payload, errors)
     return payload
 
 
@@ -224,6 +233,26 @@ def _normalize_format(payload: dict[str, Any], warnings: list[ConfigIssue]) -> N
         )
 
 
+def _check_ecosystem(payload: dict[str, Any], errors: list[ConfigIssue]) -> None:
+    """Reject a recognized-but-unbuilt backend with a message that says so.
+
+    The value is removed from the payload afterwards so the model does not report a second,
+    less-informative literal error for the same mistake.
+    """
+    value = payload.get("ecosystem")
+    if isinstance(value, str) and value in _PLANNED_ECOSYSTEMS:
+        payload.pop("ecosystem")
+        errors.append(
+            ConfigIssue(
+                ("ecosystem",),
+                f'ecosystem = "{value}" is planned but not implemented yet. molt supports "auto" '
+                f'(detect) and "uv"; a repository with no workspace table is treated as a single '
+                f"package either way. {_quoted(_PLANNED_ECOSYSTEMS)} are scheduled after the 0.1 "
+                f"release.",
+            )
+        )
+
+
 def _unknown_or_dropped(
     key: str, prefix: tuple[str | int, ...], aliases: dict[str, tuple[str, ...]]
 ) -> ConfigIssue:
@@ -260,7 +289,11 @@ def _did_you_mean(key: str, aliases: dict[str, tuple[str, ...]]) -> str:
 
 
 def _quoted(names: Sequence[str]) -> str:
-    return " and ".join(f'"{name}"' for name in names)
+    """``"a" and "b"``, or ``"a", "b" and "c"`` -- readable at both the sizes this is used at."""
+    quoted = [f'"{name}"' for name in names]
+    if len(quoted) < 2:
+        return "".join(quoted)
+    return " and ".join([", ".join(quoted[:-1]), quoted[-1]])
 
 
 # --------------------------------------------------------------------------------------

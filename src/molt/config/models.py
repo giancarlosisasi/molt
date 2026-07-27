@@ -66,11 +66,19 @@ BUILTIN_COMMIT_OPTIONS: dict[str, Any] = {"skip_ci": "version"}
 #: valibot's exact-length ``v.tuple`` (research doc 02 section 1.4).
 GeneratorRef = tuple[str, dict[str, Any] | None]
 
-#: Which packaging tool's workspace model discovery uses. Named here rather than inline so the
-#: engine and the commands can annotate against the same closed set -- and because pydantic's
-#: ``Field(default=...)`` is typed as returning the default's own type, so a bare ``"auto"`` would
-#: widen to ``str`` and stop type-checking against the literal.
-Ecosystem = Literal["auto", "uv", "poetry", "hatch", "pdm", "setuptools"]
+#: Which packaging tool's workspace model discovery uses. **Only what molt can actually run.**
+#:
+#: Poetry, Hatch, PDM and setuptools are planned for after the 0.1 MVP and are deliberately absent:
+#: the generated JSON Schema is built from this type, and an editor autocompleting a backend that
+#: then fails at discovery is the same hazard as autocompleting a dropped changesets option --
+#: which ``tests/config/test_json_schema.py`` has a dedicated test against. They are still
+#: *recognized* on input, and rejected with a message that says "planned", not "invalid"
+#: (:mod:`molt.config.parse`).
+#:
+#: Named here rather than inline for a second reason: pydantic's ``Field(default=...)`` is typed as
+#: returning the default's own type, so a bare ``"auto"`` widens to ``str`` and stops type-checking
+#: against the literal.
+Ecosystem = Literal["auto", "uv"]
 
 #: Release-automation backend. The seam exists from day one (research README section 5 item 7).
 Forge = Literal["github", "gitlab"]

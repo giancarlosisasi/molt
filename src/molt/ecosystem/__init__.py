@@ -11,9 +11,10 @@ Backend selection follows the ``ecosystem`` config option:
   absence selects single-package (design D8).
 - an explicit name selects that backend with **no** detection, so a repository can be pinned.
 
-The other backends the docs advertise (``poetry``, ``hatch``, ``pdm``, ``setuptools``) are named by
-the config schema but not implemented here; asking for one raises with that said plainly, rather
-than silently falling back to single-package and releasing the wrong set of packages.
+Poetry, Hatch, PDM and setuptools are scheduled after the 0.1 MVP. The config layer rejects them at
+parse time, so they normally never reach here; the guard below is the second line of defence for a
+caller that built a ``Config`` by hand. It raises rather than falling back to single-package,
+because silently discovering the wrong set of packages is how a release tool ships a wrong version.
 """
 
 from __future__ import annotations
@@ -48,8 +49,9 @@ _BACKENDS: dict[str, EcosystemBackend] = {
     SingleBackend.name: SingleBackend(),
 }
 
-#: Named by the config schema and by ``website/docs/config/options.md``, not yet built. Listed so
-#: the failure names the gap instead of pretending the repository is single-package.
+#: Recognized, not yet built; scheduled after 0.1. Listed so the failure names the gap instead of
+#: pretending the repository is single-package. Kept in step with ``molt.config.parse``'s copy,
+#: which is what users actually hit.
 _PLANNED = ("poetry", "hatch", "pdm", "setuptools")
 
 

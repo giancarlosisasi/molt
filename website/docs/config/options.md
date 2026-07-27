@@ -120,17 +120,16 @@ These have no changesets equivalent. They select the pluggable backends that mak
 | `ecosystem` | `string` | `"auto"` | Which workspace backend discovers packages, versions, and internal dependencies. |
 | `forge` | `string` | `"github"` | Which forge backend drives release automation (PRs, releases). |
 
-`ecosystem` defaults to `"auto"`, which detects a uv workspace and otherwise treats the root as a single package. Set it explicitly (`"uv"`, `"poetry"`, `"hatch"`, `"pdm"`, `"setuptools"`) to pin a backend. For repos with no native workspace primitive, an explicit `[tool.molt.workspace]` members list is the escape hatch:
+`ecosystem` defaults to `"auto"`, which detects a uv workspace and otherwise treats the root as a single package. Set it to `"uv"` to pin the backend and skip detection:
 
 ```toml
 [tool.molt]
 ecosystem = "uv"
-
-# Escape hatch for non-uv backends: list members explicitly.
-[tool.molt.workspace]
-members = ["packages/*"]
-exclude = ["packages/scratch"]
 ```
+
+**`"auto"` and `"uv"` are the only values molt accepts today.** Poetry, Hatch, PDM and setuptools are scheduled after the 0.1 release; naming one is an error that says so, rather than a silent fallback that would discover the wrong set of packages. The backend seam exists from day one precisely so adding them is an implementation, not a redesign.
+
+If your repo has no uv workspace, you do not need this option at all — a single-package repo is a first-class case, not a degraded one. Most Python projects are single-package; the ratio is inverted versus JavaScript.
 
 See [Ecosystems](/ecosystems/overview). `forge` selects the release-automation backend; GitHub ships first, but the seam exists from day one -- see [Forges](/forges/overview).
 
