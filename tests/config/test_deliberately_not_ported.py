@@ -81,8 +81,10 @@ def test_experimental_unsafe_options_wrapper_is_dropped() -> None:
 
 def test_private_packages_tag_subkey_is_dropped() -> None:
     pytest.skip(
-        "`privatePackages.tag` controlled npm dist-tags; PyPI has no dist-tags, so there is "
-        "nothing for it to do (research README section 4.4). config.ts:95-105."
+        "`privatePackages.tag` gated whether private packages got a *git* tag during `version` "
+        "(git-tag/index.ts:44) -- not an npm dist-tag. molt makes that a `molt git-tag` decision "
+        "per run rather than a config option, so the sub-key has nothing left to gate "
+        "(research README section 4.4). config.ts:95-105."
     )
 
 

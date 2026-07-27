@@ -28,6 +28,14 @@ dependencies = [
     # Terminal rendering. Typer already depends on rich, but molt.ui.console imports it
     # directly, so it is declared rather than relied on transitively.
     "rich>=15",
+    # Config validation. Reverses roadmap/tech-stack.md section 6's msgspec recommendation
+    # (research README section 6): free JSON-Schema generation, AliasChoices for the
+    # camelCase<->snake_case migration surface, and `.errors()` `loc` mapping 1:1 onto valibot's
+    # `getDotPath`. Its import cost is paid only when a config is parsed -- molt.config exposes a
+    # lazy facade so `molt --help` never touches it (design D2). >=2.11 for
+    # `BeforeValidator(json_schema_input_type=...)`, which is what lets the generated schema
+    # advertise the written shorthands while the model stays normalized.
+    "pydantic>=2.11",
 ]
 
 [project.scripts]

@@ -1,0 +1,274 @@
+# serializer version: 1
+# name: test_generates_the_expected_json_schema
+  dict({
+    '$defs': dict({
+      'PrivatePackages': dict({
+        'description': '''
+          Whether packages marked unpublishable are still versioned.
+          
+          Private distributions -- apps and internal tools you version but never upload -- are versioned
+          by default so their internal dependency pins stay correct. The Python marker is the
+          ``Private :: Do Not Upload`` classifier (research doc 02 section 12.1), standing in for npm's
+          ``"private": true``.
+        ''',
+        'properties': dict({
+          'version': dict({
+            'default': True,
+            'description': 'Version private packages alongside the rest.',
+            'title': 'Version',
+            'type': 'boolean',
+          }),
+        }),
+        'title': 'PrivatePackages',
+        'type': 'object',
+      }),
+      'SnapshotOptions': dict({
+        'description': '''
+          Snapshot-release options (``config.ts:111-134``), reshaped for PEP 440.
+          
+          ``prerelease_template`` has **no** default upstream -- the key is simply absent from the
+          normalized object (research doc 02 section 1.4, "the type lies"). pydantic materializes it as
+          ``None`` instead, so absent, ``None`` and unset must stay interchangeable to every consumer.
+          The empty string is rejected rather than treated as absent, matching valibot's
+          ``minLength(1)``.
+        ''',
+        'properties': dict({
+          'prerelease_template': dict({
+            'anyOf': list([
+              dict({
+                'minLength': 1,
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'Template for the snapshot version suffix. Placeholders: {tag}, {commit}, {commit-short}, {timestamp}, {datetime}.',
+            'title': 'Prerelease Template',
+          }),
+          'use_calculated_version': dict({
+            'default': False,
+            'description': 'Base the snapshot on the changeset-derived version instead of 0.0.0.',
+            'title': 'Use Calculated Version',
+            'type': 'boolean',
+          }),
+        }),
+        'title': 'SnapshotOptions',
+        'type': 'object',
+      }),
+    }),
+    'description': '''
+      A fully normalized molt configuration.
+      
+      Every option is settable by its canonical ``snake_case`` name and by the changesets
+      ``camelCase`` spelling, both landing on the same field, so a changesets configuration migrates
+      unchanged. Supplying *both* spellings of one option is an error rather than a silent
+      precedence rule -- see :mod:`molt.config.parse`.
+    ''',
+    'properties': dict({
+      'base_branch': dict({
+        'default': 'main',
+        'description': 'Git ref used as the comparison base for "what changed".',
+        'title': 'Base Branch',
+        'type': 'string',
+      }),
+      'bump_workspace_sources_only': dict({
+        'default': False,
+        'description': 'Only rewrite dependency pins that are backed by a workspace source.',
+        'title': 'Bump Workspace Sources Only',
+        'type': 'boolean',
+      }),
+      'changed_file_patterns': dict({
+        'default': list([
+          '**',
+        ]),
+        'description': 'Which files inside a package directory count as a change for that package.',
+        'items': dict({
+          'type': 'string',
+        }),
+        'title': 'Changed File Patterns',
+        'type': 'array',
+      }),
+      'changelog': dict({
+        'anyOf': list([
+          dict({
+            'maxItems': 2,
+            'minItems': 2,
+            'prefixItems': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'anyOf': list([
+                  dict({
+                    'additionalProperties': True,
+                    'type': 'object',
+                  }),
+                  dict({
+                    'type': 'null',
+                  }),
+                ]),
+              }),
+            ]),
+            'type': 'array',
+          }),
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'const': False,
+            'type': 'boolean',
+          }),
+        ]),
+        'default': list([
+          'molt.changelog.default',
+          None,
+        ]),
+        'description': 'Changelog generator to run, with optional generator options.',
+        'title': 'Changelog',
+      }),
+      'commit': dict({
+        'anyOf': list([
+          dict({
+            'maxItems': 2,
+            'minItems': 2,
+            'prefixItems': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'anyOf': list([
+                  dict({
+                    'additionalProperties': True,
+                    'type': 'object',
+                  }),
+                  dict({
+                    'type': 'null',
+                  }),
+                ]),
+              }),
+            ]),
+            'type': 'array',
+          }),
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'boolean',
+          }),
+        ]),
+        'default': False,
+        'description': 'Commit generator to run after version/publish, with optional options.',
+        'title': 'Commit',
+      }),
+      'ecosystem': dict({
+        'default': 'auto',
+        'description': 'Which workspace backend discovers packages, versions and internal deps.',
+        'enum': list([
+          'auto',
+          'uv',
+          'poetry',
+          'hatch',
+          'pdm',
+          'setuptools',
+        ]),
+        'title': 'Ecosystem',
+        'type': 'string',
+      }),
+      'fixed': dict({
+        'default': list([
+        ]),
+        'description': 'Groups of packages always released together, at the same shared version.',
+        'items': dict({
+          'items': dict({
+            'type': 'string',
+          }),
+          'type': 'array',
+        }),
+        'title': 'Fixed',
+        'type': 'array',
+      }),
+      'forge': dict({
+        'default': 'github',
+        'description': 'Which forge backend drives release automation.',
+        'enum': list([
+          'github',
+          'gitlab',
+        ]),
+        'title': 'Forge',
+        'type': 'string',
+      }),
+      'format': dict({
+        'default': False,
+        'description': 'Optional external formatter run over the files molt writes.',
+        'enum': list([
+          'mdformat',
+          False,
+        ]),
+        'title': 'Format',
+      }),
+      'ignore': dict({
+        'default': list([
+        ]),
+        'description': 'Packages that must never be released; globs are expanded at load time.',
+        'items': dict({
+          'type': 'string',
+        }),
+        'title': 'Ignore',
+        'type': 'array',
+      }),
+      'linked': dict({
+        'default': list([
+        ]),
+        'description': 'Groups that share a version only when they happen to be released together.',
+        'items': dict({
+          'items': dict({
+            'type': 'string',
+          }),
+          'type': 'array',
+        }),
+        'title': 'Linked',
+        'type': 'array',
+      }),
+      'private_packages': dict({
+        'anyOf': list([
+          dict({
+            '$ref': '#/$defs/PrivatePackages',
+          }),
+          dict({
+            'const': False,
+            'type': 'boolean',
+          }),
+        ]),
+        'description': 'Whether private (never-uploaded) packages are still versioned.',
+      }),
+      'snapshot': dict({
+        '$ref': '#/$defs/SnapshotOptions',
+        'description': 'Snapshot-release options.',
+      }),
+      'update_internal_dependencies': dict({
+        'default': 'patch',
+        'description': "Minimum bump on a dependency that triggers rewriting a dependent's pin.",
+        'enum': list([
+          'minor',
+          'patch',
+        ]),
+        'title': 'Update Internal Dependencies',
+        'type': 'string',
+      }),
+      'update_internal_dependents': dict({
+        'default': 'out-of-range',
+        'description': 'Whether an already-in-range dependent still gets a patch release.',
+        'enum': list([
+          'always',
+          'out-of-range',
+        ]),
+        'title': 'Update Internal Dependents',
+        'type': 'string',
+      }),
+    }),
+    'title': 'Config',
+    'type': 'object',
+  })
+# ---

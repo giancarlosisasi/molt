@@ -1,0 +1,33 @@
+# serializer version: 1
+# name: test_default_config_matches_the_snapshot
+  dict({
+    'base_branch': 'main',
+    'bump_workspace_sources_only': False,
+    'changed_file_patterns': tuple(
+      '**',
+    ),
+    'changelog': tuple(
+      'molt.changelog.default',
+      None,
+    ),
+    'commit': False,
+    'ecosystem': 'auto',
+    'fixed': tuple(
+    ),
+    'forge': 'github',
+    'format': False,
+    'ignore': tuple(
+    ),
+    'linked': tuple(
+    ),
+    'private_packages': dict({
+      'version': True,
+    }),
+    'snapshot': dict({
+      'prerelease_template': None,
+      'use_calculated_version': False,
+    }),
+    'update_internal_dependencies': 'patch',
+    'update_internal_dependents': 'out-of-range',
+  })
+# ---

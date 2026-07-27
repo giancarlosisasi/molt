@@ -71,7 +71,7 @@ Private packages -- apps and internal tools you version but never upload to PyPI
 private_packages = false
 ```
 
-Molt drops changesets' `privatePackages.tag` sub-option, which controlled npm dist-tags; PyPI has no dist-tags, so there is nothing for it to do (research README section 4.4).
+Molt drops changesets' `privatePackages.tag` sub-option. It gated whether private packages got a **git tag** during `version` -- not an npm dist-tag. Molt decides that with `molt git-tag`, per run, rather than from config, so the option has nothing left to gate (research README section 4.4).
 
 ## Changelog and commit
 
@@ -142,7 +142,7 @@ Molt deliberately does not carry these changesets options, because they encode n
 |---|---|
 | `access` (`"public" \| "restricted"`) | npm scoped-package publish access. PyPI has no per-package access setting. A repository-selection option may take its place later; today, use `--repository` at publish time. |
 | `onlyUpdatePeerDependentsWhenOutOfRange` | Governs `peerDependencies` propagation. Python has no peer-dependency concept, so the whole option -- and the `___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH` wrapper it lived in -- is gone (research README section 4.4). |
-| `privatePackages.tag` | Controlled npm dist-tags. PyPI has no dist-tags. |
+| `privatePackages.tag` | Gated whether private packages got a **git tag** during `version`. Molt makes that a `molt git-tag` decision per run instead of a config option. |
 
 The `$schema` key is not a behavioral option -- it drives editor autocomplete for `.molt/config.json` and is documented under [JSON schema](/config/json-schema).
 
