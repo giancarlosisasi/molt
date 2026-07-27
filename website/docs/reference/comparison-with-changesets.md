@@ -52,7 +52,7 @@ These diverge because Python's packaging rules force a different answer than Jav
 | Prerelease range opt-in | scoped to the same release tuple | scoped across the whole specifier set (PEP 440); dependents that opted in are not force-bumped `rc0 -> rc1` |
 | Prerelease mode | `pre.json` repo-global state | [`--pre` invocation flag](/concepts/prerelease); no persistent state |
 | Snapshots | throwaway version + npm dist-tag | `.devN` on a [separate index](/concepts/snapshots); never PyPI by default |
-| Bad release recovery | unpublish / deprecate | [`molt yank`](/cli/yank) (PEP 592) |
+| Bad release recovery | unpublish / deprecate | [`molt yank`](/cli/yank) (PEP 592, guided -- PyPI has no yank API) |
 | peerDependencies | first-class subsystem | dropped -- no Python analogue |
 | dist-tags / `--tag` | central to prerelease + snapshot flows | gone -- PyPI has no dist-tags |
 | Dependencies | a map in `package.json` | a list of PEP 508 strings in `pyproject.toml`; range rewriting splices the string |
@@ -76,7 +76,7 @@ Capabilities changesets lacks -- most cheap to build fresh, expensive to retrofi
 | No `pre.json` -- [prerelease as a flag](/concepts/prerelease) | ~15 open issues trace to `pre.json` |
 | [Forge-agnostic](/forges/overview) integration | Open 4 years, zero maintainer comments |
 | Single-package + root-workspace as a first-class path | Degenerate special case upstream |
-| [`molt yank`](/cli/yank) | Impossible on npm |
+| [`molt yank`](/cli/yank) (guided; the yank itself is a browser step) | Impossible on npm |
 | Atomic, resumable `version` (buffer-then-flush) | Double-bumps on a retry after mid-run failure |
 | Correct changelog Markdown, [emitted directly](/guides/changelog-templates) | Needs a formatter pass to repair blank lines |
 | Windows-correct from day one | Windows CI added only in 2026-07 |

@@ -111,6 +111,12 @@ class ProjectBuilder:
     item: a comment-preserving root ``pyproject.toml``, member packages under
     ``packages/<name>/pyproject.toml``, ``.changeset/*.md`` files, and config in either
     ``[tool.molt]`` or ``.molt/config.json`` (research README §6, open decision #7: error if both).
+
+    **Every file this builder writes goes out through ``write_bytes``.** ``Path.write_text``
+    applies newline translation, so on Windows each ``pyproject.toml`` would land as CRLF while
+    the same fixture on Linux produced LF -- and any test asserting on exact bytes (or on a
+    byte count, or on "no ``\\r\\n`` anywhere") would then be platform-dependent. molt writes LF
+    on every platform (research doc 02 §12.6), so the fixtures do too.
     """
 
     def __init__(
@@ -144,7 +150,7 @@ class ProjectBuilder:
         uv["workspace"] = workspace
         tool["uv"] = uv
         doc["tool"] = tool
-        self._pyproject_path.write_text(self._toml.dumps(doc), encoding="utf-8")
+        self._pyproject_path.write_bytes(self._toml.dumps(doc).encode("utf-8"))
 
     def add_package(
         self,
@@ -180,7 +186,7 @@ class ProjectBuilder:
             groups = self._toml.table()
             groups["dev"] = list(dev_deps)
             doc["dependency-groups"] = groups
-        (pkg_dir / "pyproject.toml").write_text(self._toml.dumps(doc), encoding="utf-8")
+        (pkg_dir / "pyproject.toml").write_bytes(self._toml.dumps(doc).encode("utf-8"))
         return self
 
     def write_changeset(
@@ -214,8 +220,8 @@ class ProjectBuilder:
         if as_json:
             cfg_dir = self.root / ".molt"
             cfg_dir.mkdir(parents=True, exist_ok=True)
-            (cfg_dir / "config.json").write_text(
-                json.dumps(options, indent=2) + "\n", encoding="utf-8"
+            (cfg_dir / "config.json").write_bytes(
+                (json.dumps(options, indent=2) + "\n").encode("utf-8")
             )
             return self
         doc = self._toml.parse(self._pyproject_path.read_text(encoding="utf-8"))
@@ -227,7 +233,7 @@ class ProjectBuilder:
         for key, value in options.items():
             molt_table[key] = value
         tool["molt"] = molt_table
-        self._pyproject_path.write_text(self._toml.dumps(doc), encoding="utf-8")
+        self._pyproject_path.write_bytes(self._toml.dumps(doc).encode("utf-8"))
         return self
 
 

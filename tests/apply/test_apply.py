@@ -1901,11 +1901,22 @@ def test_an_unconstrained_dependency_is_not_listed_in_the_changelog_either(
     perfectly valid range. So upstream writes ``- Updated dependencies\\n  - pkg-b@1.1.0`` into a
     changelog for a pin it never rewrote.
 
-    **molt emits no line.** The changelog documents what the release *did*; the pin was left
-    untouched by design -- an unconstrained dependency "never triggers a bump"
-    (``website/docs/guides/dependency-propagation.md``) -- so claiming it was updated is simply
-    false. The same answer is asserted from the ``molt.changelog`` side in
-    ``tests/changelog/``; the two suites must not diverge on it.
+    **molt emits no line.** The changelog documents what the release *did*, and an unconstrained
+    dependency "never triggers a bump" (``website/docs/guides/dependency-propagation.md``), so
+    claiming it was updated is simply false. The same answer is asserted from the
+    ``molt.changelog`` side in ``tests/changelog/``; the two suites must not diverge on it.
+
+    **The discriminator is constrainedness, NOT whether the pin text changed.** Do not implement
+    this as "emit the line iff the manifest edit rewrote something" -- that reading is the one an
+    implementer reaches for, and it is wrong. A ``workspace``-sourced bare pin is *also* never
+    rewritten (see
+    :func:`test_a_workspace_source_without_a_constraint_is_not_rewritten`) yet it **does** get a
+    changelog line,
+    because ``[tool.uv.sources]`` resolves it to ``==<old_version>`` -- a constrained edge that
+    genuinely caused the dependent's release. That case is pinned at the command level by
+    ``tests/cli/test_version.py`` row 27. The rule both suites implement is: **emit the line iff
+    the dependency edge is version-constrained after workspace-source resolution**, i.e. iff the
+    edge could have forced the release.
 
     The prerelease exception is unaffected: when the new version *is* a prerelease the pin is
     rewritten (see

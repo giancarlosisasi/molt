@@ -49,7 +49,7 @@ changesets leans on npm's throwaway-version-plus-dist-tag trick for snapshots. P
 
 ### `molt yank` replaces "unpublish"
 
-PyPI has no unpublish. The sanctioned recovery for a bad release is [PEP 592 yanking](https://peps.python.org/pep-0592/): the release stays installable for anyone already pinned to it, but resolvers stop selecting it. molt makes this a first-class verb, [`molt yank`](/cli/yank) -- a recovery path changesets structurally cannot offer.
+PyPI has no unpublish. The sanctioned recovery for a bad release is [PEP 592 yanking](https://peps.python.org/pep-0592/): the release stays installable for anyone already pinned to it, but resolvers stop selecting it. molt makes this a first-class verb, [`molt yank`](/cli/yank), which checks the version and prints the exact steps -- a recovery path changesets structurally cannot offer. PyPI has no yank API, so the final click happens in your browser.
 
 ### `tag` is now `git-tag`
 
@@ -67,7 +67,7 @@ Python has no `peerDependencies`, so molt drops the concept entirely -- along wi
 | `1.0.0-next.0` prerelease tags | `1.0.0rc0` / `a1` / `.dev3` (fixed vocabulary) | Arbitrary tags are illegal under PEP 440 |
 | `pre.json` mode | `molt version --pre <kind>` flag | Removes the most-disliked subsystem |
 | `--snapshot` -> npm dist-tag | `.devN` on a separate index | PyPI is immutable, has no dist-tags |
-| unpublish / deprecate | [`molt yank`](/cli/yank) | PyPI has no unpublish |
+| unpublish / deprecate | [`molt yank`](/cli/yank) (guided) | PyPI has no unpublish |
 | `tag` command | `git-tag` command | Name collided with dist-tags |
 | `peerDependencies` bump rules | dropped | No Python analogue |
 | `package.json` (JSON, no comments) | `pyproject.toml` (TOML, comment-preserving) | molt round-trips your comments and formatting |

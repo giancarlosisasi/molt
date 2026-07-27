@@ -41,7 +41,7 @@ molt is being built in nine steps. Steps 1-2 are the go/no-go gates -- if the ra
 - **Atomic apply + lockfile.** Buffer-then-flush writes so a mid-run failure never double-bumps, plus `uv lock` in the same commit. See [Design decisions](/reference/design-decisions).
 - **The CLI.** `init`, `add`, `version`, and `status`, with `--dry-run` printing a machine-readable plan on every mutating command from the start. Non-interactive `add` (for Dependabot, Renovate, and codegen) is part of this step. See [CLI overview](/cli/overview) and [Dry runs and plans](/guides/dry-run-and-plans).
 - **Changelog + plugins.** The Jinja2 templating layer and the `molt.changelog` entry-point seam, with `git` and `github` generators. See [Changelog templates](/guides/changelog-templates) and [Changelog plugins](/extending/changelog-plugins).
-- **Publish.** `pack` -> `publish` via PyPI trusted publishing (OIDC), with exhaustive pre-upload validation, and [`molt yank`](/cli/yank) as the recovery verb. See [Publishing](/guides/publishing).
+- **Publish.** `pack` -> `publish` via PyPI trusted publishing (OIDC), with exhaustive pre-upload validation, and [`molt yank`](/cli/yank) as the guided recovery verb. See [Publishing](/guides/publishing).
 - **Automation.** A GitHub Action first, then the forge seam for GitLab, Gitea, and others. See [CI: GitHub Action](/guides/ci-github-action) and [Forges](/forges/overview).
 
 ## What ships first, and why not everything
@@ -62,7 +62,7 @@ The features that make molt more than a port are the ones changesets users have 
 | No `pre.json` -- prerelease as a flag | ~15 open issues | Steps 4-6 |
 | Forge-agnostic integration | Open 4 years, no maintainer reply | Step 9 |
 | Single-package + root-workspace first-class | Degenerate case upstream | Steps 2-6 |
-| `molt yank` | Impossible on npm | Step 8 |
+| `molt yank` (guided; PyPI has no yank API) | Impossible on npm | Step 8 |
 | Atomic writes + resumable failure | Double-bumps on retry | Step 5 |
 | Correct changelog Markdown (no formatter pass) | Needs Prettier/dprint | Step 7 |
 | Windows-correct from day one | Windows CI added 2026-07 | Every step |

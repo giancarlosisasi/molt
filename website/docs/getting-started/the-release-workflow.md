@@ -52,7 +52,7 @@ Steps 4 and 5 are wired up for you by the [GitHub Action](/guides/ci-github-acti
 
 ## When to use --dry-run
 
-Every mutating command -- `add`, `version`, `publish`, `yank` -- can build its [plan](/guides/dry-run-and-plans) and print it *without executing*. Reach for `--dry-run` when you want to look before you leap:
+Every mutating command -- `add`, `version`, `publish`, `build`, `git-tag` -- can build its [plan](/guides/dry-run-and-plans) and print it *without executing*. Reach for `--dry-run` when you want to look before you leap:
 
 - **Before a release**, `molt version --dry-run` shows every version bump and file it would write. `molt status` answers the same question and is the read-only, CI-friendly form.
 - **Before publishing**, `molt publish --dry-run` shows exactly which packages and versions would be uploaded, and in what order.

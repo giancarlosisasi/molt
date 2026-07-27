@@ -4,7 +4,9 @@ title: molt yank
 
 # molt yank
 
-Mark a released version as yanked on PyPI (PEP 592) -- a recovery path for a bad release that changesets structurally cannot offer.
+Check a released version and print the exact steps to yank it on PyPI (PEP 592) -- the recovery path for a bad release that changesets structurally cannot offer.
+
+> **`molt yank` does not yank for you.** PyPI provides no supported way for a tool to yank a release: it is a web-UI action, there is no API endpoint, and an upload token does not grant it. So `molt yank` does the part it *can* do -- verify the version, tell you whether it is already yanked, and hand you the exact URL and steps -- and you complete the yank in your browser. See [Why this is a manual step](#why-this-is-a-manual-step).
 
 ## Synopsis
 
@@ -16,61 +18,85 @@ molt yank <package> <version> [OPTIONS]
 
 PyPI is immutable: a published version cannot be deleted or overwritten. But PEP 592 lets you **yank** it. A yanked version is still installable by an exact pin that already depends on it, so nothing that already resolved to it breaks -- but resolvers stop *selecting* it for new installs. It is the correct response to a release that is broken but must remain downloadable for reproducibility.
 
-`molt yank` turns that into a first-class verb. It marks one `<package>` at one `<version>` as yanked (optionally with a reason that PyPI displays), and `--undo` reverses it. Because yanking changes what every downstream resolver picks, molt **asks for confirmation** before acting unless you pass `--yes`.
+`molt yank` is the guided front end to that. It reads the index's public JSON API and reports:
 
-Yank is a plan-producing command like the rest: `--dry-run` prints exactly what would be yanked and contacts nothing.
+- whether `<package>` exists and `<version>` is actually on the index,
+- whether that version is **already yanked**, and the reason recorded on it,
+- the **release-management URL** and the steps to complete the yank, with your `--reason` text ready to paste.
+
+It contacts only the public read API, so it needs **no credentials** and changes nothing. Run it before you go clicking -- it catches the typo'd version number that would otherwise have you yanking the wrong release.
+
+### Why this is a manual step
+
+PEP 592 specifies how installers *read* a yank (the `data-yanked` attribute in the Simple API). It deliberately leaves it to each index to decide how a maintainer *sets* one. PyPI implements setting it as a web form on the release-management page only:
+
+- there is **no documented API endpoint** for yanking, and none is planned on a published schedule ([warehouse#12708](https://github.com/pypi/warehouse/issues/12708) tracks the request),
+- `twine` has **no yank command**,
+- PyPI **API tokens are scoped to uploads**, so the credential your CI already holds could not perform a yank even if an endpoint existed -- project management requires a logged-in session with 2FA,
+- only a project **Owner** may yank; a Maintainer cannot.
+
+Molt will not drive an undocumented HTML form with your account password to paper over that. If PyPI ships a management API, `molt yank` gains a flag to complete the action itself and this page changes; the surface here is designed so that change is additive.
+
+Third-party indexes (devpi, Artifactory) do expose yank APIs. Support for completing a yank on those is not implemented.
 
 ## Options
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `<package>` | string (positional) | -- | Distribution name to yank. Required. |
-| `<version>` | string (positional) | -- | Exact version to yank. Required. |
-| `--reason <text>` | string | -- | Human-readable reason, shown by PyPI and resolvers. |
-| `--undo` | flag | off | Un-yank instead of yank -- restore the version to normal selection. |
-| `--repository <name>` | string | `pypi` | Named repository/index the version lives on. |
-| `--yes`, `--non-interactive` | flag | off | Skip the confirmation prompt. Required in CI. |
-| `--dry-run` | flag | off | Print what would be yanked; change nothing. |
+| `<package>` | string (positional) | -- | Distribution name to check. Required. |
+| `<version>` | string (positional) | -- | Exact version to check. Required. |
+| `--reason <text>` | string | -- | The reason to record. Echoed in the printed steps, ready to paste into PyPI's confirmation dialog. |
+| `--undo` | flag | off | Print the steps to **un-yank** instead -- restore the version to normal selection. |
+| `--repository <name>` | string | `pypi` | Named repository/index the version lives on. Selects which index is queried and which management URL is printed. |
 | `--cwd <path>` | path | current directory | Directory to run in; root discovery starts here. |
 | `-h`, `--help` | flag | -- | Show help and exit. |
+
+`molt yank` takes no `--dry-run`: it never mutates, so every run is already a dry run. It takes no `--yes` either -- there is nothing to confirm.
 
 ## Exit codes
 
 | Situation | Exit code |
 |---|---|
-| Version yanked or un-yanked (or `--dry-run` printed) | 0 |
-| Confirmation declined at the prompt (nothing changed) | 1 |
-| Package or version not found, or auth failure | 1 |
-| Prompt cancelled with Ctrl-C | 0 |
+| Version found; steps printed | 0 |
+| Version found and already in the requested state (already yanked, or `--undo` on a version that is not yanked) | 0 |
+| Package or version not found on the index | 1 |
+| The index could not be reached | 1 |
 
 ## Examples
 
-Yank a broken patch, with a reason:
+Check a broken patch and get the steps, with the reason ready to paste:
 
 ```bash
 molt yank acme-core 1.1.0 --reason "Corrupt wheel; use 1.1.1."
 ```
 
-Preview first:
+```text
+acme-core 1.1.0 is on pypi.org and is not yanked.
 
-```bash
-molt yank acme-core 1.1.0 --dry-run
+To yank it, PyPI requires you to do this in a browser -- there is no API for it:
+
+  1. Open https://pypi.org/manage/project/acme-core/releases/
+  2. Click Options next to 1.1.0, then Yank
+  3. Paste this reason: Corrupt wheel; use 1.1.1.
+  4. Confirm
+
+You must be an Owner of the project, signed in with 2FA.
 ```
 
-Un-yank once the record is corrected:
+Check the steps to un-yank once the record is corrected:
 
 ```bash
 molt yank acme-core 1.1.0 --undo
 ```
 
-Non-interactive, in CI:
+Check a version on another index:
 
 ```bash
-molt yank acme-core 1.1.0 --reason "Bad release" --yes
+molt yank acme-core 1.1.0 --repository testpypi
 ```
 
 ## See also
 
 - [Yanking a release](/guides/yank) -- when and how to yank safely.
-- [Why Molt?](/introduction/why-molt) -- why PyPI immutability makes yank a feature.
+- [Why Molt?](/introduction/why-molt) -- why PyPI immutability makes yank matter.
 - [molt publish](/cli/publish).
