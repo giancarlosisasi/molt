@@ -21,6 +21,13 @@ dependencies = [
     # molt.versioning.ranges wraps it to pin the prerelease flag to the constraint's own
     # opt-in rather than PEP 440's resolver-oriented fallback; see roadmap/research/README.md 4.1.
     "packaging>=24.0",
+    # CLI framework (owner's decision 2026-07-23, over the cyclopts recommendation; see
+    # roadmap/tech-stack.md section 4). Typer is 0.x and can break between minors, so the
+    # MoltGroup overrides in molt.cli are pinned by tests/cli/test_cli.py and uv.lock.
+    "typer>=0.15",
+    # Terminal rendering. Typer already depends on rich, but molt.ui.console imports it
+    # directly, so it is declared rather than relied on transitively.
+    "rich>=15",
 ]
 
 [project.scripts]
