@@ -103,11 +103,12 @@ pytestmark = pytest.mark.functional
 #: Questions adopts ``build`` as the name with **no** ``pack`` alias.
 #:
 #: ``yank`` is here even though the accepted ``cli-shell`` spec's command table omits it.
-#: ``website/docs/cli/overview.md:22`` lists it in the command surface, ``:44`` names it among the
-#: commands carrying ``--dry-run``, and ``website/docs/cli/yank.md`` is a complete reference page
-#: (two positionals plus ``--reason``/``--undo``/``--repository``/``--yes``/``--dry-run``/
-#: ``--cwd``). Under "docs win" the spec is the document that is wrong here, and the gap is
-#: reported to the owner: `yank` appears nowhere under ``openspec/``.
+#: ``website/docs/cli/overview.md:22`` lists it in the command surface and
+#: ``website/docs/cli/yank.md`` is a complete reference page (two positionals plus
+#: ``--reason``/``--undo``/``--repository``/``--cwd``). Under "docs win" the spec is the document
+#: that is wrong here, and the gap is reported to the owner: `yank` appears nowhere under
+#: ``openspec/``. It is **not** in :data:`MUTATING_COMMANDS`: PyPI has no yank API, so the command
+#: only reads the index and prints the browser steps (owner ruling, Session 6 addendum).
 COMMANDS = (
     "init",
     "add",
@@ -127,8 +128,11 @@ COMMANDS = (
 ALLOWED_EXTRA_COMMANDS = frozenset({"tag"})
 
 #: Commands that mutate the working tree, and therefore carry ``--dry-run``
-#: (``website/docs/cli/overview.md:44``, which names ``yank`` explicitly).
-MUTATING_COMMANDS = ("add", "version", "publish", "yank", "git-tag", "build")
+#: (``website/docs/cli/overview.md:44``). ``yank`` is deliberately **absent**: PyPI exposes no API
+#: for yanking, so ``molt yank`` only reads the index and prints the browser steps. It never
+#: mutates, so every run is already a dry run and ``--dry-run`` would be noise
+#: (``website/docs/cli/yank.md``, "Why this is a manual step").
+MUTATING_COMMANDS = ("add", "version", "publish", "git-tag", "build")
 
 #: CLI command name -> the ``molt.commands`` module that implements it (pinned decision 1).
 COMMAND_MODULES = {
@@ -465,8 +469,8 @@ COMMAND_FLAG_CASES = [
     ("build", ("--out-dir", "--from-publish-plan"), "pack.md:29-33"),
     (
         "yank",
-        ("--reason", "--undo", "--repository", "--dry-run"),
-        "yank.md:27-36 (--yes/--non-interactive and --cwd are asserted as globals)",
+        ("--reason", "--undo", "--repository"),
+        "yank.md:24-33 -- read-only, so no --dry-run and no --yes; --cwd is a global",
     ),
     ("git-tag", ("--output",), "git-tag.md:41-44"),
 ]

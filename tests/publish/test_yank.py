@@ -6,31 +6,52 @@ our worst constraint becomes a feature") and README section 5 item 11 lists it a
 #11, marked "Impossible on npm". The specification is therefore the documentation:
 ``website/docs/cli/yank.md`` (flags, exit codes) and ``website/docs/guides/yank.md`` (semantics).
 
+``molt yank`` does NOT perform the yank -- owner ruling, Session 6
+-----------------------------------------------------------------
+**PyPI exposes no supported way for a tool to yank a release.** PEP 592 specifies only the *read*
+side (the ``data-yanked`` attribute in the Simple API) and explicitly leaves setting the flag to
+each index. PyPI implements setting it as a **web form** on
+``https://pypi.org/manage/project/<name>/releases/``: there is no documented API endpoint
+(`warehouse#12708 <https://github.com/pypi/warehouse/issues/12708>`_ is the open request), ``twine``
+has no yank command, PyPI API tokens are scoped to *uploads* so the CI credential could not
+authorize one anyway, and only a project **Owner** may yank. Verified against
+``docs.pypi.org/project-management/yanking/`` on 2026-07-26.
+
+So ``molt yank`` is a **read-only advisory command**. It queries the index's public JSON API, checks
+that the version exists, reports whether it is already yanked and why, and returns the management
+URL plus the steps for the user to complete in a browser. The single most important assertion in
+this file is therefore a **negative** one: the command must never attempt a mutation. ``FakeIndex``
+has no write method at all, and every plausible one raises loudly, so an implementation that tries
+to yank fails here rather than shipping.
+
+This is a **deliberate divergence from an earlier draft of the docs**, which promised that ``molt
+yank`` marked the version itself. That draft was unbuildable. ``cli/yank.md`` and ``guides/yank.md``
+were rewritten to match this file, not the other way round.
+
 What this file tests, and what it does not
 ------------------------------------------
 The **library seam** ``molt.publish.yank(package, version, ...)`` (test-contract section 5), not the
 shell routing. ``tests/cli/test_cli.py`` already pins the CLI surface -- two positionals plus
-``--reason`` / ``--undo`` / ``--repository`` / ``--dry-run`` and the ``--yes`` /
-``--non-interactive`` / ``--cwd`` globals -- and nothing here may contradict it.
+``--reason`` / ``--undo`` / ``--repository``, with ``--cwd`` a global -- and nothing here may
+contradict it. Note that ``yank`` carries **no** ``--dry-run`` and is absent from that file's
+``MUTATING_COMMANDS``: a command that never mutates does not need a switch to not mutate.
 
 Decisions pinned where the docs are silent (all reported to the owner)
 ---------------------------------------------------------------------
-1. **The library seam does not confirm.** ``cli/yank.md`` says molt "asks for confirmation before
-   acting unless you pass ``--yes``", and the exit-code table gives declining the prompt its own
-   code. That is command-layer behaviour: ``molt.commands.yank`` owns the prompt, and
-   ``molt.publish.yank`` is the non-interactive core it calls once the answer is yes. Putting the
-   prompt in the library would make the seam unusable from the GitHub Action, which never has a TTY.
-   Asserted negatively, by poisoning stdin.
-2. **Yank and un-yank are both idempotent.** Yanking an already-yanked version updates the reason;
-   un-yanking a version that is not yanked is a no-op. The docs list only "package or version not
-   found, or auth failure" as failures, so neither of these can be an error, and idempotence is what
-   makes a retried CI step safe (the same rule ``molt git-tag`` already follows).
+1. **The library seam does not prompt.** There is nothing to confirm now that nothing is mutated,
+   but the guarantee is kept and asserted (by poisoning stdin) because the seam must stay usable
+   from the GitHub Action, which never has a TTY.
+2. **"Already in the requested state" is success, not an error.** Checking a version that is
+   already yanked returns ``already=True`` and exit 0; the docs list only "not found" and
+   "unreachable" as failures, and a re-run of a completed recovery must not turn red in CI.
 3. **Names are PEP 503-normalized before lookup** (research README 4.5), exactly as they are for tag
-   construction and config matching.
+   construction and config matching -- and the normalized name is what the printed management URL
+   carries, because that is the form PyPI serves.
 4. **The index seam is injected as ``index=``**, mirroring the ``console=``/``git=``/``uploader=``
    convention the CLI and publish suites froze. The double lives in this file rather than in
-   ``tests/publish/fake_publish.py`` because that module is frozen and no other writer needs it;
-   this is the harness gap this phase reports.
+   ``tests/publish/fake_publish.py`` because that module is frozen and no other writer needs it.
+5. **No credential is resolved.** The command reads only the public JSON API, so it must not touch
+   an auth seam; asserted negatively via ``FakeIndex.resolve_credentials``.
 """
 
 from __future__ import annotations
@@ -61,9 +82,14 @@ if TYPE_CHECKING:
 
 pytestmark = [pytest.mark.functional]
 
+#: The management page a maintainer must open. PyPI serves it under the **normalized** project
+#: name (``docs.pypi.org/project-management/yanking/``).
+PYPI_MANAGE_URL = "https://pypi.org/manage/project/{name}/releases/"
+TESTPYPI_MANAGE_URL = "https://test.pypi.org/manage/project/{name}/releases/"
+
 
 # --------------------------------------------------------------------------------------
-# The index double -- the PEP 592 yank endpoint
+# The index double -- READ ONLY, by construction
 # --------------------------------------------------------------------------------------
 
 
@@ -76,51 +102,45 @@ class Release:
     reason: str | None = None
 
 
-@dataclass(frozen=True)
-class YankCall:
-    """One recorded mutation."""
-
-    package: str
-    version: str
-    yanked: bool
-    reason: str | None = None
-    repository: str | None = None
-
-
-class IndexAuthFailed(RuntimeError):
-    """The index rejected the credentials (``cli/yank.md`` exit-code table: auth failure -> 1)."""
+class IndexUnreachable(RuntimeError):
+    """The index could not be queried (``cli/yank.md`` exit-code table: unreachable -> 1)."""
 
 
 class FakeIndex:
-    """Records yank/un-yank mutations against an in-memory set of releases.
+    """Serves releases from an in-memory map and **fails loudly on any attempt to mutate**.
 
-    Injected as ``index=``. Deliberately **not** built on the frozen ``pypi_registry`` fixture: that
-    one mocks ``GET pypi.org/pypi/<name>/json`` over HTTP, and a yank has to both read the release
-    and write the flag, so keeping one double for both halves avoids two disagreeing sources of
-    truth inside a single command.
+    Injected as ``index=``. Every write-shaped method PyPI does not offer is present here purely so
+    that reaching for one raises with an explanation -- ``set_yanked``, ``yank``, ``unyank``,
+    ``delete``, and ``resolve_credentials``. That is the point of the double: the ruling that molt
+    cannot perform a yank is only enforced if trying to is a test failure.
 
-    Package keys are stored **verbatim**, not normalized, so a test seeding ``foo-bar`` and yanking
-    ``Foo_Bar`` genuinely exercises the caller's normalization instead of the double's.
+    Package keys are stored **verbatim**, not normalized, so a test seeding ``foo-bar`` and looking
+    up ``Foo_Bar`` genuinely exercises the caller's normalization instead of the double's.
     """
 
     def __init__(
         self,
-        releases: Mapping[str, Sequence[str]] | None = None,
+        releases: Mapping[str, Sequence[str | Release]] | None = None,
         *,
-        auth_failure: bool = False,
+        unreachable: bool = False,
     ) -> None:
         self.releases: dict[str, list[Release]] = {
-            name: [Release(version) for version in versions]
+            name: [
+                item if isinstance(item, Release) else Release(item) for item in (versions or [])
+            ]
             for name, versions in (releases or {}).items()
         }
-        self.auth_failure = auth_failure
-        self.calls: list[YankCall] = []
+        self.unreachable = unreachable
+        self.reads: list[tuple[str, str, str | None]] = []
 
     # -- read ---------------------------------------------------------------------------
     def get_release(
         self, package: str, version: str, *, repository: str | None = None
     ) -> Release | None:
-        del repository
+        """The only method a conforming implementation may call."""
+        self.reads.append((package, version, repository))
+        if self.unreachable:
+            raise IndexUnreachable(f"could not reach {repository or 'pypi'}")
         for release in self.releases.get(package, []):
             if release.version == version:
                 return release
@@ -130,24 +150,31 @@ class FakeIndex:
         """Every version still on the index, yanked or not."""
         return [release.version for release in self.releases.get(package, [])]
 
-    # -- write --------------------------------------------------------------------------
-    def set_yanked(
-        self,
-        *,
-        package: str,
-        version: str,
-        yanked: bool,
-        reason: str | None = None,
-        repository: str | None = None,
-    ) -> None:
-        self.calls.append(YankCall(package, version, yanked, reason, repository))
-        if self.auth_failure:
-            raise IndexAuthFailed(f"{package}: credentials rejected")
-        release = self.get_release(package, version)
-        if release is None:  # pragma: no cover - the caller must check first
-            raise AssertionError(f"set_yanked on an unknown release: {package} {version}")
-        release.yanked = yanked
-        release.reason = reason if yanked else None
+    # -- the writes PyPI does not offer -------------------------------------------------
+    def _no_write(self, what: str) -> NoReturn:
+        raise AssertionError(
+            f"molt.publish.yank called {what}(): PyPI exposes no API for yanking, so the command "
+            "must only read and print the browser steps (cli/yank.md, 'Why this is a manual step')"
+        )
+
+    def set_yanked(self, *args: Any, **kwargs: Any) -> NoReturn:
+        del args, kwargs
+        self._no_write("set_yanked")
+
+    def yank(self, *args: Any, **kwargs: Any) -> NoReturn:
+        del args, kwargs
+        self._no_write("yank")
+
+    def unyank(self, *args: Any, **kwargs: Any) -> NoReturn:
+        del args, kwargs
+        self._no_write("unyank")
+
+    def resolve_credentials(self, *args: Any, **kwargs: Any) -> NoReturn:
+        del args, kwargs
+        raise AssertionError(
+            "molt.publish.yank resolved a credential: it reads only the public JSON API and needs "
+            "none (cli/yank.md, 'It contacts only the public read API')"
+        )
 
     def delete(self, *args: Any, **kwargs: Any) -> NoReturn:
         """Present only so reaching for it fails loudly: PyPI has no delete, and yank is not one."""
@@ -159,22 +186,20 @@ class FakeIndex:
 
     # -- assertion helpers ---------------------------------------------------------------
     def is_yanked(self, package: str, version: str) -> bool:
-        release = self.get_release(package, version)
-        return release is not None and release.yanked
-
-    def reason_for(self, package: str, version: str) -> str | None:
-        release = self.get_release(package, version)
-        return None if release is None else release.reason
+        for release in self.releases.get(package, []):
+            if release.version == version:
+                return release.yanked
+        return False
 
 
 class NoInput:
     """A stdin replacement that fails on any read; see decision 1 in the module docstring."""
 
     def read(self, *args: Any) -> str:
-        raise AssertionError("molt.publish.yank read stdin: confirmation belongs to the CLI layer")
+        raise AssertionError("molt.publish.yank read stdin: it has nothing to confirm")
 
     def readline(self, *args: Any) -> str:
-        raise AssertionError("molt.publish.yank prompted: confirmation belongs to the CLI layer")
+        raise AssertionError("molt.publish.yank prompted: it has nothing to confirm")
 
     def isatty(self) -> bool:
         return False
@@ -182,10 +207,7 @@ class NoInput:
 
 @dataclass
 class RecordedConsole:
-    """A minimal console double -- ``tests/cli/fake_cli.RecordingConsole`` without the CLI import.
-
-    Only the levels a yank can emit are modelled; the dry-run row is the one that reads it back.
-    """
+    """A minimal console double -- ``fake_cli.RecordingConsole`` without the CLI import."""
 
     messages: list[str] = field(default_factory=list)
 
@@ -214,26 +236,34 @@ def run_failing(call: Callable[[], object]) -> BaseException:
         call()
     except Exception as exc:
         return exc
-    pytest.fail("expected the yank to fail, but it returned normally")
+    pytest.fail("expected the yank check to fail, but it returned normally")
+
+
+def steps_text(result: Any) -> str:
+    """The printed steps as one string, however the result models them."""
+    steps = getattr(result, "steps", None)
+    if steps is None:
+        return str(result)
+    return "\n".join(steps) if isinstance(steps, (list, tuple)) else str(steps)
 
 
 # --------------------------------------------------------------------------------------
-# Yanking
+# The command reads, reports, and instructs -- it never mutates
 # --------------------------------------------------------------------------------------
 
 
-def test_yank_marks_the_version_yanked_with_the_reason() -> None:
-    """``cli/yank.md``: "It marks one ``<package>`` at one ``<version>`` as yanked (optionally with
-    a reason that PyPI displays)".
+def test_yank_reports_the_release_and_returns_the_manual_steps() -> None:
+    """``cli/yank.md``: molt "verifies the version, tells you whether it is already yanked, and
+    hands you the exact URL and steps -- and you complete the yank in your browser."
 
-    The reason is not decoration -- PEP 592 carries it in the ``data-yanked`` attribute of the
-    simple index and resolvers surface it to the user who would otherwise wonder why their pin
-    stopped being selected. It has to reach the index, so it is asserted on the recorded call as
-    well as on the resulting state.
+    The happy path: the version is on the index and not yanked, so there is a real action to
+    describe. Both halves are asserted -- the management URL and the reason text -- because a
+    result carrying the URL but silently dropping ``--reason`` would leave the user pasting
+    nothing into PyPI's dialog.
     """
     index = FakeIndex({"acme-core": ["1.0.0", "1.1.0"]})
 
-    yank(
+    result = yank(
         "acme-core",
         "1.1.0",
         reason="Corrupt wheel; use 1.1.1.",
@@ -241,240 +271,218 @@ def test_yank_marks_the_version_yanked_with_the_reason() -> None:
         index=index,
     )
 
-    assert index.is_yanked("acme-core", "1.1.0")
-    assert index.reason_for("acme-core", "1.1.0") == "Corrupt wheel; use 1.1.1."
-    assert index.calls == [
-        YankCall("acme-core", "1.1.0", yanked=True, reason="Corrupt wheel; use 1.1.1.")
-    ]
+    assert result.url == PYPI_MANAGE_URL.format(name="acme-core")
+    assert result.already is False
+    assert "Corrupt wheel; use 1.1.1." in steps_text(result)
 
 
-def test_yank_targets_exactly_one_version() -> None:
-    """A yank is version-scoped, never package-scoped.
+def test_yank_never_mutates_the_index() -> None:
+    """**The load-bearing test of this file.** PyPI has no yank API (``cli/yank.md``, "Why this is
+    a manual step"), so a conforming implementation calls exactly one index method: the read.
 
-    ``cli/yank.md`` makes ``<version>`` a required positional ("Exact version to yank") precisely
-    because the alternative -- yanking a project -- is not a thing PEP 592 offers and would take
-    every release out of the default resolution path at once. Two neighbours on the same project
-    make an over-broad implementation observable.
+    ``FakeIndex`` raises on ``set_yanked``/``yank``/``unyank``/``delete``, so an implementation that
+    tries to perform the action fails here. The positive half -- that the read *did* happen -- is
+    asserted too, so this cannot pass by never touching the index at all.
     """
-    index = FakeIndex({"acme-core": ["1.0.0", "1.1.0", "1.2.0"]})
+    index = FakeIndex({"acme-core": ["1.1.0"]})
+
+    yank("acme-core", "1.1.0", reason="Bad release", console=RecordedConsole(), index=index)
+
+    assert index.reads == [("acme-core", "1.1.0", "pypi")]
+    assert index.is_yanked("acme-core", "1.1.0") is False, "the release must be untouched"
+
+
+def test_yank_resolves_no_credential() -> None:
+    """``cli/yank.md``: "It contacts only the public read API, so it needs **no credentials**."
+
+    An upload token cannot authorize a yank anyway (warehouse#12708), so an implementation that
+    resolves one is doing work that can only fail confusingly in CI.
+    """
+    index = FakeIndex({"acme-core": ["1.1.0"]})
 
     yank("acme-core", "1.1.0", console=RecordedConsole(), index=index)
 
-    assert [index.is_yanked("acme-core", v) for v in ("1.0.0", "1.1.0", "1.2.0")] == [
-        False,
-        True,
-        False,
-    ]
 
+def test_the_steps_name_the_browser_action() -> None:
+    """The steps must be actionable without the user already knowing PyPI's UI.
 
-def test_yank_without_a_reason_records_none() -> None:
-    """``--reason`` is optional (``cli/yank.md`` options table: no default).
-
-    Pinned so an implementation cannot invent a placeholder reason: whatever string it chose would
-    be published on the index and shown to every downstream user forever.
+    ``docs.pypi.org/project-management/yanking/`` describes exactly this path: open the release
+    management page, click ``Options`` next to the release, then ``Yank``. A result that printed
+    only a bare URL would leave the user hunting.
     """
-    index = FakeIndex({"acme-core": ["1.0.0"]})
+    index = FakeIndex({"acme-core": ["1.1.0"]})
 
-    yank("acme-core", "1.0.0", console=RecordedConsole(), index=index)
+    result = yank("acme-core", "1.1.0", console=RecordedConsole(), index=index)
 
-    assert index.is_yanked("acme-core", "1.0.0")
-    assert index.reason_for("acme-core", "1.0.0") is None
+    text = steps_text(result).lower()
+    assert "options" in text
+    assert "yank" in text
+    assert PYPI_MANAGE_URL.format(name="acme-core") in steps_text(result)
 
 
-def test_yanking_is_not_deletion() -> None:
-    """``guides/yank.md``: "A yanked version stays on the index and stays installable".
+def test_yank_is_not_deletion() -> None:
+    """``guides/yank.md``: a yanked version "stays on the index and stays installable".
 
-    The whole product argument for yank rests on this asymmetry -- new installs skip the version,
-    exact pins keep resolving -- so the test asserts both halves: the version is still listed by the
-    index afterwards, and the delete route was never taken (:meth:`FakeIndex.delete` raises if it
-    is). Research README 4.3: PyPI has no unpublish, which is *why* yank is the recovery verb.
+    ``FakeIndex.delete`` raises, so an implementation reaching for a delete fails loudly.
     """
     index = FakeIndex({"acme-core": ["1.0.0", "1.1.0"]})
 
     yank("acme-core", "1.1.0", reason="Bad release", console=RecordedConsole(), index=index)
 
-    assert index.versions("acme-core") == ["1.0.0", "1.1.0"], "the release is still on the index"
-    assert index.is_yanked("acme-core", "1.1.0")
+    assert index.versions("acme-core") == ["1.0.0", "1.1.0"]
 
 
 # --------------------------------------------------------------------------------------
-# Un-yanking
+# --undo, and the already-in-that-state cases
 # --------------------------------------------------------------------------------------
 
 
-def test_undo_unyanks_the_version() -> None:
-    """``cli/yank.md``: "``--undo`` -- Un-yank instead of yank -- restore the version to normal
-    selection"; ``guides/yank.md``: "A yank can be reversed on PyPI".
+def test_undo_returns_unyank_steps() -> None:
+    """``cli/yank.md``: ``--undo`` -- "Print the steps to **un-yank** instead".
 
-    The recorded call carries ``yanked=False`` rather than being absent: un-yank is a mutation in
-    its own right, and an implementation that simply skipped the call would leave the version yanked
-    while reporting success.
+    Asserted on the returned ``undo`` flag *and* on the text, so an implementation that forwards
+    the flag into the result but renders yank instructions regardless still fails.
     """
-    index = FakeIndex({"acme-core": ["1.0.0"]})
-    yank("acme-core", "1.0.0", reason="Bad release", console=RecordedConsole(), index=index)
+    index = FakeIndex({"acme-core": [Release("1.1.0", yanked=True, reason="Bad release")]})
 
-    yank("acme-core", "1.0.0", undo=True, console=RecordedConsole(), index=index)
+    result = yank("acme-core", "1.1.0", undo=True, console=RecordedConsole(), index=index)
 
-    assert not index.is_yanked("acme-core", "1.0.0")
-    assert index.reason_for("acme-core", "1.0.0") is None
-    assert [call.yanked for call in index.calls] == [True, False]
-
-
-# (already_yanked, undo, expected_yanked, why)
-IDEMPOTENCE_CASES: list[tuple[bool, bool, bool, str]] = [
-    (True, False, True, "decision 2: re-yanking a yanked version is a no-op, not an error"),
-    (False, True, False, "decision 2: un-yanking a version that is not yanked is a no-op"),
-]
+    assert result.undo is True
+    assert result.already is False, "it is yanked, so there is a real un-yank to perform"
+    assert "un-yank" in steps_text(result).lower()
 
 
-@pytest.mark.parametrize(("already_yanked", "undo", "expected_yanked", "why"), IDEMPOTENCE_CASES)
-def test_yank_and_undo_are_idempotent(
-    already_yanked: bool, undo: bool, expected_yanked: bool, why: str
+@pytest.mark.parametrize(
+    ("seeded_yanked", "undo", "why"),
+    [
+        (
+            True,
+            False,
+            "already yanked and asked to yank -- nothing to do, and a re-run of a completed "
+            "recovery must not turn red in CI",
+        ),
+        (
+            False,
+            True,
+            "not yanked and asked to un-yank -- likewise a no-op, not a failure",
+        ),
+    ],
+)
+def test_a_version_already_in_the_requested_state_is_reported_not_failed(
+    seeded_yanked: bool, undo: bool, why: str
 ) -> None:
-    """Decision 2 in the module docstring.
+    """Decision 2 in the module docstring. ``cli/yank.md``'s exit-code table gives this its own
+    row at 0; only "not found" and "unreachable" are failures."""
+    index = FakeIndex({"acme-core": [Release("1.1.0", yanked=seeded_yanked, reason="Bad")]})
 
-    ``cli/yank.md``'s exit-code table lists exactly three failures -- declined confirmation, not
-    found, auth failure -- so neither repetition can be one. It matters operationally: the release
-    job that yanks is exactly the kind of step that gets re-run after an unrelated failure, and
-    ``molt git-tag`` already sets the precedent ("a tag that already exists is skipped, so
-    re-running is safe").
-    """
-    index = FakeIndex({"acme-core": ["1.0.0"]})
-    if already_yanked:
-        yank("acme-core", "1.0.0", reason="Bad release", console=RecordedConsole(), index=index)
+    result = yank("acme-core", "1.1.0", undo=undo, console=RecordedConsole(), index=index)
 
-    yank("acme-core", "1.0.0", undo=undo, console=RecordedConsole(), index=index)
-
-    assert index.is_yanked("acme-core", "1.0.0") is expected_yanked, why
-    assert index.versions("acme-core") == ["1.0.0"], why
+    assert result.already is True, why
 
 
-# --------------------------------------------------------------------------------------
-# Failures
-# --------------------------------------------------------------------------------------
+def test_an_already_yanked_version_surfaces_the_recorded_reason() -> None:
+    """The JSON API carries ``yanked_reason``, and it is the thing that tells the user whether the
+    yank they are about to make has already been made *for a different reason*."""
+    index = FakeIndex({"acme-core": [Release("1.1.0", yanked=True, reason="Corrupt wheel")]})
 
-# (package, version, why)
-NOT_FOUND_CASES: list[tuple[str, str, str]] = [
-    ("nosuchpkg", "1.0.0", "the distribution is not on the index at all"),
-    ("acme-core", "9.9.9", "the distribution exists but has never released that version"),
-]
-
-
-@pytest.mark.parametrize(("package", "version", "why"), NOT_FOUND_CASES)
-def test_an_unknown_package_or_version_is_an_error(package: str, version: str, why: str) -> None:
-    """``cli/yank.md`` exit codes: "Package or version not found ... 1".
-
-    ``index.calls == []`` is the assertion that carries the weight. Failing *after* attempting the
-    mutation would be indistinguishable from succeeding against a typo'd version -- and on an index
-    where a yank is publicly visible, yanking the wrong release is its own incident.
-    """
-    index = FakeIndex({"acme-core": ["1.0.0", "1.1.0"]})
-
-    run_failing(lambda: yank(package, version, console=RecordedConsole(), index=index))
-
-    assert index.calls == [], why
-    assert [index.is_yanked("acme-core", v) for v in ("1.0.0", "1.1.0")] == [False, False], why
-
-
-def test_an_auth_failure_surfaces() -> None:
-    """``cli/yank.md`` exit codes: "...or auth failure | 1".
-
-    The state assertion pairs with the raise: an implementation that swallowed the rejection and
-    reported success would leave the operator believing a broken release had been pulled.
-    """
-    index = FakeIndex({"acme-core": ["1.0.0"]}, auth_failure=True)
-
-    run_failing(
-        lambda: yank("acme-core", "1.0.0", reason="Bad", console=RecordedConsole(), index=index)
-    )
-
-    assert not index.is_yanked("acme-core", "1.0.0")
-
-
-# --------------------------------------------------------------------------------------
-# --dry-run, --repository, and the absence of a prompt
-# --------------------------------------------------------------------------------------
-
-
-def test_dry_run_performs_no_mutation_and_still_reports_the_plan() -> None:
-    """``cli/yank.md``: "``--dry-run`` prints exactly what would be yanked and contacts nothing";
-    ``guides/dry-run-and-plans.md``: a dry run "is a faithful preview, never an approximation".
-
-    Both halves are asserted. The negative alone would pass against a ``--dry-run`` that does
-    nothing at all and prints nothing either, which is not a preview -- and the operator reaching
-    for ``--dry-run`` on a yank is precisely the one who needs to see the target before committing.
-    """
-    index = FakeIndex({"acme-core": ["1.0.0", "1.1.0"]})
-    console = RecordedConsole()
-
-    yank(
+    result = yank(
         "acme-core",
         "1.1.0",
-        reason="Corrupt wheel",
-        dry_run=True,
-        console=console,
+        reason="Something else",
+        console=RecordedConsole(),
         index=index,
     )
 
-    assert index.calls == [], "a dry run contacts nothing"
-    assert not index.is_yanked("acme-core", "1.1.0")
-    text = console.text()
-    assert "acme-core" in text
-    assert "1.1.0" in text
+    assert result.already is True
+    assert result.current_reason == "Corrupt wheel", (
+        "the reason already recorded on the index, not the --reason the caller passed -- they "
+        "differ here precisely so an implementation echoing its own input cannot pass"
+    )
 
 
-def test_repository_selects_the_index_the_version_lives_on() -> None:
-    """``cli/yank.md``: "``--repository <name>`` -- Named repository/index the version lives on",
-    default ``pypi``.
+# --------------------------------------------------------------------------------------
+# Failures: not found, unreachable
+# --------------------------------------------------------------------------------------
 
-    Not cosmetic: research README 4.3 sends snapshot releases to a **non-PyPI index** by default, so
-    the version an operator needs to yank is frequently not on pypi.org at all. A yank that ignored
-    ``--repository`` would silently target the wrong index -- and, worse, report success.
+
+@pytest.mark.parametrize(
+    ("package", "version", "why"),
+    [
+        ("acme-cli", "1.0.0", "the package is not on the index at all"),
+        ("acme-core", "9.9.9", "the package is there but that version never shipped"),
+    ],
+)
+def test_an_unknown_package_or_version_is_an_error(package: str, version: str, why: str) -> None:
+    """``cli/yank.md`` exit-code table: "Package or version not found on the index" -> 1.
+
+    This is the check that earns the command its keep: a typo'd version number is the realistic
+    failure, and catching it here beats loading a management page where one wrong click yanks a
+    *good* release (``guides/yank.md``, "Running a yank safely").
+    """
+    index = FakeIndex({"acme-core": ["1.0.0", "1.1.0"]})
+
+    exc = run_failing(lambda: yank(package, version, console=RecordedConsole(), index=index))
+
+    assert version in str(exc) or package in str(exc), why
+
+
+def test_an_unreachable_index_is_an_error() -> None:
+    """``cli/yank.md`` exit-code table: "The index could not be reached" -> 1.
+
+    Distinct from "not found": a network failure must not be reported as "that version does not
+    exist", which would send the user off to check a release that is in fact fine.
+    """
+    index = FakeIndex({"acme-core": ["1.1.0"]}, unreachable=True)
+
+    run_failing(lambda: yank("acme-core", "1.1.0", console=RecordedConsole(), index=index))
+
+
+# --------------------------------------------------------------------------------------
+# --repository, normalization, and the no-prompt guarantee
+# --------------------------------------------------------------------------------------
+
+
+def test_repository_selects_both_the_index_queried_and_the_url_printed() -> None:
+    """``cli/yank.md``: ``--repository`` "Selects which index is queried and which management URL
+    is printed."
+
+    Both halves are asserted. An implementation that routes the *query* but prints pypi.org's
+    management URL would send the user to yank a release on the wrong index -- the same
+    single-use-of-a-multi-use-setting bug the publish suite caught as P6 B3.
     """
     index = FakeIndex({"acme-core": ["1.0.0"]})
 
-    yank("acme-core", "1.0.0", repository="testpypi", console=RecordedConsole(), index=index)
+    result = yank(
+        "acme-core", "1.0.0", repository="testpypi", console=RecordedConsole(), index=index
+    )
 
-    assert [call.repository for call in index.calls] == ["testpypi"]
+    assert index.reads == [("acme-core", "1.0.0", "testpypi")]
+    assert result.url == TESTPYPI_MANAGE_URL.format(name="acme-core")
 
 
 def test_yank_normalizes_the_package_name_per_pep_503() -> None:
-    """Decision 3: research README 4.5, "Flat global namespace + PEP 503 normalization".
+    """Research README 4.5 -- normalization happens at lookup, and PyPI serves the management page
+    under the normalized name, so the printed URL must carry it too.
 
-    The index knows the distribution by its normalized name; the operator types whatever the
-    manifest spells. If the two are compared verbatim, ``molt yank Foo_Bar 1.0.0`` reports "version
-    not found" for a release that plainly exists -- the same class of bug the tag-construction rows
-    in ``tests/cli/test_git_tag.py`` guard against, in the one command where the alternative to
-    getting it right is an un-yanked broken release.
+    ``FakeIndex`` stores keys verbatim, so seeding ``foo-bar`` and asking for ``Foo_Bar`` fails
+    unless the caller normalizes.
     """
     index = FakeIndex({"foo-bar": ["1.0.0"]})
 
-    yank("Foo_Bar", "1.0.0", reason="Bad release", console=RecordedConsole(), index=index)
+    result = yank("Foo_Bar", "1.0.0", reason="Bad release", console=RecordedConsole(), index=index)
 
-    assert index.is_yanked("foo-bar", "1.0.0")
-    assert [call.package for call in index.calls] == ["foo-bar"]
+    assert index.reads == [("foo-bar", "1.0.0", "pypi")]
+    assert result.url == PYPI_MANAGE_URL.format(name="foo-bar")
 
 
 def test_the_library_seam_never_prompts(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Decision 1: the confirmation lives in ``molt.commands.yank``, not here.
+    """Decision 1 -- the seam must stay usable from the GitHub Action, which has no TTY.
 
-    ``cli/yank.md`` requires a confirmation "unless you pass ``--yes``" and gives a declined prompt
-    its own exit code, so the prompt exists -- at the shell layer, where ``--yes`` and
-    ``--non-interactive`` are parsed (``tests/cli/test_cli.py`` pins both as globals). The library
-    core must stay callable from a job with no TTY, which is where every real yank happens.
-
-    Poisoning stdin catches a prompt raised through any route, including ones that never touch a
-    ``prompts`` seam this function was not given.
+    There is nothing to confirm now that nothing is mutated, but stdin is poisoned rather than
+    merely unused: a future implementation that adds an "are you sure" fails here instead of
+    hanging a CI job forever.
     """
     monkeypatch.setattr(sys, "stdin", NoInput())
-    monkeypatch.setattr(
-        "builtins.input",
-        lambda *args: pytest.fail(
-            "molt.publish.yank called input(): the CLI layer owns the prompt"
-        ),
-    )
     index = FakeIndex({"acme-core": ["1.0.0"]})
 
     yank("acme-core", "1.0.0", reason="Bad release", console=RecordedConsole(), index=index)
-
-    assert index.is_yanked("acme-core", "1.0.0"), "the yank ran - the negative is not vacuous"

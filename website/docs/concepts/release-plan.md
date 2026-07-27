@@ -45,7 +45,7 @@ molt version --dry-run
 }
 ```
 
-Only one changeset was written (a `major` on `acme-core`), yet three packages release. `acme-http` and `acme-cli` carry `changesets: []` -- their releases were *derived*, not requested. Working out those derived releases correctly is the whole job of the engine. You can inspect the same plan on `add`, `publish`, and `yank`; see [Dry runs and plans](/guides/dry-run-and-plans).
+Only one changeset was written (a `major` on `acme-core`), yet three packages release. `acme-http` and `acme-cli` carry `changesets: []` -- their releases were *derived*, not requested. Working out those derived releases correctly is the whole job of the engine. You can inspect the same plan on `add`, `publish`, and `build`; see [Dry runs and plans](/guides/dry-run-and-plans).
 
 ## A worked example
 

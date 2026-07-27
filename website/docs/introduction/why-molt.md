@@ -24,11 +24,11 @@ Porting changesets faithfully is the baseline. These are the things molt does th
 
 - **An ecosystem abstraction, designed in from day one.** Python has no single workspace standard -- uv, Poetry, Hatch, PDM, and setuptools all express workspaces and intra-repo dependencies differently. Molt puts a backend seam behind all of them instead of hard-wiring one. This is the very feature changesets rejected in 2020. See [Ecosystems](/ecosystems/overview).
 - **Lockfile updates during `version`.** When molt bumps a package it also runs the lockfile update (for uv, one subprocess call). Upstream leaves lockfiles stale; in Python that is load-bearing, not cosmetic.
-- **A machine-readable plan on every mutating command.** `add`, `version`, `publish`, and `yank` all produce the same shape of plan object. `--dry-run` prints the plan and executes nothing, on every one of them -- not just publish. See [Dry runs and plans](/guides/dry-run-and-plans).
+- **A machine-readable plan on every mutating command.** `add`, `version`, `publish`, `build`, and `git-tag` all produce the same shape of plan object. `--dry-run` prints the plan and executes nothing, on every one of them -- not just publish. See [Dry runs and plans](/guides/dry-run-and-plans).
 - **Non-interactive `molt add`.** You can create a changeset without a prompt, which unlocks Dependabot, Renovate, and code-generation workflows that cannot answer interactive questions.
 - **Real changelog templating.** Sections, dates, and custom formats via templates, rather than a single hard-coded layout. See [Changelog templates](/guides/changelog-templates).
 - **Forge-agnostic release automation.** GitHub ships first, but the forge is a seam from day one, so GitLab, Gitea, and others are additions rather than rewrites. See [Forges](/forges/overview).
-- **`molt yank` as a first-class verb.** A real recovery path for a bad release (more on this below).
+- **`molt yank` as a first-class verb.** A guided recovery path for a bad release (more on this below).
 - **Atomic, resumable `version`.** Molt buffers all mutations and flushes them together, so a mid-run failure does not leave you half-bumped with a double-bump waiting on the next run.
 - **Correct changelog Markdown, emitted directly** -- no formatter pass to clean up broken blank lines afterward.
 - **Windows-correct from day one.** Tested on Windows from the first commit, output stays ASCII-clean, and paths behave. Your release tool has to run in the CI you already have.
@@ -61,7 +61,7 @@ One change satisfies PEP 440 and removes changesets' most-disliked subsystem. Se
 PyPI has no unpublish, no dist-tags, immutable versions, and rejects local-version suffixes. That reshapes two areas:
 
 - **Snapshots** cannot use changesets' throwaway-version-plus-dist-tag trick, because every snapshot would permanently burn a public version number. Molt targets a **separate index** for snapshots by default. See [Snapshot releases](/concepts/snapshots).
-- **A bad release cannot be unpublished** -- but PEP 592 lets it be *yanked*, so resolvers stop selecting it while existing pins keep working. Molt turns that into a first-class [`molt yank`](/cli/yank) verb. The platform's harshest constraint becomes a feature changesets structurally cannot offer.
+- **A bad release cannot be unpublished** -- but PEP 592 lets it be *yanked*, so resolvers stop selecting it while existing pins keep working. Molt turns that into a first-class [`molt yank`](/cli/yank) verb: it verifies the version, reports whether it is already yanked, and prints the exact steps. PyPI exposes no API for performing a yank, so the final click is yours -- molt makes the recovery path explicit and checked instead of leaving you to find it.
 
 ### Vocabulary that molt refuses to inherit
 

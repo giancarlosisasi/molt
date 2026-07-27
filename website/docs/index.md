@@ -30,13 +30,13 @@ features:
     details: Single-package repos are first-class, not a degenerate special case. Most Python projects are one package, so molt treats that path as the default, not an afterthought.
     icon: 📦
   - title: A plan on every command
-    details: add, version, publish, and yank each produce a machine-readable plan. Pass --dry-run to print exactly what would happen and write nothing to disk.
+    details: add, version, publish, build, and git-tag each produce a machine-readable plan. Pass --dry-run to print exactly what would happen and write nothing to disk.
     icon: 📋
   - title: Prerelease is a flag
     details: molt version --pre rc. No pre.json branch state to leak, forget, or merge-conflict. Prerelease is an invocation, and it maps cleanly onto PEP 440 spellings.
     icon: 🚦
   - title: molt yank
-    details: PyPI has no unpublish. molt makes PEP 592 yank a first-class verb, giving you a real recovery path for a bad release, something changesets structurally cannot offer.
+    details: PyPI has no unpublish. molt makes PEP 592 yank a first-class verb: it checks the version, says whether it is already yanked, and prints the exact steps. PyPI has no yank API, so the final click is yours.
     icon: ♻️
   - title: Windows-correct from day one
     details: Tested on Windows from the first commit. No cp1252 surprises in output, no path bugs. Your release tool has to run in the CI you already have.

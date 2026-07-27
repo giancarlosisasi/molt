@@ -4,12 +4,14 @@ title: Yanking a release
 
 # Yanking a release
 
-`molt yank` marks a published version as bad so installers stop selecting it, without breaking the people already pinned to it -- the recovery path PyPI's immutability would otherwise deny you.
+Yanking marks a published version as bad so installers stop selecting it, without breaking the people already pinned to it -- the recovery path PyPI's immutability would otherwise deny you. `molt yank` verifies the version and walks you through it.
 
 ```bash
-# Pull a broken release out of circulation
-molt yank acme-core 1.2.0
+# Check the release and get the exact steps
+molt yank acme-core 1.2.0 --reason "Corrupt wheel; use 1.2.1."
 ```
+
+> **The yank itself is a manual step.** PyPI exposes no API for yanking -- it is a web-UI action, `twine` has no yank command, and an upload token would not authorize one. `molt yank` checks that the version exists, tells you whether it is already yanked, and prints the management URL and steps; you finish it in the browser. [`molt yank`](/cli/yank) explains the constraint in full.
 
 ## Why yank exists
 
@@ -39,14 +41,18 @@ Do not yank simply to "hide" a version you dislike. If the version installs and 
 
 ## Running a yank safely
 
-Because a yank changes what every downstream resolver sees, `molt yank` **confirms before it acts** -- it shows the exact package and version and asks you to approve. As with every mutating command, `--dry-run` prints the [plan](/guides/dry-run-and-plans) and changes nothing:
+Because a yank changes what every downstream resolver sees, get the target right before you touch the browser. That is what `molt yank` is for -- it queries the index and tells you what is actually there:
 
 ```bash
-# See what would happen, touch nothing
-molt yank acme-core 1.2.0 --dry-run
+molt yank acme-core 1.2.0 --reason "Corrupt wheel; use 1.2.1."
 ```
 
-A yank can be reversed on PyPI (an un-yank restores the version to normal selection), so it is a far less destructive action than the delete PyPI refuses to offer -- but treat it as a public, visible change to your package's history and confirm it deliberately.
+It confirms the version exists, reports whether it is **already yanked** and with what reason, and prints the release-management URL plus the steps to complete. Getting the version number wrong is the realistic failure here -- yanking `1.2.0` when you meant `1.2.1` takes a *good* release out of circulation -- and a bad version number fails the check with exit 1 instead of loading a page where one wrong click does damage.
+
+Two things to know before you click:
+
+- **You must be an Owner** of the project, signed in with 2FA. A Maintainer cannot yank.
+- **A yank is reversible.** An un-yank restores the version to normal selection, so this is far less destructive than the delete PyPI refuses to offer. Run `molt yank acme-core 1.2.0 --undo` for those steps. Still, treat it as a public, visible change to your package's history.
 
 ## See also
 

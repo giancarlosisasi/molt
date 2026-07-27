@@ -6,7 +6,7 @@ title: Dry runs and plans
 
 Every command in molt that changes something first builds a **plan** -- a machine-readable description of what it will do -- and `--dry-run` prints that plan and executes nothing.
 
-This is one of molt's defining ideas. `add`, `version`, `publish`, and `yank` all produce the same shape of object: a plan. Running the command executes the plan; `--dry-run` prints it and stops. Because it is the *same value* either way, a dry run is a faithful preview, never an approximation.
+This is one of molt's defining ideas. `add`, `version`, `publish`, `build`, and `git-tag` all produce the same shape of object: a plan. Running the command executes the plan; `--dry-run` prints it and stops. Because it is the *same value* either way, a dry run is a faithful preview, never an approximation.
 
 ## `--dry-run` on any mutating command
 
@@ -14,7 +14,7 @@ This is one of molt's defining ideas. `add`, `version`, `publish`, and `yank` al
 molt version --dry-run
 molt publish --dry-run
 molt add --package acme-core --bump minor -m "..." --dry-run
-molt yank --package acme-core --version 2.0.0 --dry-run
+molt build --dry-run
 ```
 
 Each prints, in human-readable form, exactly what it would do -- and writes nothing, uploads nothing, tags nothing. Add `--output json` to get the plan as structured data instead.
@@ -80,23 +80,15 @@ The `add` plan is the changeset file that would be written -- its generated name
 
 ### `yank`
 
-The `yank` plan lists the releases that would be yanked from the index and why:
-
-```json
-{
-  "command": "yank",
-  "dry_run": true,
-  "yanks": [
-    { "name": "acme-core", "version": "2.0.0", "reason": "Broken wheel metadata" }
-  ]
-}
-```
+`molt yank` has no plan and no `--dry-run`, because it never mutates anything: PyPI exposes no API
+for yanking, so the command verifies the version and prints the steps for you to complete in a
+browser. Every run is already a dry run. See [`molt yank`](/cli/yank).
 
 ## Why a uniform plan beats a publish-only one
 
 changesets eventually grew a `publish-plan` -- but only for publish, and only after five years of requests. molt's plan is **uniform**: the same envelope, the same `--dry-run` switch, and the same `--output json` on every mutating verb. That uniformity is what makes molt scriptable:
 
-- **Preview safely.** See every version bump, upload, or yank before it happens.
+- **Preview safely.** See every version bump, upload, or tag before it happens.
 - **Gate in CI.** Parse the JSON and decide whether to proceed -- for example, refuse to publish if a plan contains a major bump without human sign-off.
 - **Split build from publish.** Compute a plan in one job, hand it to another. This is how the [publish flow](/guides/publishing) separates building artifacts from uploading them.
 - **Diff releases.** Two plans are just two JSON documents; diffing them shows precisely what changed.

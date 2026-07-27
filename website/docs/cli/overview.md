@@ -19,7 +19,7 @@ You install the distribution `molt-cli` and type the command `molt`. See [Instal
 | `molt publish` | Build, then upload changed packages to PyPI via OIDC Trusted Publishing, in dependency order. | [molt publish](/cli/publish) |
 | `molt publish-plan` | Print or emit the resolved publish plan without uploading anything. | [molt publish](/cli/publish) |
 | `molt build` | Build sdist and wheel artifacts for the packages a plan will publish. (The "pack" stage.) | [molt build](/cli/pack) |
-| `molt yank` | Mark a released version as yanked on PyPI (PEP 592) -- a recovery path changesets cannot offer. | [molt yank](/cli/yank) |
+| `molt yank` | Check a released version and print the steps to yank it on PyPI (PEP 592). Read-only -- PyPI has no yank API, so you finish it in the browser. | [molt yank](/cli/yank) |
 | `molt git-tag` | Create annotated git tags for released packages. | [molt git-tag](/cli/git-tag) |
 | `molt pre` | Prerelease control. Molt has no persistent pre-mode: prereleases are the stateless `molt version --pre` flag. | [Prerelease control](/cli/pre) |
 
@@ -41,7 +41,7 @@ These options are accepted by every command (subject to the command actually hav
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `--non-interactive`, `--yes` | flag | off | Never block on a prompt. Each prompt resolves to its documented default, or the command exits non-zero naming the missing input. Required for CI, Dependabot, Renovate, and codegen. |
-| `--dry-run` | flag | off | On any mutating command (`add`, `version`, `publish`, `yank`, `git-tag`, `build`), print the [plan](/concepts/release-plan) the command would execute and write nothing. See [Dry runs and plans](/guides/dry-run-and-plans). |
+| `--dry-run` | flag | off | On any mutating command (`add`, `version`, `publish`, `git-tag`, `build`), print the [plan](/concepts/release-plan) the command would execute and write nothing. (`yank` has none: it never mutates, so every run is already a dry run.) See [Dry runs and plans](/guides/dry-run-and-plans). |
 | `--output json` | string | human-readable | Where supported (`status`, `publish-plan`), emit the plan as a JSON document to stdout instead of the rendered view. See [Machine-readable output](#machine-readable-output). |
 | `--cwd <path>` | path | current directory | Directory to run in. Root discovery walks up from here to the workspace root. |
 | `--version` | flag | -- | Print the bare version string (for example `0.1.0`) and exit 0. No banner, no prefix. |
