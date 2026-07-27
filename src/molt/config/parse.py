@@ -120,9 +120,9 @@ def _canonicalize(
     Aliases collapse here rather than in the model so that *which* spelling arrived is still
     knowable; everything downstream sees one spelling per option, and so does every error ``loc``.
     """
-    raw.pop(SCHEMA_KEY, None)
-    written = _hoist_experimental(raw, warnings)
     aliases = field_aliases(Config)
+    raw.pop(SCHEMA_KEY, None)
+    written = _hoist_experimental(raw, warnings, aliases)
 
     for field, accepted in aliases.items():
         for name in accepted:
@@ -130,7 +130,7 @@ def _canonicalize(
                 written.setdefault(field, []).append((name, raw[name]))
 
     known = {name for accepted in aliases.values() for name in accepted}
-    warnings.extend(_unknown_or_dropped(key, ()) for key in raw if key not in known)
+    warnings.extend(_unknown_or_dropped(key, (), aliases) for key in raw if key not in known)
 
     payload: dict[str, Any] = {}
     for field, present in written.items():
@@ -154,7 +154,7 @@ def _canonicalize(
 
 
 def _hoist_experimental(
-    raw: dict[str, Any], warnings: list[ConfigIssue]
+    raw: dict[str, Any], warnings: list[ConfigIssue], aliases: dict[str, tuple[str, ...]]
 ) -> dict[str, list[tuple[str, Any]]]:
     """Promote the wrapper's surviving option to the top level; warn about the rest.
 
@@ -166,7 +166,7 @@ def _hoist_experimental(
     wrapper = raw.pop(EXPERIMENTAL_KEY, None)
     if not isinstance(wrapper, Mapping):
         if wrapper is not None:
-            warnings.append(_unknown_or_dropped(EXPERIMENTAL_KEY, ()))
+            warnings.append(_unknown_or_dropped(EXPERIMENTAL_KEY, (), aliases))
         return {}
 
     promoted = ("update_internal_dependents", "updateInternalDependents")
@@ -176,7 +176,7 @@ def _hoist_experimental(
             spelling = f"{EXPERIMENTAL_KEY}.{key}"
             written.setdefault("update_internal_dependents", []).append((spelling, value))
         else:
-            warnings.append(_unknown_or_dropped(key, (EXPERIMENTAL_KEY,)))
+            warnings.append(_unknown_or_dropped(key, (EXPERIMENTAL_KEY,), aliases))
     return written
 
 
@@ -192,7 +192,7 @@ def _canonicalize_nested(
     known = {name for accepted in aliases.values() for name in accepted}
     for key in table:
         if key not in known:
-            warnings.append(_unknown_or_dropped(key, (field,)))
+            warnings.append(_unknown_or_dropped(key, (field,), aliases))
 
     payload: dict[str, Any] = {}
     for subfield, accepted in aliases.items():
@@ -224,17 +224,39 @@ def _normalize_format(payload: dict[str, Any], warnings: list[ConfigIssue]) -> N
         )
 
 
-def _unknown_or_dropped(key: str, prefix: tuple[str | int, ...]) -> ConfigIssue:
+def _unknown_or_dropped(
+    key: str, prefix: tuple[str | int, ...], aliases: dict[str, tuple[str, ...]]
+) -> ConfigIssue:
     """One warning shape for a typo and for a key molt deliberately dropped.
 
     Both are the same hazard from the user's side -- a setting that appears to be configured and is
     not -- and neither may fail the parse, because a migrating changesets configuration has to keep
-    loading.
+    loading. Warning rather than failing is why the message has to carry its own weight: nothing
+    downstream will stop and explain, so this sentence is the only thing standing between a typo
+    and a silently unapplied setting.
     """
     reason = _DROPPED_OPTIONS.get(key)
     if reason is not None:
         return ConfigIssue((*prefix, key), f'Option "{key}" is not supported by molt: {reason}')
-    return ConfigIssue((*prefix, key), f'Unknown option "{key}" was ignored.')
+    return ConfigIssue(
+        (*prefix, key), f'Unknown option "{key}" was ignored.{_did_you_mean(key, aliases)}'
+    )
+
+
+def _did_you_mean(key: str, aliases: dict[str, tuple[str, ...]]) -> str:
+    """Suggest the nearest real option, when one is near enough to be worth naming.
+
+    Suggestions are drawn from the **canonical** names only. Offering ``baseBranch`` back to
+    someone who typed ``baseBrnach`` would be correct and useless -- it teaches the spelling molt
+    tolerates for migration rather than the one it documents.
+
+    The cutoff is deliberately tight. A wrong suggestion is worse than none: it sends the reader
+    off to check an option that was never the one they meant.
+    """
+    from difflib import get_close_matches
+
+    matches = get_close_matches(key, list(aliases), n=1, cutoff=0.75)
+    return f' Did you mean "{matches[0]}"?' if matches else ""
 
 
 def _quoted(names: Sequence[str]) -> str:
