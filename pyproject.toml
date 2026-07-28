@@ -36,6 +36,11 @@ dependencies = [
     # `BeforeValidator(json_schema_input_type=...)`, which is what lets the generated schema
     # advertise the written shorthands while the model stays normalized.
     "pydantic>=2.11",
+    # Changeset frontmatter. Chosen over PyYAML because molt.changeset.parse pins it to YAML 1.2
+    # with duplicate keys rejected, and that pairing is what makes the frontmatter agree with
+    # upstream's `yaml@2`: PyYAML is YAML 1.1, so it reads `yes` as a boolean, and it lets a package
+    # duplicated by a merge conflict win in silence. Research doc 02 section 12.3 names it.
+    "ruamel-yaml>=0.18",
 ]
 
 [project.scripts]
