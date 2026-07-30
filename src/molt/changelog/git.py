@@ -31,22 +31,42 @@ if TYPE_CHECKING:
 
     from molt.versioning import BumpType
 
-__all__ = ["GitChangelogGenerator", "generator"]
+__all__ = ["SHORT_COMMIT_LENGTH", "GitChangelogGenerator", "generator"]
 
 #: Two spaces: the markdown continuation indent that keeps a summary's later paragraphs inside the
 #: same list item (``changelog-git/src/index.ts:14``).
 _CONTINUATION_INDENT = "  "
 
+#: How many characters of a sha this generator prints (``changelog-git/src/index.ts:9, 24``).
+#:
+#: The same 7 as :data:`molt.forge.SHORT_SHA_LENGTH` and :data:`molt.git.SHORT_COMMIT_ID_LENGTH`,
+#: restated rather than imported. Importing the forge's copy would pull ``httpx`` into a module
+#: whose whole point is needing no network, and importing ``molt.git``'s would drag the subprocess
+#: wrapper into a pure-text one. Fixed rather than git's variable ``--short`` abbreviation, so the
+#: same release renders identically on every machine.
+SHORT_COMMIT_LENGTH = 7
 
-def _commit_marker(changeset: Any) -> str:
-    """`` [`<sha>`]`` when the changeset carries a commit, else the empty string.
+
+def _short_sha(changeset: Any) -> str | None:
+    """The changeset's commit, sliced for display, or ``None`` when it carries none.
 
     ``commit`` is populated only once a changeset file has been committed and molt has looked its
     sha up, so it is read with :func:`getattr`: a changeset parsed straight off a dirty working
     tree has no such attribute, and that is the normal case during ``molt version``.
     """
     commit = getattr(changeset, "commit", None)
-    return f" [`{commit}`]" if commit else ""
+    return str(commit)[:SHORT_COMMIT_LENGTH] if commit else None
+
+
+def _dependency_header(changeset: Any) -> str:
+    """``- Updated dependencies [<sha7>]`` (``changelog-git/src/index.ts:22-27``).
+
+    The brackets are dropped entirely when the changeset carries no commit, rather than left empty
+    -- ``- Updated dependencies []`` is what a local ``molt version`` would otherwise write on
+    every line, which is the common case rather than a corner one.
+    """
+    sha = _short_sha(changeset)
+    return f"- Updated dependencies [{sha}]" if sha else "- Updated dependencies"
 
 
 class GitChangelogGenerator:
@@ -61,13 +81,20 @@ class GitChangelogGenerator:
     ) -> str:
         """One bullet carrying the changeset summary verbatim.
 
+        The sha, when there is one, is a **prefix**: ``- a085003: Fix the thing``
+        (``changelog-git/src/index.ts:9-11``). That is the opposite end of the line from the
+        dependency bullet's bracketed ``[a085003]``, and the asymmetry is upstream's, not a
+        slip -- a release line leads with its commit, a dependency line trails with the commits
+        that caused it.
+
         ``bump`` is not read: which ``### ... Changes`` section the bullet lands in is the entry
         assembler's decision, and a generator that re-stated it could disagree with the heading it
         is printed under.
         """
         del bump, options, forge
         first, *rest = (line.rstrip() for line in changeset.summary.split("\n"))
-        bullet = f"- {first}{_commit_marker(changeset)}"
+        sha = _short_sha(changeset)
+        bullet = f"- {sha}: {first}" if sha else f"- {first}"
         if not rest:
             return bullet
         # See the module docstring: an empty continuation line stays empty rather than becoming
@@ -92,12 +119,17 @@ class GitChangelogGenerator:
         bullet. When there is no such bullet -- a dependency bumped by a changeset that never
         named it -- the section renderer trims the indent off the first line, which is why
         ``- pkg-b@2.0.0`` appears unindented in that case rather than as an orphaned sub-list.
+
+        **One bullet per changeset**, which is where this generator and the ``github`` one
+        genuinely differ (design D8): ``github`` emits one bullet whose bracket group lists every
+        changeset's commit link. With a single changeset the two shapes are indistinguishable, so
+        do not collapse this loop after reading a one-changeset fixture.
         """
         del options, forge
         updated: Sequence[Any] = list(dependencies_updated)
         if not updated:
             return ""
-        headers = [f"- Updated dependencies{_commit_marker(changeset)}" for changeset in changesets]
+        headers = [_dependency_header(changeset) for changeset in changesets]
         entries = [
             f"{_CONTINUATION_INDENT}- {dependency.name}@{dependency.new_version}"
             for dependency in updated

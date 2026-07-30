@@ -1,0 +1,190 @@
+# serializer version: 1
+# name: test_commit_lookup_sends_the_documented_graphql_query
+  '''
+  query {
+    repo__0: repository(
+      owner: "emotion-js",
+      name: "emotion"
+    ) {
+      commit__a085003: object(expression: "a085003") {
+        ... on Commit {
+          ...CommitFragment
+        }
+      }
+    }
+  }
+  fragment CommitFragment on Commit {
+    commitUrl
+    associatedPullRequests(first: 50) {
+      nodes {
+        number
+        url
+        mergedAt
+        author {
+          login
+          url
+        }
+      }
+    }
+    author {
+      user {
+        login
+        url
+      }
+    }
+  }
+  
+  '''
+# ---
+# name: test_dependency_release_line_links_the_commit_and_ends_with_a_colon
+  '''
+  - Updated dependencies [[`a085003`](https://github.com/emotion-js/emotion/commit/a085003)]:
+    - pkg@1.0.0
+  '''
+# ---
+# name: test_disable_thanks_removes_the_attribution_segment
+  '''
+  
+  
+  - [#1613](https://github.com/emotion-js/emotion/pull/1613) [`a085003`](https://github.com/emotion-js/emotion/commit/a085003) - something
+  
+  '''
+# ---
+# name: test_issue_references_are_linkified_on_continuation_lines[# Heading stays a heading-# Heading stays a heading-molt-native divergence (research README section 3.4): upstream strips lines starting with '#'; molt preserves Markdown headings inside a summary]
+  '''
+  
+  
+  - [#1613](https://github.com/emotion-js/emotion/pull/1613) [`a085003`](https://github.com/emotion-js/emotion/commit/a085003) Thanks [@Andarist](https://github.com/Andarist)! - something
+    # Heading stays a heading
+  '''
+# ---
+# name: test_issue_references_are_linkified_on_continuation_lines[#42 was fixed-[#42](https://github.com/emotion-js/emotion/issues/42) was fixed-row 12 (index.test.ts:271-279): at line start \\B still holds (# is a non-word char)]
+  '''
+  
+  
+  - [#1613](https://github.com/emotion-js/emotion/pull/1613) [`a085003`](https://github.com/emotion-js/emotion/commit/a085003) Thanks [@Andarist](https://github.com/Andarist)! - something
+    [#42](https://github.com/emotion-js/emotion/issues/42) was fixed
+  '''
+# ---
+# name: test_issue_references_are_linkified_on_continuation_lines[#42a is not a ref-#42a is not a ref-molt-native: \\b fails between '2' and 'a', and backtracking to #4 fails too]
+  '''
+  
+  
+  - [#1613](https://github.com/emotion-js/emotion/pull/1613) [`a085003`](https://github.com/emotion-js/emotion/commit/a085003) Thanks [@Andarist](https://github.com/Andarist)! - something
+    #42a is not a ref
+  '''
+# ---
+# name: test_issue_references_are_linkified_on_continuation_lines[fixed (#99)-fixed ([#99](https://github.com/emotion-js/emotion/issues/99))-row 13 (index.test.ts:281-289): punctuation before the # is not a word character]
+  '''
+  
+  
+  - [#1613](https://github.com/emotion-js/emotion/pull/1613) [`a085003`](https://github.com/emotion-js/emotion/commit/a085003) Thanks [@Andarist](https://github.com/Andarist)! - something
+    fixed ([#99](https://github.com/emotion-js/emotion/issues/99))
+  '''
+# ---
+# name: test_issue_references_are_linkified_on_continuation_lines[fixes #1234 and #5678-fixes [#1234](https://github.com/emotion-js/emotion/issues/1234) and [#5678](https://github.com/emotion-js/emotion/issues/5678)-row 7 (index.test.ts:211-220): every bare ref on a line, not just the first]
+  '''
+  
+  
+  - [#1613](https://github.com/emotion-js/emotion/pull/1613) [`a085003`](https://github.com/emotion-js/emotion/commit/a085003) Thanks [@Andarist](https://github.com/Andarist)! - something
+    fixes [#1234](https://github.com/emotion-js/emotion/issues/1234) and [#5678](https://github.com/emotion-js/emotion/issues/5678)
+  '''
+# ---
+# name: test_issue_references_are_linkified_on_continuation_lines[fixes [#1](https://github.com/emotion-js/emotion/issues/1) and #2-fixes [#1](https://github.com/emotion-js/emotion/issues/1) and [#2](https://github.com/emotion-js/emotion/issues/2)-row 14 (index.test.ts:291-305): mixed -- link untouched, bare ref linkified]
+  '''
+  
+  
+  - [#1613](https://github.com/emotion-js/emotion/pull/1613) [`a085003`](https://github.com/emotion-js/emotion/commit/a085003) Thanks [@Andarist](https://github.com/Andarist)! - something
+    fixes [#1](https://github.com/emotion-js/emotion/issues/1) and [#2](https://github.com/emotion-js/emotion/issues/2)
+  '''
+# ---
+# name: test_issue_references_are_linkified_on_continuation_lines[foo#123-foo#123-row 10 (index.test.ts:251-259): \\B rejects a # preceded by a word character]
+  '''
+  
+  
+  - [#1613](https://github.com/emotion-js/emotion/pull/1613) [`a085003`](https://github.com/emotion-js/emotion/commit/a085003) Thanks [@Andarist](https://github.com/Andarist)! - something
+    foo#123
+  '''
+# ---
+# name: test_issue_references_are_linkified_on_continuation_lines[see #0-see #0-row 11 (index.test.ts:261-269): [1-9]\\d* -- there is no issue #0]
+  '''
+  
+  
+  - [#1613](https://github.com/emotion-js/emotion/pull/1613) [`a085003`](https://github.com/emotion-js/emotion/commit/a085003) Thanks [@Andarist](https://github.com/Andarist)! - something
+    see #0
+  '''
+# ---
+# name: test_issue_references_are_linkified_on_continuation_lines[see [#1234](https://github.com/emotion-js/emotion/issues/1234)-see [#1234](https://github.com/emotion-js/emotion/issues/1234)-row 8 (index.test.ts:222-236): an existing link is swallowed whole -- no nesting]
+  '''
+  
+  
+  - [#1613](https://github.com/emotion-js/emotion/pull/1613) [`a085003`](https://github.com/emotion-js/emotion/commit/a085003) Thanks [@Andarist](https://github.com/Andarist)! - something
+    see [#1234](https://github.com/emotion-js/emotion/issues/1234)
+  '''
+# ---
+# name: test_issue_references_are_linkified_on_continuation_lines[see [fix for #99](https://example.com)-see [fix for #99](https://example.com)-row 9 (index.test.ts:238-249): a ref inside link TEXT is inside the swallowed match]
+  '''
+  
+  
+  - [#1613](https://github.com/emotion-js/emotion/pull/1613) [`a085003`](https://github.com/emotion-js/emotion/commit/a085003) Thanks [@Andarist](https://github.com/Andarist)! - something
+    see [fix for #99](https://example.com)
+  '''
+# ---
+# name: test_issue_references_are_linkified_on_continuation_lines[this fixes #42.-this fixes [#42](https://github.com/emotion-js/emotion/issues/42).-row 15 (index.test.ts:307-315): \\b holds between '2' and '.', so the dot stays out]
+  '''
+  
+  
+  - [#1613](https://github.com/emotion-js/emotion/pull/1613) [`a085003`](https://github.com/emotion-js/emotion/commit/a085003) Thanks [@Andarist](https://github.com/Andarist)! - something
+    this fixes [#42](https://github.com/emotion-js/emotion/issues/42).
+  '''
+# ---
+# name: test_issue_references_are_linkified_on_continuation_lines[v2#7 mentions nothing-v2#7 mentions nothing-molt-native: \\B guard again, this time after a digit]
+  '''
+  
+  
+  - [#1613](https://github.com/emotion-js/emotion/pull/1613) [`a085003`](https://github.com/emotion-js/emotion/commit/a085003) Thanks [@Andarist](https://github.com/Andarist)! - something
+    v2#7 mentions nothing
+  '''
+# ---
+# name: test_multiple_author_directives_are_joined
+  '''
+  
+  
+  - [#1613](https://github.com/emotion-js/emotion/pull/1613) [`a085003`](https://github.com/emotion-js/emotion/commit/a085003) Thanks [@Andarist](https://github.com/Andarist), [@mitchellhamilton](https://github.com/mitchellhamilton)! - something
+  
+  '''
+# ---
+# name: test_pull_request_lookup_sends_the_documented_graphql_query
+  '''
+  query {
+    repo__0: repository(
+      owner: "emotion-js",
+      name: "emotion"
+    ) {
+      pull__1613: pullRequest(number: 1613) {
+        ...PullFragment
+      }
+    }
+  }
+  fragment PullFragment on PullRequest {
+    url
+    author {
+      login
+      url
+    }
+    mergeCommit {
+      commitUrl
+      abbreviatedOid
+    }
+  }
+  
+  '''
+# ---
+# name: test_repo_falls_back_to_the_environment_when_no_repo_option_is_given
+  '''
+  
+  
+  - [#1613](https://github.com/emotion-js/emotion/pull/1613) [`a085003`](https://github.com/emotion-js/emotion/commit/a085003) Thanks [@Andarist](https://github.com/Andarist)! - something
+  
+  '''
+# ---

@@ -19,10 +19,14 @@ once per changeset plus once for dependencies and returns the four buckets. Shar
 what keeps the two layouts from drifting apart (design D3); the fourth bucket -- dependencies kept
 separate from patch -- is what lets a template place dependency bumps anywhere (design D4).
 
-One sibling is still owed, and it is the reason a test module in ``tests/changelog/`` guards on a
-*submodule* rather than on this package: ``molt.changelog.github``, the forge-backed generator, with
-its ``molt.changelog`` entry-point registrations. ``molt.changelog.git`` -- the default generator --
-already ships here.
+The two built-in generators live in submodules and are **not** re-exported here:
+:mod:`molt.changelog.git`, the default, which needs no forge and no network, and
+:mod:`molt.changelog.github`, which turns an injected :class:`molt.forge.Forge` into commit,
+pull-request and issue links. Both are registered under ``[project.entry-points."molt.changelog"]``
+as ``git`` and ``github``, so molt resolves its own defaults through exactly the mechanism a
+third-party generator uses -- there is no privileged built-in path (change 13, design D1).
+Importing them by name is what keeps a project that never writes a changelog from paying for
+either.
 
 Nothing in this package touches the filesystem, the network or git, with one bounded exception: the
 default entry template is read from a package asset. A generator's contribution arrives as an
