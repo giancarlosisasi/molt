@@ -20,7 +20,9 @@ This module is **not** guarded by ``importorskip``. It is pure test infrastructu
 ``molt`` product module except the already-implemented :mod:`molt.versioning` (for
 :class:`~molt.versioning.BumpType`), exactly like ``tests/engine/fake_state.py``. The one place it
 touches the TDD target -- ``molt.apply.apply_release_plan`` -- is a **late import inside**
-:func:`run_apply`, so this file keeps importing while ``molt.apply`` does not exist.
+:func:`run_apply`, so this file keeps importing while that function does not exist. The
+``molt.apply`` package itself already exists: it holds the ``edit_toml`` primitives, which land a
+build step earlier.
 
 Naming note
 -----------
@@ -570,8 +572,9 @@ def run_apply(
     (``tests/conftest.py``), which is Windows-safe and already committed. A second git-setup path
     here would be dead weight that could silently drift from it.
 
-    ``molt.apply`` is imported **inside** this function so the module stays importable while the
-    build-step-5 target does not exist -- the whole point of the phase's importorskip discipline.
+    ``apply_release_plan`` is imported **inside** this function so the module stays importable
+    while the build-step-5 target does not exist -- the whole point of the phase's importorskip
+    discipline.
     ``snapshot`` / ``pre`` are forwarded only when set (see the module docstring).
     """
     write_workspace(root, files)
@@ -580,9 +583,10 @@ def run_apply(
 
     packages = discover_packages(root)
 
-    # Late import, deliberately: keeps this helper module importable while molt.apply does not
-    # exist (the TDD target of build step 5). See the module docstring.
-    from molt.apply import apply_release_plan  # pyrefly: ignore[missing-import]
+    # Late import, deliberately: keeps this helper module importable while
+    # molt.apply.apply_release_plan does not exist (the TDD target of build step 5). The package
+    # itself now exists -- it holds the edit_toml primitives. See the module docstring.
+    from molt.apply import apply_release_plan  # pyrefly: ignore[missing-module-attribute]
 
     extra: dict[str, Any] = {}
     if snapshot is not None:

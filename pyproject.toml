@@ -36,6 +36,11 @@ dependencies = [
     # `BeforeValidator(json_schema_input_type=...)`, which is what lets the generated schema
     # advertise the written shorthands while the model stays normalized.
     "pydantic>=2.11",
+    # TOML write path (tech-stack.md section 8). `tomllib` stays the read path -- it cannot write,
+    # and a tomllib read + naive writer deletes every comment in a hand-maintained
+    # `pyproject.toml`. tomlkit round-trips the document losslessly; molt.apply.edit_toml pays its
+    # cost only on the handful of manifests a release actually rewrites.
+    "tomlkit>=0.13",
     # Changeset frontmatter. Chosen over PyYAML because molt.changeset.parse pins it to YAML 1.2
     # with duplicate keys rejected, and that pairing is what makes the frontmatter agree with
     # upstream's `yaml@2`: PyYAML is YAML 1.1, so it reads `yes` as a boolean, and it lets a package
@@ -67,9 +72,10 @@ dev = [
     "ruff>=0.15",
     "pyrefly>=1.1",
     # Test infrastructure for the engine/forge/publish suites (research doc 07 §4/§5).
-    "syrupy>=5.5",   # snapshot tests: release plans, changelogs, GraphQL queries
-    "respx>=0.22",   # httpx mocking for the forge (GitHub GraphQL) + PyPI JSON API
-    "tomlkit>=0.13", # comment-preserving TOML for the tmp_project workspace builder
+    "syrupy>=5.5", # snapshot tests: release plans, changelogs, GraphQL queries
+    "respx>=0.22", # httpx mocking for the forge (GitHub GraphQL) + PyPI JSON API
+    # tomlkit is no longer listed here: the tmp_project workspace builder shares it with
+    # molt.apply.edit_toml, which made it a runtime dependency above.
 ]
 
 [tool.ruff]

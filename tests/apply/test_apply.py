@@ -133,9 +133,27 @@ from tests.apply.fake_release_plan import (
 
 from molt.versioning import BumpType, parse_range, satisfies
 
-pytest.importorskip("molt.apply", reason="build step 5 - apply not yet implemented (TDD target)")
+#: This suite guards on the **seam**, not the package.
+#:
+#: ``pytest.importorskip("molt.apply")`` was the original guard, on the usual assumption that "the
+#: module exists" means "the behavior is implemented". The ``implement-toml-editing`` change broke
+#: that assumption the same way ``adopt-typer-cli-shell`` broke it for ``molt.commands.*`` (see the
+#: placeholder gate in ``tests/cli/conftest.py``): ``molt.apply`` had to exist to hold the two
+#: manifest-editing primitives, which land a build step before ``apply_release_plan`` does. Asking
+#: the package for the attribute keeps this module a clean *skip* rather than a collection error.
+if not hasattr(
+    pytest.importorskip(
+        "molt.apply", reason="build step 5 - apply not yet implemented (TDD target)"
+    ),
+    "apply_release_plan",
+):
+    pytest.skip(
+        "molt.apply.apply_release_plan not yet implemented (TDD target); "
+        "molt.apply currently holds only the edit_toml primitives",
+        allow_module_level=True,
+    )
 
-from molt.apply import apply_release_plan  # pyrefly: ignore[missing-import]
+from molt.apply import apply_release_plan  # pyrefly: ignore[missing-module-attribute]
 
 if TYPE_CHECKING:
     from tests.conftest import GitRepo
