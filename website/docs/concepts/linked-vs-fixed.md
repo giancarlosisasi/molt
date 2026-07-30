@@ -66,9 +66,9 @@ The group's highest current version is `2.0.0` (from `acme-billing`), and the hi
 ```json
 {
   "releases": [
-    { "name": "acme-core",    "oldVersion": "2.0.0", "newVersion": "2.1.0", "type": "minor" },
-    { "name": "acme-http",    "oldVersion": "2.0.0", "newVersion": "2.1.0", "type": "minor" },
-    { "name": "acme-billing", "oldVersion": "2.0.0", "newVersion": "2.1.0", "type": "minor" }
+    { "name": "acme-core",    "old_version": "2.0.0", "new_version": "2.1.0", "type": "minor" },
+    { "name": "acme-http",    "old_version": "2.0.0", "new_version": "2.1.0", "type": "minor" },
+    { "name": "acme-billing", "old_version": "2.0.0", "new_version": "2.1.0", "type": "minor" }
   ]
 }
 ```
@@ -80,13 +80,13 @@ The group's highest current version is `2.0.0` (from `acme-billing`), and the hi
 ```json
 {
   "releases": [
-    { "name": "acme-core", "oldVersion": "2.0.0", "newVersion": "2.1.0", "type": "minor" },
-    { "name": "acme-http", "oldVersion": "2.0.0", "newVersion": "2.1.0", "type": "minor" }
+    { "name": "acme-core", "old_version": "2.0.0", "new_version": "2.1.0", "type": "minor" },
+    { "name": "acme-http", "old_version": "2.0.0", "new_version": "2.1.0", "type": "minor" }
   ]
 }
 ```
 
-`acme-core` and `acme-http` are pulled up to `2.1.0` (note their `oldVersion` is realigned to the group max `2.0.0` before the bump), while `acme-billing` -- which had no reason to release -- **stays at `2.0.0`** and never enters the plan. That is `linked`.
+`acme-core` and `acme-http` are pulled up to `2.1.0` (note their `old_version` is realigned to the group max `2.0.0` before the bump), while `acme-billing` -- which had no reason to release -- **stays at `2.0.0`** and never enters the plan. That is `linked`.
 
 Same three packages, same changesets: `fixed` produces three releases, `linked` produces two. That single row is the whole distinction.
 

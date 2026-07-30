@@ -211,10 +211,18 @@ class ChangesetReleaseLike(Protocol):
 
 
 class ChangesetLike(Protocol):
-    """A parsed changeset. Satisfied by :class:`molt.changeset.Changeset`."""
+    """A parsed changeset. Satisfied by :class:`molt.changeset.Changeset`.
+
+    ``summary`` is declared even though assembly never reads it: the plan carries its changesets
+    straight through to the changelog (:class:`molt.apply.apply.ChangesetLike` requires it) and to
+    ``--output json`` (:mod:`molt.engine.view`), so a plan whose changesets cannot state their
+    summary is not a plan anything downstream can use.
+    """
 
     @property
     def id(self) -> str: ...
+    @property
+    def summary(self) -> str: ...
     @property
     def releases(self) -> Sequence[ChangesetReleaseLike]: ...
 

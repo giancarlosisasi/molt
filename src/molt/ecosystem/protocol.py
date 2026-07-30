@@ -53,6 +53,15 @@ class Package:
     Upstream's ``shouldSkipPackage`` treats a missing version as "skip" silently; for Python that
     would quietly drop half a repo, so the absence is represented rather than collapsed and the
     version-source abstraction that fills it in is a later change.
+
+    ``workspace_sources`` carries the **normalized** form of the tool-specific source table that
+    redirects a dependency at another member of this workspace -- ``[tool.uv.sources]`` for uv.
+    Each pair is ``(declared name, marker)`` where the marker is the engine's spelling:
+    ``workspace:*`` for a bare workspace redirect and ``workspace:<relpath>`` for one written as a
+    path into the workspace. Normalizing here rather than in the engine is what keeps the marker
+    tool-neutral (design D9): a second backend produces the same two spellings from whatever table
+    it reads, and :mod:`molt.engine.graph` never learns the word "uv". A pair list rather than a
+    mapping so the record stays hashable, like every other field of this frozen value.
     """
 
     name: str
@@ -63,6 +72,7 @@ class Package:
     optional_dependencies: tuple[str, ...] = ()
     dev_dependencies: tuple[str, ...] = ()
     private: bool = False
+    workspace_sources: tuple[tuple[str, str], ...] = ()
 
     @property
     def normalized_name(self) -> str:
