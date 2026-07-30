@@ -95,13 +95,31 @@ if TYPE_CHECKING:
 
     from tests.conftest import FrozenClock
 
-pytest.importorskip(
-    "molt.changelog", reason="build step 7 - changelog not yet implemented (TDD target)"
-)
+#: This suite guards on the **seam**, not the package.
+#:
+#: ``pytest.importorskip("molt.changelog")`` was the original guard, on the usual assumption that
+#: "the module exists" means "the behavior is implemented". The ``implement-changelog-entry`` change
+#: broke that assumption the same way ``implement-toml-editing`` broke it for ``molt.apply`` (see
+#: the note above that suite's guard in ``tests/apply/test_apply.py``): ``molt.changelog`` had to
+#: exist to hold the entry assembler, which lands a build step before ``render_changelog`` does.
+#: Asking the package for the attribute keeps this module a clean *skip* rather than a collection
+#: error. The two sibling suites in this directory need no such change -- they already guard on
+#: ``molt.changelog.template`` and ``molt.changelog.git`` / ``.github``, which do not exist yet.
+if not hasattr(
+    pytest.importorskip(
+        "molt.changelog", reason="build step 7 - changelog not yet implemented (TDD target)"
+    ),
+    "render_changelog",
+):
+    pytest.skip(
+        "molt.changelog.render_changelog not yet implemented (TDD target); "
+        "molt.changelog currently holds only the entry assembler",
+        allow_module_level=True,
+    )
 
-from molt.changelog import (  # pyrefly: ignore[missing-import]
+from molt.changelog import (
     get_changelog_entry,
-    render_changelog,
+    render_changelog,  # pyrefly: ignore[missing-module-attribute]
 )
 
 pytestmark = pytest.mark.unit

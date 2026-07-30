@@ -868,13 +868,23 @@ def test_dev_and_optional_dependencies_never_produce_an_updated_dependencies_lin
     into ``deps``, *does* produce the line, so this is proving a rule rather than a broken fixture.
     """
     release, releases, changesets = _dependency_fixture(PATCH, "1.0.1")
+    # `section` is a test parameter, so no type checker can tell which keyword this unpack fills;
+    # pyrefly checks the tuple against `update_internal_dependencies` and `options` too and rejects
+    # both. Naming the two sections literally instead would lose the point of the parametrization,
+    # which is that "which section" is data.
     hidden = get_changelog_entry(
-        release, releases, changesets, GIT, **{section: ("pkg-b>=1.0.0,<2.0.0",)}
+        release,
+        releases,
+        changesets,
+        GIT,
+        **{section: ("pkg-b>=1.0.0,<2.0.0",)},  # pyrefly: ignore[bad-argument-type]
     )
+    assert hidden is not None, "a patch release always produces an entry"
     assert "Updated dependencies" not in hidden, why
     assert "pkg-b" not in hidden, why
 
     visible = get_changelog_entry(release, releases, changesets, GIT, deps=("pkg-b>=1.0.0,<2.0.0",))
+    assert visible is not None
     assert "- Updated dependencies\n  - pkg-b@1.1.0" in visible
 
 
@@ -1089,6 +1099,7 @@ def test_the_update_internal_dependencies_gate_decides_whether_a_line_appears(
         deps=(declared,),
         update_internal_dependencies=gate,
     )
+    assert entry is not None, "pkg-a takes a patch release either way, so there is always an entry"
     assert ("Updated dependencies" in entry) is expected_line, why
 
 
