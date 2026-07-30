@@ -109,11 +109,8 @@ pytest.importorskip(
     reason="build step 7 - the release-plan engine is not implemented yet (TDD target)",
 )
 
-# These four are build step 7's TDD target. The *package* exists from build step 6 (the dependents
-# graph), so the suppression names `missing-module-attribute` rather than `missing-import`, and the
-# import is kept on one line because that code is reported per imported name. Delete the
-# suppression when `molt.engine.assemble` lands.
-# pyrefly: ignore[missing-module-attribute]
+# These four were build step 7's TDD target and now exist, so the `missing-module-attribute`
+# suppression this line used to carry is gone, as its own note instructed.
 from molt.engine import Release, ReleasePlan, SnapshotParams, assemble_release_plan
 
 pytestmark = pytest.mark.unit

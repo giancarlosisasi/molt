@@ -75,6 +75,7 @@ __all__ = [
     "PackagesLike",
     "classify_dependency",
     "get_dependents_graph",
+    "relative_package_path",
     "resolve_workspace_range",
 ]
 
@@ -486,7 +487,7 @@ def _node(package: PackageLike, root_dir: str) -> _Node:
     return _Node(
         name=manifest.name,
         version=_version(manifest.version),
-        path=_relative_path(package.dir, root_dir),
+        path=relative_package_path(package.dir, root_dir),
         manifest=manifest,
     )
 
@@ -541,8 +542,15 @@ def _same_path(left: str, right: str) -> bool:
     return _posix(left) == _posix(right)
 
 
-def _relative_path(directory: str, root: str) -> str:
-    """``directory`` relative to ``root``, POSIX-normalized; unchanged when it is not below it."""
+def relative_package_path(directory: str, root: str) -> str:
+    """``directory`` relative to ``root``, POSIX-normalized; unchanged when it is not below it.
+
+    Public because it is one half of a two-sided comparison: this produces the ``dependency_path``
+    that :func:`resolve_workspace_range` matches a ``workspace:<relpath>`` source against, and the
+    release-plan engine has to derive the same value from the same input. Two independent
+    normalizations would drift on Windows -- separators, a trailing slash, a root of ``"/"`` -- and
+    the failure mode is a silently missing dependent bump, not an error.
+    """
     package_path = _posix(directory)
     root_path = _posix(root)
     if not root_path:
