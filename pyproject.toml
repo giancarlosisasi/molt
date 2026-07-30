@@ -61,6 +61,15 @@ dependencies = [
 # but the command users type is `molt`. See roadmap/tech-stack.md §1.
 molt = "molt.cli:main"
 
+[project.entry-points."molt.commit"]
+# The default commit-message convention (`add` + `version` messages), registered as an entry point
+# so a project can substitute its own without forking molt -- mirrors the `molt.changelog`
+# generator mechanism. The value names the module itself: `get_add_message` / `get_version_message`
+# module attributes already are the whole plugin surface, so there is no wrapper object to point
+# at. Requires `uv sync` (or `uv sync --reinstall-package molt-cli`) after this edit before
+# `importlib.metadata.entry_points(group="molt.commit")` sees it.
+default = "molt.commit"
+
 [project.urls]
 Homepage = "https://github.com/giancarlosisasi/molt"
 Repository = "https://github.com/giancarlosisasi/molt"
