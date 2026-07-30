@@ -43,7 +43,13 @@ from molt.versioning import BumpType, inc, next_pre_number
 
 pytestmark = pytest.mark.unit
 
-ENGINE_REASON = "build step 4 - engine not yet implemented (TDD target)"
+#: The engine lands in two changes, so the guard names the *submodule* that owns the target rather
+#: than the package. `molt.engine` exists from build step 6 (the dependents graph); the plan half
+#: -- `assemble_release_plan` -- is build step 7 and lands as `molt.engine.assemble`. Guarding on
+#: the package would have turned these rows from skipped to erroring the moment the graph shipped,
+#: which is the same "module exists => implemented" assumption `tests/cli/conftest.py` documents.
+ENGINE_TARGET = "molt.engine.assemble"
+ENGINE_REASON = "build step 7 - the release-plan engine is not implemented yet (TDD target)"
 
 #: The four legal PEP 440 prerelease phases, i.e. the accepted values of `--pre`.
 PHASES = ["a", "b", "rc", "dev"]
@@ -351,7 +357,7 @@ def _single_package_plan(engine: Any, version: str, bump: BumpType, **kwargs: An
 
 
 def test_composed_pre_rc_produces_the_first_release_candidate() -> None:
-    engine = pytest.importorskip("molt.engine", reason=ENGINE_REASON)
+    engine = pytest.importorskip(ENGINE_TARGET, reason=ENGINE_REASON)
 
     plan = _single_package_plan(engine, "1.2.0", BumpType.PATCH, pre="rc")
 
@@ -363,7 +369,7 @@ def test_composed_pre_rc_produces_the_first_release_candidate() -> None:
 
 def test_composed_pre_rc_rerun_increments_the_counter() -> None:
     """Row 33's mechanism, without `pre.json`: the counter is read off the current version."""
-    engine = pytest.importorskip("molt.engine", reason=ENGINE_REASON)
+    engine = pytest.importorskip(ENGINE_TARGET, reason=ENGINE_REASON)
 
     plan = _single_package_plan(engine, "1.2.1rc0", BumpType.PATCH, pre="rc")
 
@@ -374,7 +380,7 @@ def test_composed_pre_rc_rerun_increments_the_counter() -> None:
 
 @pytest.mark.parametrize(("phase", "expected", "why"), PHASE_CASES)
 def test_composed_plan_supports_every_phase(phase: str, expected: str, why: str) -> None:
-    engine = pytest.importorskip("molt.engine", reason=ENGINE_REASON)
+    engine = pytest.importorskip(ENGINE_TARGET, reason=ENGINE_REASON)
 
     plan = _single_package_plan(engine, "1.2.0", BumpType.PATCH, pre=phase)
 
@@ -383,7 +389,7 @@ def test_composed_plan_supports_every_phase(phase: str, expected: str, why: str)
 
 
 def test_composed_plan_without_the_flag_exits_prerelease() -> None:
-    engine = pytest.importorskip("molt.engine", reason=ENGINE_REASON)
+    engine = pytest.importorskip(ENGINE_TARGET, reason=ENGINE_REASON)
 
     plan = _single_package_plan(engine, "1.2.1rc1", BumpType.PATCH)
 
@@ -392,7 +398,7 @@ def test_composed_plan_without_the_flag_exits_prerelease() -> None:
 
 
 def test_composed_none_release_ignores_the_flag() -> None:
-    engine = pytest.importorskip("molt.engine", reason=ENGINE_REASON)
+    engine = pytest.importorskip(ENGINE_TARGET, reason=ENGINE_REASON)
 
     plan = _single_package_plan(engine, "1.2.0", BumpType.NONE, pre="rc")
 
@@ -415,7 +421,7 @@ def test_exiting_pre_does_not_backfill_a_release_for_an_untouched_package() -> N
     edge to `pkg-a`, so a correct engine has nothing to say about it. A stable `pkg-b` would make
     this test vacuous -- no plausible spelling of the bug could reach it.
     """
-    engine = pytest.importorskip("molt.engine", reason=ENGINE_REASON)
+    engine = pytest.importorskip(ENGINE_TARGET, reason=ENGINE_REASON)
 
     state = FakeFullState(changesets=[])
     state.update_package("pkg-a", "1.2.1rc1")

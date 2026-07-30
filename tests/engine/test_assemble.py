@@ -98,14 +98,23 @@ from molt.versioning import BumpType, caret, highest, inc, parse_range, satisfie
 if TYPE_CHECKING:
     from tests.conftest import FrozenClock
 
-pytest.importorskip("molt.engine", reason="build step 4 - engine not yet implemented (TDD target)")
-
-from molt.engine import (  # pyrefly: ignore[missing-import]
-    Release,
-    ReleasePlan,
-    SnapshotParams,
-    assemble_release_plan,
+# The guard names the *submodule* that owns the target, not the package. `molt.engine` exists from
+# build step 6 (the dependents graph, `tests/engine/test_dependents_graph.py`); the plan half lands
+# as `molt.engine.assemble` in build step 7. Guarding on the package would have turned this whole
+# module from skipped to a collection *error* the moment the graph shipped -- the same
+# "module exists => implemented" assumption `tests/cli/conftest.py` documents for the command
+# suites. Nothing below this line runs until the plan half exists.
+pytest.importorskip(
+    "molt.engine.assemble",
+    reason="build step 7 - the release-plan engine is not implemented yet (TDD target)",
 )
+
+# These four are build step 7's TDD target. The *package* exists from build step 6 (the dependents
+# graph), so the suppression names `missing-module-attribute` rather than `missing-import`, and the
+# import is kept on one line because that code is reported per imported name. Delete the
+# suppression when `molt.engine.assemble` lands.
+# pyrefly: ignore[missing-module-attribute]
+from molt.engine import Release, ReleasePlan, SnapshotParams, assemble_release_plan
 
 pytestmark = pytest.mark.unit
 
