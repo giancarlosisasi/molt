@@ -14,6 +14,15 @@ export default defineConfig({
   root: 'docs',
   title: 'Molt',
   description: 'Changeset-driven versioning and changelogs for Python monorepos',
+  // `cleanUrls` only changes the links rspress *renders*; the SSG still writes one
+  // flat file per route (`docs/cli/add.md` -> `doc_build/cli/add.html`, see
+  // @rspress/core `ssg/htmlFile.js`). It must stay in lockstep with `cleanUrls` in
+  // vercel.json, which is what makes Vercel serve `cli/add.html` at `/cli/add` and
+  // 308 the old `/cli/add.html` onto it. Turn one off without the other and either
+  // every internal link eats a redirect, or every link 404s.
+  route: {
+    cleanUrls: true,
+  },
   themeConfig: {
     socialLinks: [
       {
