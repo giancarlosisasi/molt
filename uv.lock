@@ -368,6 +368,7 @@ name = "molt-cli"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "httpx" },
     { name = "jinja2" },
     { name = "packaging" },
     { name = "pydantic" },
@@ -390,6 +391,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "httpx", specifier = ">=0.28" },
     { name = "jinja2", specifier = ">=3.1" },
     { name = "packaging", specifier = ">=24.0" },
     { name = "pydantic", specifier = ">=2.11" },
