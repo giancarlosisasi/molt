@@ -114,13 +114,13 @@ import httpx
 import respx
 
 # pyrefly: ignore[missing-import]  -- molt.changelog is the TDD target of build step 7.
-from molt.changelog.git import generator as git_generator
-
-# pyrefly: ignore[missing-import]  -- molt.changelog is the TDD target of build step 7.
 from molt.changelog.github import generator as github_generator
 
 # pyrefly: ignore[missing-import]  -- molt.forge is the TDD target of build step 8.
 from molt.forge import GitHubForge
+
+# pyrefly: ignore[missing-import]  -- molt.changelog is the TDD target of build step 7.
+from molt.changelog.git import generator as git_generator
 
 # Markers are applied PER TEST, not module-wide. An earlier revision set
 # `pytestmark = pytest.mark.snapshot` here, which tagged all 92 cases in this file -- including
