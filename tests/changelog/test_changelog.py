@@ -70,7 +70,7 @@ TDD targets declared by this file (they do not exist yet)
   Both are **synchronous**. The protocol permits ``async def`` plugins, but the two built-ins
   are sync (httpx sync client): no async test plugin is in ``[dependency-groups].dev``, and
   CLAUDE.md rates async as rarely needed here. Flagged as an adaptation decision.
-- ``molt.forge.GitHubForge()`` -- build step 8. Resolves ``GITHUB_TOKEN``,
+- ``molt.forge.GitHubForge()`` -- build step 9. Resolves ``GITHUB_TOKEN``,
   ``GITHUB_REPOSITORY``, ``GITHUB_SERVER_URL`` and ``GITHUB_GRAPHQL_URL`` from the
   environment exactly as ``website/docs/forges/github.md`` documents.
 - Entry-point registration under ``[project.entry-points."molt.changelog"]`` with the names
@@ -102,7 +102,7 @@ pytest.importorskip(
     reason="build step 7 -- molt.changelog not yet implemented (TDD target)",
 )
 pytest.importorskip(
-    "molt.forge", reason="build step 8 -- molt.forge not yet implemented (TDD target)"
+    "molt.forge", reason="build step 9 -- molt.forge not yet implemented (TDD target)"
 )
 
 # httpx and respx are imported BELOW the guards on purpose. `tests/conftest.py:77-86` imports
@@ -114,13 +114,13 @@ import httpx
 import respx
 
 # pyrefly: ignore[missing-import]  -- molt.changelog is the TDD target of build step 7.
-from molt.changelog.github import generator as github_generator
-
-# pyrefly: ignore[missing-import]  -- molt.forge is the TDD target of build step 8.
-from molt.forge import GitHubForge
+from molt.changelog.git import generator as git_generator
 
 # pyrefly: ignore[missing-import]  -- molt.changelog is the TDD target of build step 7.
-from molt.changelog.git import generator as git_generator
+from molt.changelog.github import generator as github_generator
+
+# pyrefly: ignore[missing-import]  -- molt.forge is the TDD target of build step 9.
+from molt.forge import GitHubForge
 
 # Markers are applied PER TEST, not module-wide. An earlier revision set
 # `pytestmark = pytest.mark.snapshot` here, which tagged all 92 cases in this file -- including
@@ -666,6 +666,43 @@ def test_disable_thanks_removes_the_attribution_segment(
     assert line == release_line("something", prefix=f"{PULL_LINK} {COMMIT_LINK}")
     assert "Thanks" not in line
     assert line == snapshot
+
+
+DIRECTIVE_PROSE_CASES = [
+    ("Ask the author: nobody has claimed this yet", "'author:' in the middle of a sentence"),
+    ("Ping the user: docs need the same fix", "'user:' in the middle of a sentence"),
+    ("Reword the commit: template we ship in the docs", "'commit:' in the middle of a sentence"),
+    ("Close the pr: 42 is a duplicate of this one", "'pr:' in the middle of a sentence"),
+]
+
+
+@pytest.mark.network
+@pytest.mark.parametrize(("summary", "why"), DIRECTIVE_PROSE_CASES)
+def test_a_directive_word_inside_prose_is_not_a_directive(
+    summary: str, why: str, forge_api: ForgeAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    r"""molt-native, and the discriminator for the anchoring in ``index.ts:108-120``.
+
+    Every directive regex is anchored with ``^`` under the ``m`` flag, so a directive is recognised
+    only where the documentation puts it -- at the **start of a line**. Rows 4-6 above cannot tell
+    an anchored parser from a permissive one, because their directives *are* at line start: drop
+    the ``^`` from all three patterns and every one of those rows still passes.
+
+    These four do not. Each is ordinary prose that merely mentions a directive word, and under a
+    substring search each one silently rewrites the published line -- the attribution becomes
+    ``[@nobody]``, the commit link becomes a lookup of the word ``template``, and the sentence
+    itself loses the span the parser cut out. That is the failure this test exists to catch, and it
+    is the reason design D4 forbids ``in``-style matching: a changeset summary is author prose, so
+    the words ``author``, ``user``, ``commit`` and ``pr`` all appear in it legitimately.
+    """
+    forge_api.set_response(forge_payload())
+    forge = make_forge(monkeypatch)
+
+    line = github_generator.get_release_line(
+        changeset(summary, commit=COMMIT_SHA), BumpType.MINOR, OPTIONS, forge
+    )
+
+    assert line == release_line(summary), why
 
 
 # ======================================================================================
@@ -1316,6 +1353,15 @@ GIT_RELEASE_LINE_CASES = [
         None,
         "- first line\n  second line\n  third line",
         "changelog-git/src/index.ts:13-15 -- continuations indented by exactly two spaces",
+    ),
+    (
+        "first line\nsecond line",
+        "a085003c0ffeebabe",
+        "- a085003: first line\n  second line",
+        "molt-native: the sha prefixes the FIRST line only, and does not shift the two-space "
+        "continuation indent. Added with build step 13, which found the shipped generator "
+        "rendering the sha as a trailing `` [`<full sha>`] `` marker instead -- a shape no test "
+        "reached, because no earlier fixture ever put a commit on a changeset (gap ARP-9)",
     ),
     (
         "first line   \nsecond line\t",

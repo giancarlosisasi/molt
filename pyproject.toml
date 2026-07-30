@@ -78,6 +78,19 @@ molt = "molt.cli:main"
 # `importlib.metadata.entry_points(group="molt.commit")` sees it.
 default = "molt.commit"
 
+[project.entry-points."molt.changelog"]
+# molt's two built-in changelog generators, registered through the *same* mechanism a third-party
+# generator uses (design D1). If the built-ins were special-cased by name in code, the plugin path
+# would be the only untested one; registering them here means every `molt version` run exercises
+# the extension seam. Each value names the module-level `generator` object, which is the attribute
+# every resolution form in `molt.apply.generators` looks for.
+#
+# Requires `uv sync` (or `uv sync --reinstall-package molt-cli`) after this edit before
+# `importlib.metadata.entry_points(group="molt.changelog")` sees it -- importlib reads INSTALLED
+# distribution metadata, not this file.
+git = "molt.changelog.git:generator"
+github = "molt.changelog.github:generator"
+
 [project.urls]
 Homepage = "https://github.com/giancarlosisasi/molt"
 Repository = "https://github.com/giancarlosisasi/molt"
