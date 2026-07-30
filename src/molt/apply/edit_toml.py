@@ -77,7 +77,7 @@ if TYPE_CHECKING:
 
     from tomlkit import TOMLDocument
 
-__all__ = ["edit_toml", "set_dependency_specifier"]
+__all__ = ["edit_toml", "set_dependency_specifier", "specifier_region"]
 
 
 # ======================================================================================
@@ -221,7 +221,7 @@ def _end_of_head(text: str) -> int:
     return cursor
 
 
-def _specifier_region(text: str) -> tuple[int, int]:
+def specifier_region(text: str) -> tuple[int, int]:
     """The ``(start, end)`` offsets of the specifier region inside a requirement string.
 
     A requirement is treated as ``<name><extras><gap><specifier><marker>`` (design D2). The region
@@ -231,6 +231,12 @@ def _specifier_region(text: str) -> tuple[int, int]:
 
     A specifier region cannot contain ``;``, so the first ``;`` in the string is the marker
     separator. When the region is empty the two offsets coincide, which is the insertion case.
+
+    Public because :mod:`molt.apply.ranges` needs the specifier **as the author ordered it**:
+    ``str(SpecifierSet)`` sorts its comparators, so ``">=1.0.3,<2.0.0"`` comes back as
+    ``"<2.0.0,>=1.0.4"`` and a rewrite would silently reorder the user's line. Locating the region
+    twice, with two copies of the ``<name><extras><gap>`` rule, is exactly how the reader and the
+    writer drift apart.
     """
     head = _end_of_head(text)
     tail = text.find(";")
@@ -369,7 +375,7 @@ def set_dependency_specifier(
                 f"({original!r}) and so has no specifier region to rewrite -- PEP 508 forbids "
                 "combining a URL with a version specifier"
             )
-        start, end = _specifier_region(original)
+        start, end = specifier_region(original)
         rewritten = f"{original[:start]}{specifier}{original[end:]}"
         if rewritten == original:
             continue

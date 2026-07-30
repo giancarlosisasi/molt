@@ -42,9 +42,9 @@ See [Versioning and PEP 440](/concepts/versioning-pep440) for the version gramma
 
 Because the counter lives in the version string, not in a state file, iteration is just running the command again:
 
-- **First `--pre` run** consumes the pending changesets, computes the target bump, and appends the prerelease identifier at counter `0`. A pending minor on `1.0.0` with `--pre rc` yields `1.1.0rc0`.
+- **First `--pre` run** reads the pending changesets, computes the target bump, and appends the prerelease identifier at counter `0`. A pending minor on `1.0.0` with `--pre rc` yields `1.1.0rc0`. The changeset files are **kept**: they are the counter's input, so a `--pre` run never consumes them.
 - **Each subsequent `--pre` run** increments the counter: `1.1.0rc0` to `1.1.0rc1` to `1.1.0rc2`. The highest bump type across the accumulated changesets is retained, so a major that landed earlier is not lost when a later minor arrives.
-- **Exiting prerelease** is running plain `molt version` (no `--pre`). It finalizes to the stable version, dropping the prerelease identifier: `1.1.0rc1` becomes `1.1.0`.
+- **Exiting prerelease** is running plain `molt version` (no `--pre`). It finalizes to the stable version, dropping the prerelease identifier: `1.1.0rc1` becomes `1.1.0`, and **this** is the run that consumes the changesets.
 
 Dependents that already opted into prereleases through their own constraints are **not** force-released as a dependency moves `rc0` to `rc1` -- this follows PEP 440's opt-in scoping and is a deliberate divergence from changesets. See [Dependency propagation](/guides/dependency-propagation) and [Versioning and PEP 440](/concepts/versioning-pep440).
 
