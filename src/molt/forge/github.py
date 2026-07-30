@@ -216,6 +216,27 @@ def _environment() -> dict[str, str]:
     return values
 
 
+def _is_rate_limited_forbidden(response: httpx.Response) -> bool:
+    """Whether a ``403`` is GitHub's secondary rate limit rather than a permanent refusal.
+
+    GitHub answers two different situations with the same 403 status: a permanently forbidden
+    request (a bad token, a scope the token lacks) and a *secondary* rate limit, which clears on
+    its own. Only the response headers tell them apart -- ``x-ratelimit-remaining: 0`` marks an
+    exhausted budget, and a ``Retry-After`` header marks a throttle that names its own wait. Owner
+    ruling 2026-07-30 (research README section 3.4; ``openspec/GAPS.md`` ``FS-2``): a 403 carrying
+    either header is transient and retried within the same bounded budget as every other transient
+    status; a 403 carrying neither stays permanent, exactly as it did before this ruling.
+
+    This lives here rather than in :mod:`molt.forge.retry` because that module commits to staying
+    host-neutral, and ``x-ratelimit-remaining`` is GitHub's header name -- a second backend would
+    not necessarily share it.
+    """
+    return (
+        response.headers.get("x-ratelimit-remaining") == "0"
+        or response.headers.get("Retry-After") is not None
+    )
+
+
 def _author_ref(node: Mapping[str, Any] | None) -> AuthorRef | None:
     """An ``{login, url}`` block as an :class:`AuthorRef`, or ``None`` when the block is null.
 
@@ -494,7 +515,11 @@ class GitHubForge:
             else:
                 if response.status_code == httpx.codes.OK:
                     return self._read_data(response)
-                if not is_transient_status(response.status_code) or last_attempt:
+                transient = is_transient_status(response.status_code) or (
+                    response.status_code == httpx.codes.FORBIDDEN
+                    and _is_rate_limited_forbidden(response)
+                )
+                if not transient or last_attempt:
                     raise self._http_error(response)
                 delay = backoff_delay(
                     attempt, retry_after=retry_after_seconds(response.headers.get("Retry-After"))

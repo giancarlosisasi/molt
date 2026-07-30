@@ -1348,11 +1348,56 @@ def test_retry_after_is_honored(monkeypatch: pytest.MonkeyPatch) -> None:
     assert sleeps[0] <= MAX_SINGLE_SLEEP_SECONDS
 
 
+# Owner ruling 2026-07-30 (openspec/GAPS.md FS-2): GitHub answers both "permanently forbidden" and
+# "secondary rate limit" with the same 403 status. Only these two headers tell them apart, and a
+# 403 carrying either one is retried within the SAME bounded budget as every other transient
+# status -- no new constant, no new knob.
+TRANSIENT_403_HEADERS = [
+    ({"x-ratelimit-remaining": "0"}, "an exhausted primary rate limit answered with 403"),
+    ({"Retry-After": "1"}, "a secondary rate limit that names its own wait"),
+]
+
+
+@pytest.mark.network
+@pytest.mark.parametrize(("headers", "why"), TRANSIENT_403_HEADERS)
+def test_a_403_carrying_a_rate_limit_header_is_retried_and_then_succeeds(
+    headers: dict[str, str], why: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Owner ruling 2026-07-30 (``openspec/GAPS.md`` ``FS-2``): a 403 is retried, not failed fast,
+    when it carries `x-ratelimit-remaining: 0` or `Retry-After` -- the two headers that separate
+    GitHub's secondary rate limit from a permanent refusal, both of which answer with the same
+    status. Same shape as :func:`test_a_transient_failure_is_retried_and_then_succeeds`: one
+    failure, then success, exactly one nap, inside the same bounds every other transient status
+    uses.
+    """
+    with scripted_forge(
+        monkeypatch,
+        [
+            httpx.Response(403, headers=headers, json={"message": "nope"}),
+            httpx.Response(200, json=commit_payload(commit_node(nodes=ONE_MERGED_NODES))),
+        ],
+    ) as (forge, route, sleeps):
+        info = forge.commit_info(COMMIT_SHA)
+
+    assert route.call_count == 2, why
+    assert info is not None
+    assert info.pull is not None and info.pull.number == PULL_NUMBER
+    assert len(sleeps) == 1, "one retry means exactly one nap"
+    assert sleeps[0] > 0, "a retry with no wait is a hammer, not a backoff"
+    assert sleeps[0] <= MAX_SINGLE_SLEEP_SECONDS
+
+
 PERMANENT_STATUSES = [
     (400, "a malformed query is malformed however many times it is sent"),
     (401, "a bad token stays bad -- retrying just burns the rate limit faster"),
     (404, "an endpoint that is not there will not appear"),
     (422, "an unprocessable entity"),
+    (
+        403,
+        "a plain 403 with neither rate-limit header stays permanent (owner ruling 2026-07-30, "
+        "openspec/GAPS.md FS-2) -- retrying would just burn the budget the exhaustion message "
+        "then complains about",
+    ),
 ]
 
 

@@ -64,14 +64,16 @@ MAX_BACKOFF_SECONDS = 30.0
 #: Ceiling on the sum of every nap in one request's retry budget.
 MAX_TOTAL_BACKOFF_SECONDS = 90.0
 
-#: Statuses worth another attempt. 429 is here because a *primary* rate limit is a wait, not a
-#: refusal, and the caller reports the exhausted-budget case separately once the retries are spent.
-#: **403 is deliberately absent and is an open question, not an oversight:** GitHub answers both
-#: "permanently forbidden" and "secondary rate limit" with 403, so treating it as transient retries
-#: a bad token three times and treating it as permanent gives up on a throttle that would have
-#: cleared. The conformance suite pins neither, by design -- a test writer should not invent
-#: product behavior here. It is filed for an owner ruling (change 12 tasks.md section 7.1); until
-#: then a 403 is permanent, which is the choice that cannot make a bad token worse.
+#: Statuses worth another attempt on the status code alone. 429 is here because a *primary* rate
+#: limit is a wait, not a refusal, and the caller reports the exhausted-budget case separately once
+#: the retries are spent. **403 is deliberately absent from this set, and stays that way:** GitHub
+#: answers both "permanently forbidden" and "secondary rate limit" with 403, and the status code
+#: alone -- which is all this frozenset can express -- cannot tell them apart. Owner ruling received
+#: 2026-07-30 (``openspec/GAPS.md`` ``FS-2``): a 403 carrying ``x-ratelimit-remaining: 0`` or a
+#: ``Retry-After`` header is transient and is retried within this same bounded budget; a 403
+#: carrying neither stays permanent. That header check lives in
+#: ``molt.forge.github._is_rate_limited_forbidden`` / ``GitHubForge._request``, not here -- this
+#: module stays host-neutral, and the header name above is GitHub's.
 TRANSIENT_STATUSES = frozenset({429, 500, 502, 503, 504})
 
 
