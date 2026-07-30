@@ -24,6 +24,8 @@ __all__ = [
     "GitError",
     "InternalError",
     "MoltError",
+    "MoltForgeError",
+    "MoltForgeRepoError",
     "MoltKeyPathError",
     "MoltParseError",
     "MoltTemplateError",
@@ -136,6 +138,38 @@ class MoltKeyPathError(MoltError):
     A **sibling** of :class:`MoltParseError`, deliberately -- neither subclasses the other. The
     editing layer branches on a grammar failure and a key-path failure separately, and nesting
     would let the broader ``except`` silently swallow the narrower case.
+    """
+
+
+class MoltForgeError(MoltError):
+    """A forge backend could not answer a request.
+
+    molt-native; ``get-github-info`` raises bare ``Error``s. Covers every way a code host can fail
+    molt: no token configured, a permanent HTTP status, a transient one that outlived the retry
+    budget, an exhausted rate limit, and the GraphQL failures GitHub reports **inside** a 200
+    response (``forge-seam`` spec, "Errors inside successful responses are raised").
+
+    The message is the whole diagnostic and is rendered to the user by the CLI error funnel, so
+    every raise site names the status, the endpoint or the variable the operator has to act on.
+    Attribution is a nice-to-have, but a silent failure here publishes a changelog with missing
+    credits, which nobody notices until it is released.
+    """
+
+
+class MoltForgeRepoError(MoltForgeError, ValueError):
+    """A repository identifier is not of the form ``userOrOrg/repoName``.
+
+    Ports ``get-github-info/src/utils.ts:1-9``, which validates the slug before issuing any
+    request. molt keeps that ordering: a malformed slug is interpolated into a URL, so validating
+    late would leak the token to whatever host the interpolation produced
+    (``tests/forge/test_github.py::test_an_invalid_repo_is_rejected_before_any_network_call``
+    asserts no request is made).
+
+    **Both bases are load-bearing**, the same arrangement :class:`MoltTemplateError` uses.
+    :class:`MoltForgeError` is what the CLI funnel catches to print a friendly message.
+    ``ValueError`` is what the conformance suite asserts, because a bad slug is bad *input* and a
+    backend that
+    reported it as anything else would also satisfy a bare ``except Exception``.
     """
 
 

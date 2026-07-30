@@ -54,6 +54,14 @@ dependencies = [
     # environments run with `StrictUndefined` and autoescaping OFF -- the output is Markdown, not
     # HTML, so escaping a summary's `<` or `&` would corrupt it.
     "jinja2>=3.1",
+    # The forge and PyPI HTTP client (tech-stack.md section 8). One client for both, chosen over
+    # `requests` and over the stdlib: `respx` mocks it at the transport layer, which is what lets
+    # `tests/forge` and `tests/publish` assert the query molt actually sends and the header it
+    # actually attaches without a real network. `molt.forge` hand-writes its GraphQL over it -- no
+    # GraphQL client library and no Octokit-equivalent (change 12 design, Non-Goals). Importing it
+    # is not free, so `molt.forge` is on `tests/cli/test_cli.py::HEAVY_MODULE_PREFIXES` and a
+    # command imports the forge inside `run()`.
+    "httpx>=0.28",
 ]
 
 [project.scripts]
