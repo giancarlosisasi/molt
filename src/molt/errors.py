@@ -26,6 +26,7 @@ __all__ = [
     "MoltError",
     "MoltKeyPathError",
     "MoltParseError",
+    "MoltTemplateError",
     "PreEnterButInPreModeError",
     "PreExitButNotInPreModeError",
 ]
@@ -135,4 +136,25 @@ class MoltKeyPathError(MoltError):
     A **sibling** of :class:`MoltParseError`, deliberately -- neither subclasses the other. The
     editing layer branches on a grammar failure and a key-path failure separately, and nesting
     would let the broader ``except`` silently swallow the narrower case.
+    """
+
+
+class MoltTemplateError(MoltError, ValueError):
+    """A changelog template could not be compiled or rendered.
+
+    molt-native. Raised by :mod:`molt.changelog.template` and :mod:`molt.changelog.render` for an
+    unknown release-line token, an undefined name, and a malformed template. A silently empty
+    changelog is worse than a failed run, because it is published before anybody notices, so every
+    one of those is a hard error (``changelog-templating`` spec, "Template failures are hard
+    errors").
+
+    **The two bases are both load-bearing, and neither is decoration.** :class:`MoltError` is what
+    the CLI error funnel catches to print a friendly message instead of a traceback -- a user's
+    template typo is a configuration mistake, not a bug in molt. :class:`ValueError` is what the
+    two conformance suites assert (``tests/changelog/test_render_template.py`` and
+    ``test_render_changelog.py``), and asserting it is how they detect a raw ``jinja2`` exception
+    leaking out of molt: :class:`jinja2.TemplateError` derives from neither base, so an unwrapped
+    Jinja2 failure fails those tests rather than passing quietly. It also keeps this class
+    consistent with :func:`molt.changelog.generate_markdown_for_version_type`, which already
+    reports a bad bump type as a ``ValueError``.
     """

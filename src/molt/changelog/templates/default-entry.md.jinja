@@ -1,0 +1,41 @@
+{# molt's default changelog entry template.
+
+   This file IS the default layout -- it is not a fallback for one. Shipping it as a package asset
+   rather than a Python string constant means a project can copy it as the starting point for its
+   own `[tool.molt.changelog] template`, and it is what makes
+   `test_the_default_template_agrees_with_get_changelog_entry` a meaningful guard rather than a
+   comparison of one function against itself (design D8, D3).
+
+   It is byte-for-byte the worked example in `website/docs/guides/changelog-templates.md`, which
+   describes itself as "otherwise matching the default". Keep the two identical: the docs page is
+   pinned by `tests/changelog/test_render_changelog.py::
+   test_the_documented_worked_example_renders_the_documented_output`, and the default is pinned by
+   `test_the_default_template_renders_the_documented_default_structure`, so a change here that does
+   not reach the page turns one of those two red.
+
+   The layout rules it encodes, all ported from changesets and all now movable by a user:
+     - one `## <version>` heading, with the date appended only when `dates` is on;
+     - Major, then Minor, then Patch, and an empty section omitted entirely;
+     - dependency bumps last, inside Patch, which is why the Patch condition also tests
+       `release.dependencies`.
+
+   Spacing looks approximate on purpose. `render_changelog` normalizes the rendered output -- at
+   most one blank line, no trailing whitespace, no leading or trailing blank lines -- so a readable
+   template does not have to fight Jinja2's whitespace control to produce clean Markdown (design D7).
+#}
+## {{ release.new_version }}{% if config.dates %} ({{ release.date.strftime("%Y-%m-%d") }}){% endif %}
+
+{% if release.major %}### Major Changes
+
+{% for line in release.major %}{{ line }}
+{% endfor %}
+{% endif %}{% if release.minor %}### Minor Changes
+
+{% for line in release.minor %}{{ line }}
+{% endfor %}
+{% endif %}{% if release.patch or release.dependencies %}### Patch Changes
+
+{% for line in release.patch %}{{ line }}
+{% endfor %}{% for line in release.dependencies %}{{ line }}
+{% endfor %}
+{% endif %}

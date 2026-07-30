@@ -60,8 +60,8 @@ class EmojiGenerator:
         link = ""
         if forge is not None and changeset.commit is not None:
             info = forge.commit_info(changeset.commit)
-            if info.pull_request is not None:
-                link = f" ({forge.pull_request_url(info.pull_request)})"
+            if info is not None and info.pull is not None:
+                link = f" ({info.pull.markdown_link})"
         return _LINE.render(
             emoji=_EMOJI.get(category, "package"),
             summary=changeset.summary.strip(),
@@ -95,6 +95,7 @@ The template is plain Jinja2:
 A few things this example demonstrates:
 
 - **molt injects the forge.** `forge` is molt's cached, rate-limited [GitHub](/forges/github) adapter when GitHub is active, and `None` otherwise -- so the same generator degrades gracefully off a forge instead of crashing or opening its own client.
+- **The forge hands back links, not ids.** `forge.commit_info(sha)` returns `None` when the forge has nothing for that commit, and otherwise an object with three parts: `info.commit`, `info.author` and `info.pull`. Each carries `.url` and a ready-made `.markdown_link`, so a generator never builds a URL itself -- that is what keeps the same generator working against a forge other than GitHub. `info.commit` is always present; `info.author` and `info.pull` can be `None`.
 - **You never touch the file.** No reading `CHANGELOG.md`, no regex insertion, no blank-line juggling. You return one bullet's text; molt places it in the right `### Major/Minor/Patch Changes` section, keeps dependency bumps last in the patch section, and clamps the spacing. molt emits correct Markdown directly -- there is no formatter pass to repair it afterward.
 - **Summaries are passed through literally.** molt does not run your changeset summary through a template engine or strip Markdown from it, so a `#` heading or a `$1` in a summary survives intact. (Both are upstream bugs molt refuses to port -- see [Design decisions](/reference/design-decisions).)
 

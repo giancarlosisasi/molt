@@ -43,6 +43,7 @@ Deliberate divergences from upstream
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
 from packaging.requirements import InvalidRequirement, Requirement
@@ -58,9 +59,11 @@ if TYPE_CHECKING:
 
 __all__ = [
     "ChangelogGenerator",
+    "ChangelogSections",
     "ChangesetLike",
     "ChangesetReleaseLike",
     "ReleaseLike",
+    "collect_changelog_sections",
     "generate_markdown_for_version_type",
     "get_changelog_entry",
 ]
@@ -244,6 +247,106 @@ def _trailing_newlines(line: str) -> int:
 
 
 # ======================================================================================
+# The four buckets both rendering paths are built from
+# ======================================================================================
+
+
+@dataclass(frozen=True)
+class ChangelogSections:
+    """The rendered lines behind one changelog entry, grouped and not yet laid out.
+
+    Four buckets, and the fourth one is the point: **dependency lines are their own collection**
+    (design D4). :func:`get_changelog_entry` owns the headings and therefore has nowhere to put a
+    dependency line except inside patch (``get-changelog-entry.ts:95-103``), but that is a
+    *presentation* decision, not a structural fact. Handing the two premerged to a template would
+    make "move dependency bumps into their own section"
+    (``website/docs/guides/changelog-templates.md``) impossible, which is half of what templating is
+    for.
+
+    Every line is the generator's return value **verbatim**, leading and trailing newlines included.
+    Those newlines are the generator's spacing hint -- the whole difference between
+    ``molt.changelog.git``'s ``"- x"`` and a github-style ``"\\n\\n- x\\n"`` lives in them -- so
+    trimming here would erase the distinction before either renderer could act on it. What *is*
+    filtered out is a line with no text at all: the section renderer drops those anyway, and keeping
+    them would make an empty bucket look populated to a template's ``{% if %}``.
+    """
+
+    major: tuple[str, ...]
+    minor: tuple[str, ...]
+    patch: tuple[str, ...]
+    dependencies: tuple[str, ...]
+
+
+def collect_changelog_sections(
+    release: ReleaseLike,
+    releases: Sequence[ReleaseLike],
+    changesets: Sequence[ChangesetLike],
+    generator: ChangelogGenerator,
+    *,
+    deps: Sequence[str] = (),
+    dev_deps: Sequence[str] = (),
+    optional_deps: Sequence[str] = (),
+    update_internal_dependencies: BumpType = BumpType.PATCH,
+    options: Mapping[str, object] | None = None,
+    forge: object | None = None,
+) -> ChangelogSections:
+    """Ask ``generator`` for every line this release's entry needs, bucketed by bump type.
+
+    Extracted so :func:`get_changelog_entry` and :func:`molt.changelog.render_changelog` are two
+    layouts over **one** set of lines rather than two independent computations of the same thing.
+    Design D3 requires the default template to agree with the assembler byte for byte; sharing the
+    collection step makes that agreement structural instead of a coincidence two conformance suites
+    have to keep verifying.
+
+    ``get_dependency_release_line`` is called exactly **once**, unconditionally, whatever this
+    release's own bump type is and whether or not anything moved. That is the generator contract
+    upstream established (``get-changelog-entry.ts:95-103``) and a generator may count on it.
+
+    ``dev_deps`` and ``optional_deps`` are accepted and never read, exactly as
+    :func:`get_changelog_entry` documents: taking all three is what makes "dev and optional
+    dependencies are invisible in the changelog" a rule this layer enforces (design D6) rather than
+    an accident of what the caller forwarded.
+    """
+    del dev_deps, optional_deps
+
+    lines: dict[BumpType, list[str]] = {bump: [] for bump in _HEADINGS}
+    own = normalize_name(release.name)
+    for changeset in changesets:
+        bump = _requested_bump(changeset, own)
+        if bump is None or bump is BumpType.NONE:
+            # Absent: the changeset does not release this package (``:44``). ``none``: there is no
+            # section for it to land in (``:45``), so the summary is simply not rendered here.
+            continue
+        lines[bump].append(generator.get_release_line(changeset, bump, options, forge))
+
+    updated = _dependencies_updated(
+        releases=releases,
+        deps=deps,
+        update_internal_dependencies=update_internal_dependencies,
+    )
+    relevant = _relevant_changesets(changesets, updated)
+    dependency_line = generator.get_dependency_release_line(relevant, updated, options, forge)
+
+    return ChangelogSections(
+        major=tuple(_with_text(lines[BumpType.MAJOR])),
+        minor=tuple(_with_text(lines[BumpType.MINOR])),
+        patch=tuple(_with_text(lines[BumpType.PATCH])),
+        dependencies=tuple(_with_text([dependency_line])),
+    )
+
+
+def _with_text(lines: Sequence[str]) -> list[str]:
+    """``lines`` minus the entries that carry no text.
+
+    The filter is on the **stripped** line, matching :func:`generate_markdown_for_version_type` --
+    see divergence 1 in the module docstring. It is what lets "no dependency moved" be expressed as
+    the empty string by every generator, and what keeps a whitespace-only line from welding two gaps
+    into a three-newline run.
+    """
+    return [line for line in lines if line.strip()]
+
+
+# ======================================================================================
 # The entry assembler (``get-changelog-entry.ts:24-120``)
 # ======================================================================================
 
@@ -289,28 +392,27 @@ def get_changelog_entry(
     if release.type is BumpType.NONE:
         return None
 
-    lines: dict[BumpType, list[str]] = {bump: [] for bump in _HEADINGS}
-    own = normalize_name(release.name)
-    for changeset in changesets:
-        bump = _requested_bump(changeset, own)
-        if bump is None or bump is BumpType.NONE:
-            # Absent: the changeset does not release this package (``:44``). ``none``: there is no
-            # section for it to land in (``:45``), so the summary is simply not rendered here.
-            continue
-        lines[bump].append(generator.get_release_line(changeset, bump, options, forge))
-
-    updated = _dependencies_updated(
-        releases=releases,
+    sections = collect_changelog_sections(
+        release,
+        releases,
+        changesets,
+        generator,
         deps=deps,
+        dev_deps=dev_deps,
+        optional_deps=optional_deps,
         update_internal_dependencies=update_internal_dependencies,
+        options=options,
+        forge=forge,
     )
-    relevant = _relevant_changesets(changesets, updated)
     # Design D5: the dependency line is **appended** to the patch section, after every direct
     # line, whatever this release's own bump type is. "Always last, always patch" is a positional
     # rule; implementing it with a sort key invites a tie-break that reorders the direct lines.
-    lines[BumpType.PATCH].append(
-        generator.get_dependency_release_line(relevant, updated, options, forge)
-    )
+    # This is where the no-template path spends the freedom :class:`ChangelogSections` preserves.
+    lines: dict[BumpType, Sequence[str]] = {
+        BumpType.MAJOR: sections.major,
+        BumpType.MINOR: sections.minor,
+        BumpType.PATCH: (*sections.patch, *sections.dependencies),
+    }
 
     parts = [f"## {release.new_version}"]
     for bump in _HEADINGS:

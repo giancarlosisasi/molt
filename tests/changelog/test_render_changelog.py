@@ -960,4 +960,7 @@ def test_a_summary_is_data_not_a_template() -> None:
     rendered = render_changelog(release, [release], changesets, GIT, config=NO_DATES)
 
     assert rendered == f"## 1.1.0\n\n### Minor Changes\n\n- {hostile}"
+    # `is not None` narrows `str | None` for the type checker; `in` cannot take None. The equality
+    # above already proves it, but pyrefly does not narrow through an `==` comparison.
+    assert rendered is not None
     assert "49" not in rendered
