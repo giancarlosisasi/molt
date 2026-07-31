@@ -7,14 +7,15 @@ the date -- while :mod:`molt.changelog.template` shapes one bullet.
 The entry template is configured on the project::
 
     [tool.molt]
-    changelog_template = "changelog-entry.md.jinja"
-    changelog_dates = true
+    changelog = { template = "changelog-entry.md.jinja", dates = true }
 
-Those two keys are flat rather than a ``[tool.molt.changelog]`` sub-table because ``changelog`` is
-already the generator reference and a mapping there is a pinned configuration error
-(``tests/config/test_parse.py`` row 29). Inside a template they still arrive as ``config.dates``,
-which is the surface ``website/docs/guides/changelog-templates.md`` documents and which
-:class:`molt.apply.apply._ChangelogConfigView` adapts.
+Both settings are members of the ``changelog`` table, alongside the ``generator`` member that
+carries what used to be the whole value of that key (owner ruling 2026-07-30, closing ``VC-4``;
+they were flat ``changelog_template`` / ``changelog_dates`` keys before it). Inside a template
+``dates`` arrives as ``config.dates``, which is the surface
+``website/docs/guides/changelog-templates.md`` documents: a template's ``config`` is the changelog
+scope of the configuration, narrowed by :class:`molt.apply.apply._ChangelogConfigView`, not the
+whole document.
 
 There is nothing to port here
 -----------------------------
@@ -97,8 +98,8 @@ _ASSET_PACKAGE = "molt.changelog"
 #: ``None``, and the report travels the same wrapping path as every other template failure.
 _NO_DATE_HINT = (
     "release.date is not available: no date was passed to render_changelog(). A template that "
-    'renders a date needs one -- set `changelog_dates = true` under [tool.molt] so the "version" '
-    "run supplies its single per-run timestamp."
+    "renders a date needs one -- set `changelog = { dates = true }` under [tool.molt] so the "
+    "`version` run supplies its single per-run timestamp."
 )
 
 

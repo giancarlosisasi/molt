@@ -260,6 +260,9 @@ class EngineConfig:
     snapshot_use_calculated_version: bool = False
     snapshot_prerelease_template: str | None = None
     private_packages_version: bool = True
+    #: The changelog **generator reference** only, never the ``changelog`` table a user may have
+    #: written -- :mod:`molt.apply.generators` resolves this value directly, and handing it a table
+    #: would fork the one resolution path the 2026-07-30 ruling requires it to keep.
     changelog: Any = None
     changelog_template: str | None = None
     changelog_dates: bool = False
@@ -283,7 +286,7 @@ def to_engine_config(config: Config, workspace: Workspace) -> EngineConfig:
         snapshot_use_calculated_version=config.snapshot.use_calculated_version,
         snapshot_prerelease_template=config.snapshot.prerelease_template,
         private_packages_version=config.private_packages.version,
-        changelog=config.changelog,
+        changelog=config.changelog_generator,
         changelog_template=config.changelog_template,
         changelog_dates=config.changelog_dates,
         base_branch=config.base_branch,

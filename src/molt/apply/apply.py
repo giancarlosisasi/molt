@@ -710,12 +710,12 @@ def _plan_changelogs(
 class _ChangelogConfigView:
     """What a changelog template sees as ``config``.
 
-    The ``[tool.molt.changelog]`` scope of ``website/docs/guides/changelog-templates.md``, whose
-    worked example writes ``{% if config.dates %}``. molt's *written* configuration spells the same
-    switch ``changelog_dates`` at the top level (``changelog`` itself is the generator reference and
-    a mapping there is a pinned error), so the two surfaces are adapted here rather than being
-    forced to share a spelling. Handing the whole configuration to a template instead would make
-    every unrelated option part of the public template contract.
+    The ``changelog`` scope of ``website/docs/guides/changelog-templates.md``, whose worked example
+    writes ``{% if config.dates %}``. Since the 2026-07-30 ruling closing ``VC-4`` the written key
+    is ``changelog = { dates = true }``, so this is a **scope narrowing**, not a rename: the
+    template reads the member under exactly the name the user wrote it under. The narrowing is the
+    point -- handing the whole configuration to a template would make every unrelated option part
+    of the public template contract.
     """
 
     dates: bool
