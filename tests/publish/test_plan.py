@@ -126,6 +126,15 @@ pytestmark = [pytest.mark.functional, pytest.mark.network]
 #: literal so this module never imports ``tests.conftest`` at runtime.
 SNAPSHOT_VERSION = "0.0.0.dev20211213000730"
 
+#: PP-1 (owner ruling, 2026-07-31): molt's OTHER snapshot shape -- release ``0.0.0`` plus a 13-digit
+#: **millisecond epoch** ``.dev`` counter, what a ``{timestamp}`` snapshot prerelease template
+#: renders (``molt.engine.assemble._snapshot_suffix``:
+#: ``str(int(moment.timestamp() * 1000))``), as opposed to the 14-digit ``YYYYMMDDHHMMSS`` datetime
+#: the ``{datetime}`` placeholder (and the no-template default) renders. The digits are
+#: ``FROZEN_EPOCH_MS`` (``tests/conftest.py``, 1639354050879 ms = 2021-12-13T00:07:30.879Z), written
+#: as a literal for the same reason ``SNAPSHOT_VERSION`` is.
+SNAPSHOT_VERSION_MS_COUNTER = "0.0.0.dev1639354050879"
+
 #: A stand-in for a private index. Deliberately not a ``pypi.org`` host: the whole point of the
 #: guardrail is that a snapshot must not burn a version number on the public index.
 PRIVATE_INDEX = "https://packages.internal.example/simple/"
@@ -788,6 +797,70 @@ def test_a_snapshot_release_is_allowed_against_an_explicit_private_index(
         )
     else:
         assert plan == [[publish_entry("pkg-a", SNAPSHOT_VERSION)]]
+
+    assert pypi_reads(pypi_registry) == [], (
+        "an explicitly named index is the index; pypi.org is not consulted as well"
+    )
+
+
+# ----------------------------------------------------------------------------------
+# PP-1 (owner ruling, 2026-07-31) -- the OTHER dev-counter shape molt itself produces
+# ----------------------------------------------------------------------------------
+
+
+def test_a_millisecond_counter_snapshot_is_also_refused_before_the_public_index_is_touched(
+    tmp_project: ProjectBuilder, pypi_registry: PyPIRegistry
+) -> None:
+    """PP-1 (owner ruling, 2026-07-31): the guardrail must catch BOTH dev-counter styles.
+
+    ``test_a_snapshot_release_is_refused_before_the_public_index_is_touched`` above only pins the
+    14-digit ``{datetime}`` shape. A ``{timestamp}`` snapshot prerelease template produces a
+    **13-digit** millisecond-epoch counter instead (``molt.engine.assemble._snapshot_suffix``), and
+    it escaped the original guardrail entirely -- recorded as ``PP-1`` in ``openspec/GAPS.md`` until
+    this ruling. Same two assertions as the 14-digit row, for the same reasons: refuse before the
+    round trip, and leave nothing on disk for a later stage to pick up.
+
+    A calculated-version snapshot (``config.snapshot_use_calculated_version``) is deliberately NOT
+    covered by this row or by the widened pattern: its release segment is the real computed version,
+    not ``0.0.0``, so it is indistinguishable in shape from an ordinary release and stays the user's
+    own responsibility to route away from the public index (documented, not enforced -- see
+    ``website/docs/cli/publish.md``).
+    """
+    tmp_project.add_package("pkg-a", SNAPSHOT_VERSION_MS_COUNTER)
+    out = tmp_project.root / "publish-plan.json"
+    console, git = RecordingConsole(), FakeGit()
+
+    with pytest.raises(Exception, match=r"(?i)snapshot"):
+        build_publish_plan(cwd=tmp_project.root, console=console, git=git, output=out)
+
+    assert pypi_reads(pypi_registry) == [], "refuse before the round trip, not after"
+    assert not out.exists(), "a refused plan leaves no artifact for a later stage to pick up"
+
+
+def test_a_millisecond_counter_snapshot_is_allowed_against_an_explicit_private_index(
+    tmp_project: ProjectBuilder, pypi_registry: PyPIRegistry
+) -> None:
+    """PP-1: the escape hatch holds for the 13-digit shape too -- ``--repository`` clears it.
+
+    The twin of ``test_a_snapshot_release_is_allowed_against_an_explicit_private_index`` for the
+    millisecond-counter shape, so the widened pattern is proven to refuse only the *destination*,
+    never the shape by itself.
+    """
+    tmp_project.add_package("pkg-a", SNAPSHOT_VERSION_MS_COUNTER)
+    console, git = RecordingConsole(), FakeGit()
+
+    try:
+        plan = build_publish_plan(
+            cwd=tmp_project.root, console=console, git=git, repository=PRIVATE_INDEX
+        )
+    except TypeError:
+        raise
+    except Exception as exc:
+        assert "snapshot" not in str(exc).lower(), (
+            f"the guardrail must not fire once an explicit non-PyPI index is named: {exc}"
+        )
+    else:
+        assert plan == [[publish_entry("pkg-a", SNAPSHOT_VERSION_MS_COUNTER)]]
 
     assert pypi_reads(pypi_registry) == [], (
         "an explicitly named index is the index; pypi.org is not consulted as well"

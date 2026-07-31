@@ -107,6 +107,8 @@ Name an index and the guardrail clears:
 molt publish --repository snapshots
 ```
 
+The guardrail catches both `.dev` counter shapes molt writes -- the default 14-digit datetime and the 13-digit millisecond counter a `{timestamp}` prerelease template produces -- but it cannot catch a **calculated-version** snapshot (`snapshot.use_calculated_version`): its release segment is a real version number, not `0.0.0`, so it looks like an ordinary release and is planned and published as one. If you use `use_calculated_version`, routing that snapshot away from the public index is on you.
+
 See [Snapshot releases](/concepts/snapshots) for how snapshot versions are built and [`molt publish`](/cli/publish) for the exact trigger shape.
 
 ## When a release goes wrong
