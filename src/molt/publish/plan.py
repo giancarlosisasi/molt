@@ -113,15 +113,27 @@ ARTIFACT_KINDS = ("sdist", "wheel")
 #: constant so the two spellings cannot drift apart.
 INTEGRITY_PREFIX = "sha256="
 
-#: molt's snapshot version shape -- release ``0.0.0`` plus a 14-digit ``YYYYMMDDHHMMSS`` ``.dev``
-#: counter, optionally carrying PEP 440's free-form local segment
-#: (``molt.engine.assemble._snapshot_version``).
+#: molt's snapshot version shape -- release ``0.0.0`` plus a ``.dev`` counter, optionally carrying
+#: PEP 440's free-form local segment. Owner ruling ``PP-1`` (2026-07-31): molt itself produces
+#: **two** counter shapes, depending on ``config.snapshot_prerelease_template``
+#: (``molt.engine.assemble._snapshot_suffix``), and the guardrail must catch both --
+#:
+#: * no template, or a template containing ``{datetime}``: a 14-digit ``YYYYMMDDHHMMSS`` datetime
+#:   stamp (the default);
+#: * a template containing ``{timestamp}``: a 13-digit millisecond Unix epoch
+#:   (``str(int(moment.timestamp() * 1000))``).
 #:
 #: Written as the *whole* shape rather than a prefix on purpose. ``.devN`` is a first-class PEP 440
 #: release segment and ``molt version --pre dev`` produces one deliberately, so a trigger keying on
 #: ``.dev`` alone -- or on a bare ``0.0.0`` prefix -- would refuse to publish any developmental
 #: release at all. See ``tests/publish/test_plan.py::NON_SNAPSHOT_VERSIONS``.
-SNAPSHOT_VERSION_PATTERN = re.compile(r"^0\.0\.0\.dev\d{14}(?:\+[A-Za-z0-9.]+)?$")
+#:
+#: **Deliberately does NOT catch a calculated-version snapshot**
+#: (``config.snapshot_use_calculated_version``): its base is the real computed release, not
+#: ``0.0.0``, so it is indistinguishable in shape from a version a user chose by hand. There is no
+#: safe way to widen a shape-based trigger to catch it without also refusing ordinary ``.devN``
+#: releases -- documented as a limitation in ``website/docs/cli/publish.md``, not solved here.
+SNAPSHOT_VERSION_PATTERN = re.compile(r"^0\.0\.0\.dev\d{13,14}(?:\+[A-Za-z0-9.]+)?$")
 
 #: The suffixes that identify each member of :data:`ARTIFACT_KINDS` on disk (PEP 625, PEP 427).
 _ARTIFACT_SUFFIXES: dict[str, tuple[str, ...]] = {

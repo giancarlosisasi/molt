@@ -41,7 +41,7 @@ Every key in a plan entry is `snake_case`, and entries carry no npm vocabulary: 
 
 ### Snapshots are refused against PyPI
 
-A release whose version has molt's **snapshot shape** -- `0.0.0.dev` followed by a 14-digit timestamp, which is what [`molt version --snapshot`](/cli/version) writes -- is **refused** when the plan targets the public index:
+A release whose version has molt's **snapshot shape** -- `0.0.0.dev` followed by a `.dev` counter that is either the 14-digit datetime timestamp or the 13-digit millisecond-epoch counter, which is what [`molt version --snapshot`](/cli/version) writes depending on your `snapshot_prerelease_template` -- is **refused** when the plan targets the public index:
 
 ```
 Refusing to publish a snapshot release to PyPI: acme-core 0.0.0.dev20211213000730.
@@ -56,6 +56,8 @@ molt publish-plan --repository https://packages.internal.example/simple/ --outpu
 ```
 
 An ordinary developmental release is unaffected -- `1.2.3.dev5` and `0.0.0.dev1` are planned normally, and so is anything `molt version --pre dev` produces.
+
+**Limitation: a calculated-version snapshot is not caught.** If your config sets `snapshot.use_calculated_version`, the snapshot's release segment is the real computed version (for example `1.3.0.dev...`) instead of `0.0.0`. That makes it indistinguishable in shape from an ordinary release, so this guardrail does **not** refuse it -- it is planned and published like any other version. Routing that kind of snapshot away from the public index is your own responsibility; point `--repository` at a private index yourself when using `use_calculated_version`.
 
 ### Naming an index turns the pypi.org query off
 
