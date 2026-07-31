@@ -23,7 +23,7 @@ Tag shape depends on the project:
 
 Tags are **annotated** (`git tag <t> -m <t>`) so that `git push --follow-tags` picks them up; lightweight tags would be skipped. Tagging is **idempotent** -- a tag that already exists is skipped, so re-running is safe.
 
-`--output` (or `MOLT_OUTPUT`) writes an NDJSON stream of `{"type":"git-tag", "tag": ..., "packageName": ...}` events, one per line. The output file is always created, even when there is nothing to tag.
+`--output` (or `MOLT_OUTPUT`) writes an NDJSON stream of `{"type":"git-tag", "tag": ..., "package_name": ...}` events, one per line. The output file is always created, even when there is nothing to tag.
 
 ## The deprecated `tag` alias
 
