@@ -466,6 +466,20 @@ def _skip_predicate(
 # ======================================================================================
 
 
+def _member_dirs(packages: PackagesLike) -> set[Path]:
+    """Resolved directories of every workspace member, root included.
+
+    Owner ruling SC-4 (2026-07-30): the set a ``{ path = ... }`` ``[tool.uv.sources]`` entry is
+    tested against, mirroring ``molt.ecosystem.uv.UvBackend.discover``'s own ``member_dirs`` -- the
+    same question ("does this path land on a member?"), asked here of the structural
+    :class:`PackagesLike` shape instead of a real :class:`molt.ecosystem.Workspace`.
+    """
+    dirs = {Path(package.dir).resolve() for package in packages.packages}
+    if packages.root_package is not None:
+        dirs.add(Path(packages.root_package.dir).resolve())
+    return dirs
+
+
 def _plan_manifest_edits(
     matched: Sequence[tuple[ReleaseLike, PackageLike]],
     *,
@@ -500,6 +514,7 @@ def _plan_manifest_edits(
     """
     versions = {normalize_name(release.name): release for release, _ in live}
     frozen = {normalize_name(release.name) for release, _ in matched} - set(versions)
+    member_dirs = _member_dirs(packages)
     for release, package in matched:
         written = str(release.new_version)
         if normalize_name(release.name) not in frozen and written != package.version:
@@ -513,6 +528,7 @@ def _plan_manifest_edits(
             config=config,
             manifests=manifests,
             snapshot=snapshot,
+            member_dirs=member_dirs,
         )
 
     root_package = packages.root_package
@@ -525,6 +541,7 @@ def _plan_manifest_edits(
             config=config,
             manifests=manifests,
             snapshot=snapshot,
+            member_dirs=member_dirs,
         )
 
 
@@ -535,6 +552,7 @@ def _rewrite_dependencies(
     config: ApplyConfigLike,
     manifests: _Manifests,
     snapshot: bool,
+    member_dirs: set[Path],
 ) -> None:
     """Rewrite every stale internal pin in ``package``'s manifest.
 
@@ -544,7 +562,7 @@ def _rewrite_dependencies(
     its pin moved.
     """
     document = manifests.document(package.manifest_path)
-    sources = _workspace_sources(document)
+    sources = _workspace_sources(document, package_dir=Path(package.dir), member_dirs=member_dirs)
     gate = _gate(config)
     own = normalize_name(package.name)
     done: set[tuple[tuple[str, ...], str]] = set()
@@ -730,12 +748,15 @@ def _changelog_writes(
     gate = _gate(config)
     on_disk = _versions_on_disk(plan, packages)
     templated = changelog_template is not None or date is not None
+    member_dirs = _member_dirs(packages)
     writes: list[_Operation] = []
 
     for release, package in live:
         document = manifests.document(package.manifest_path)
         arguments: dict[str, Any] = {
-            "deps": _resolved_runtime_deps(document, on_disk),
+            "deps": _resolved_runtime_deps(
+                document, on_disk, package_dir=Path(package.dir), member_dirs=member_dirs
+            ),
             "dev_deps": _flatten(document.get("dependency-groups")),
             "optional_deps": _flatten(document.get("project", {}).get("optional-dependencies")),
             "update_internal_dependencies": gate,
@@ -781,7 +802,9 @@ def _planned(release: ReleaseLike) -> _PlannedRelease:
     )
 
 
-def _resolved_runtime_deps(document: dict[str, Any], on_disk: dict[str, str]) -> list[str]:
+def _resolved_runtime_deps(
+    document: dict[str, Any], on_disk: dict[str, str], *, package_dir: Path, member_dirs: set[Path]
+) -> list[str]:
     """Runtime requirements with workspace sources resolved to the constraint they stand for.
 
     Design D3, and the discriminator is **constrainedness, not whether the pin text changed**. A
@@ -789,9 +812,9 @@ def _resolved_runtime_deps(document: dict[str, Any], on_disk: dict[str, str]) ->
     ``pkg-b`` pin *backed by a workspace source* gets one, because ``[tool.uv.sources]`` resolves
     it to ``==<old version>`` -- a constrained edge that genuinely did force the release, even
     though the manifest text never moved. Reading the rule as a byte diff gets the second case
-    wrong.
+    wrong. A ``{ path = ... }`` source resolving onto a workspace member counts too (SC-4).
     """
-    sources = _workspace_sources(document)
+    sources = _workspace_sources(document, package_dir=package_dir, member_dirs=member_dirs)
     resolved: list[str] = []
     for entry in _requirement_strings(document.get("project", {}).get("dependencies")):
         requirement = _parse_requirement(entry)
@@ -988,21 +1011,33 @@ def _flatten(value: object) -> list[str]:
     return [entry for entries in value.values() for entry in _requirement_strings(entries)]
 
 
-def _workspace_sources(document: dict[str, Any]) -> set[str]:
+def _workspace_sources(
+    document: dict[str, Any], *, package_dir: Path, member_dirs: set[Path]
+) -> set[str]:
     """Normalized names of the dependencies backed by a ``[tool.uv.sources]`` workspace entry.
 
-    Only ``workspace = true`` counts. A ``{ path = ... }`` or ``{ git = ... }`` source names a
-    location outside the workspace graph, and treating it as a workspace source would make
-    ``bump_workspace_sources_only`` rewrite pins molt does not own.
+    Two spellings count, matching ``molt.ecosystem.uv._workspace_marker``'s reading exactly (owner
+    ruling SC-4, 2026-07-30): ``{ workspace = true }``, and a ``{ path = ... }`` entry that resolves
+    onto another workspace member's directory. Before this ruling only ``workspace = true`` counted
+    here, which disagreed with discovery's own normalization (``workspace:<relpath>``) for the same
+    entry. A ``{ path = ... }`` that does **not** land on a member, or a ``git``/``url``/index
+    source, names a location outside the workspace graph and is left off -- treating either as a
+    workspace source would make ``bump_workspace_sources_only`` rewrite a pin molt does not own.
     """
     sources = document.get("tool", {}).get("uv", {}).get("sources")
     if not isinstance(sources, dict):
         return set()
-    return {
-        normalize_name(name)
-        for name, source in sources.items()
-        if isinstance(source, dict) and source.get("workspace")
-    }
+    found: set[str] = set()
+    for name, source in sources.items():
+        if not isinstance(source, dict):
+            continue
+        if source.get("workspace"):
+            found.add(normalize_name(name))
+            continue
+        path = source.get("path")
+        if isinstance(path, str) and (package_dir / path).resolve() in member_dirs:
+            found.add(normalize_name(name))
+    return found
 
 
 def _parse_requirement(entry: str) -> Requirement | None:
