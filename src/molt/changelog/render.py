@@ -6,9 +6,15 @@ the date -- while :mod:`molt.changelog.template` shapes one bullet.
 ``website/docs/extending/changelog-plugins.md`` states the split: "You return lines, not layout."
 The entry template is configured on the project::
 
-    [tool.molt.changelog]
-    template = "changelog-entry.md.jinja"
-    dates = true
+    [tool.molt]
+    changelog_template = "changelog-entry.md.jinja"
+    changelog_dates = true
+
+Those two keys are flat rather than a ``[tool.molt.changelog]`` sub-table because ``changelog`` is
+already the generator reference and a mapping there is a pinned configuration error
+(``tests/config/test_parse.py`` row 29). Inside a template they still arrive as ``config.dates``,
+which is the surface ``website/docs/guides/changelog-templates.md`` documents and which
+:class:`molt.apply.apply._ChangelogConfigView` adapts.
 
 There is nothing to port here
 -----------------------------
@@ -56,7 +62,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from jinja2 import StrictUndefined, Undefined
 
-from molt.changelog.entry import ReleaseLike, collect_changelog_sections
+from molt.changelog.entry import ReleaseLike, collect_changelog_sections, normalize_lines
 from molt.changelog.template import new_environment, render_source
 from molt.versioning import BumpType
 
@@ -91,7 +97,7 @@ _ASSET_PACKAGE = "molt.changelog"
 #: ``None``, and the report travels the same wrapping path as every other template failure.
 _NO_DATE_HINT = (
     "release.date is not available: no date was passed to render_changelog(). A template that "
-    'renders a date needs one -- set `dates = true` under [tool.molt.changelog] so the "version" '
+    'renders a date needs one -- set `changelog_dates = true` under [tool.molt] so the "version" '
     "run supplies its single per-run timestamp."
 )
 
@@ -262,13 +268,10 @@ def normalize_entry(rendered: str) -> str:
 
     Interior indentation is preserved: a nested ``  - pkg@1.2.3`` under an
     ``- Updated dependencies`` bullet is structure, not stray whitespace.
+
+    The body is :func:`molt.changelog.entry.normalize_lines`, which the assembler now applies
+    inside each release line as well (owner ruling 2026-07-30, gap ``CT-6``). One definition, two
+    callers: that is what makes "the two paths agree" structural rather than a coincidence two
+    separate implementations happen to preserve.
     """
-    kept: list[str] = []
-    for raw in rendered.split("\n"):
-        line = raw.rstrip()
-        if not line and (not kept or not kept[-1]):
-            # Drop a blank line that opens the entry or follows another blank line. Both bounds fall
-            # out of one condition, which is why there is no separate leading-blank strip.
-            continue
-        kept.append(line)
-    return "\n".join(kept).strip("\n")
+    return normalize_lines(rendered)

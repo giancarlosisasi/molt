@@ -18,6 +18,15 @@ What the schema deliberately does **not** carry (research README section 4.4, an
 - the peer-dependency propagation flag and the experimental wrapper it lived in, Python having no
   peer-dependency concept.
 
+Two keys have **no** changesets counterpart at all: ``changelog_template`` and ``changelog_dates``,
+which turn on molt's Jinja2 changelog-entry template (research README section 5 item 5; gap
+``CT-1``). They are flat keys rather than the ``[tool.molt.changelog]`` sub-table
+``website/docs/guides/changelog-templates.md`` first sketched, because ``changelog`` is already the
+*generator reference* and ``tests/config/test_parse.py`` row 29 pins that a mapping there is a hard
+error. The template still sees ``config.dates``, exactly as the guide's worked example writes it --
+:mod:`molt.apply` passes it a changelog-scoped view, so what a user types and what a template reads
+are two different surfaces on purpose.
+
 All three are still *accepted* on input with a warning so a migrating changesets configuration
 loads (see :mod:`molt.config.parse`); tolerated is not the same as supported, which is why they are
 absent here.
@@ -206,6 +215,18 @@ class Config(BaseModel):
     ] = Field(
         default=(BUILTIN_CHANGELOG, None),
         description="Changelog generator to run, with optional generator options.",
+    )
+    changelog_dates: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("changelog_dates", "changelogDates"),
+        description="Give the changelog template a release date (one timestamp per version run).",
+    )
+    changelog_template: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("changelog_template", "changelogTemplate"),
+        description=(
+            "Filename of a Jinja2 changelog-entry template, resolved against the workspace root."
+        ),
     )
     commit: Annotated[
         GeneratorRef | Literal[False],

@@ -13,6 +13,7 @@ package root.
 
 from __future__ import annotations
 
+from molt.apply.adapters import ApplyPackage, ApplyPackages, to_apply_packages
 from molt.apply.apply import (
     CHANGELOG_ESCAPE_LINES,
     SIDE_EFFECT_ORDER,
@@ -23,7 +24,10 @@ from molt.apply.edit_toml import edit_toml, set_dependency_specifier
 __all__ = [
     "CHANGELOG_ESCAPE_LINES",
     "SIDE_EFFECT_ORDER",
+    "ApplyPackage",
+    "ApplyPackages",
     "apply_release_plan",
     "edit_toml",
     "set_dependency_specifier",
+    "to_apply_packages",
 ]

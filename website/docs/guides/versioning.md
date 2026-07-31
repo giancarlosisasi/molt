@@ -41,7 +41,7 @@ In molt, either the whole plan lands or none of it does. A consumed changeset is
 Run `molt version` with an empty `.changeset/` and it exits with **code 1**:
 
 ```text
-No pending changesets found.
+No unreleased changesets found.
 ```
 
 This is intentional (and matches changesets v3, not the older v2 behavior): "you asked me to release but there is nothing to release" is treated as a failure so a misconfigured pipeline cannot silently pass. Your CI release job should tolerate exit 1 here as "nothing to release yet" rather than a hard error -- the [GitHub Action](/guides/ci-github-action) handles this for you.
@@ -54,7 +54,9 @@ This is intentional (and matches changesets v3, not the older v2 behavior): "you
 molt version --dry-run
 ```
 
-This prints every version change and file it would write, and executes nothing. Add `--output json` for a machine-readable [plan object](/guides/dry-run-and-plans). The read-only [`molt status`](/guides/status) answers the same question and is the form to run as a CI gate.
+This prints every version change and file it would write, and executes nothing.
+
+For the same plan as **machine-readable** data, use the read-only [`molt status --output json`](/guides/status). `molt version` has no `--output` flag: `--output json` belongs to the read commands, so that a script never has to run a mutating verb to find out what it would do. `status` is a permanent dry run of `version` and prints the identical [plan object](/guides/dry-run-and-plans), which also makes it the form to run as a CI gate.
 
 ## Prereleases
 

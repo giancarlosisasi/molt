@@ -12,7 +12,11 @@ Three written shapes, all documented in ``website/docs/extending/changelog-plugi
 Resolution order for the name, most specific first:
 
 1. an entry point in the ``molt.changelog`` group -- what makes a third-party generator a
-   first-class peer of the defaults;
+   first-class peer of the defaults -- matched on the written name **or** on the written name with
+   the ``molt.changelog.`` group prefix stripped, which is how ``molt.config``'s
+   ``BUILTIN_CHANGELOG`` (``"molt.changelog.default"``) reaches the entry point registered as
+   ``default``. Same shape ``molt.commit.load_provider`` uses for ``"molt.commit.default"``;
+   the two defaults are spelled alike on purpose (gap ``AC-7``);
 2. a **file path** (``./failing_changelog.py``), resolved against ``.changeset/`` and then the
    project root, so a repository can keep a one-off generator beside its changesets;
 3. a **dotted module path** (``molt.changelog.github``), which is the spelling
@@ -160,9 +164,22 @@ def _load(name: str, *, changeset_dir: Path, project_root: Path) -> Any:
 
 
 def _entry_point(name: str) -> Any:
-    """The ``molt.changelog`` entry point called ``name``, loaded, or ``None``."""
+    """The ``molt.changelog`` entry point ``name`` refers to, loaded, or ``None``.
+
+    Two spellings match: the written name, and the written name with the ``molt.changelog.`` group
+    prefix removed. The second is what makes the *default* resolvable at all --
+    ``molt.config.BUILTIN_CHANGELOG`` is ``"molt.changelog.default"``, which is neither an
+    importable module nor an entry-point name, so before this it could not be loaded by any of the
+    four resolution forms and every project on the default configuration failed at ``molt version``.
+    Stripping the prefix rather than special-casing the constant keeps the built-in on the same path
+    a third-party generator takes.
+    """
+    candidates = {name}
+    prefix = f"{_ENTRY_POINT_GROUP}."
+    if name.startswith(prefix):
+        candidates.add(name[len(prefix) :])
     for candidate in importlib.metadata.entry_points(group=_ENTRY_POINT_GROUP):
-        if candidate.name == name:
+        if candidate.name in candidates:
             return candidate.load()
     return None
 

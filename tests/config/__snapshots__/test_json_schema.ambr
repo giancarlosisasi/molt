@@ -128,6 +128,25 @@
         'description': 'Changelog generator to run, with optional generator options.',
         'title': 'Changelog',
       }),
+      'changelog_dates': dict({
+        'default': False,
+        'description': 'Give the changelog template a release date (one timestamp per version run).',
+        'title': 'Changelog Dates',
+        'type': 'boolean',
+      }),
+      'changelog_template': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'description': 'Filename of a Jinja2 changelog-entry template, resolved against the workspace root.',
+        'title': 'Changelog Template',
+      }),
       'commit': dict({
         'anyOf': list([
           dict({

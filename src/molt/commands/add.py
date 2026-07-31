@@ -115,11 +115,6 @@ _RELEASE_TYPE_FLAGS: Final[tuple[tuple[str, str], ...]] = (
 _PACKAGE_FLAG: Final = "--package"
 _STDIN_FLAG: Final = "--stdin"
 
-#: The entry-point group a distribution registers a commit-message convention in, and the prefix
-#: ``molt.config``'s ``BUILTIN_COMMIT`` spells the built-in with: ``molt.commit.default`` names the
-#: entry point ``default`` of the group ``molt.commit``.
-_COMMIT_GROUP: Final = "molt.commit"
-
 #: Below this, a major release is the package's *first* major and is worth confirming.
 _FIRST_MAJOR_BOUNDARY: Final = "1.0.0"
 
@@ -994,12 +989,17 @@ def _commit(config: Config, changeset: Changeset, path: Path, *, root: Path, git
     provider rather than from a string built here: the convention is a plugin seam
     (``[project.entry-points."molt.commit"]``), not a constant.
     """
+    from molt.commit import normalize_skip_ci
+
     setting = config.commit
     if setting is False:
         return
     ref, options = setting
     provider = _commit_provider(ref)
-    message = provider.get_add_message(changeset, (options or {}).get("skip_ci", False))
+    # `skip_ci` is normalized here, never forwarded raw: `get_add_message` takes the concrete
+    # `Literal["add", "version"] | False` and no longer interprets a bare `True` (gap `CM-2`).
+    skip_ci = normalize_skip_ci((options or {}).get("skip_ci"), command="add")
+    message = provider.get_add_message(changeset, skip_ci)
     if git is None:
         from molt.git import Git
 
@@ -1011,43 +1011,11 @@ def _commit(config: Config, changeset: Changeset, path: Path, *, root: Path, git
 def _commit_provider(ref: str) -> Any:
     """Load the commit-message provider ``ref`` names.
 
-    Resolution order, most specific first: an entry point of the ``molt.commit`` group; the same
-    name with the group prefix stripped, which is how ``molt.commit.default`` reaches the entry
-    point registered as ``default``; then a dotted module path. The built-in resolves through the
-    *same* mechanism a third-party convention uses -- no privileged path, mirroring how
-    ``molt.apply.generators`` resolves changelog generators.
+    Thin wrapper over :func:`molt.commit.load_provider`, which owns the resolution order shared
+    with ``molt version`` -- entry point, entry point with the ``molt.commit.`` prefix stripped,
+    then a dotted module path (gap ``AC-7``). Kept as a named function here because it is the seam
+    a test would replace.
     """
-    import importlib
-    import importlib.metadata
+    from molt.commit import load_provider
 
-    from molt.errors import MoltError
-
-    candidates = [ref]
-    prefix = f"{_COMMIT_GROUP}."
-    if ref.startswith(prefix):
-        candidates.append(ref[len(prefix) :])
-    for entry_point in importlib.metadata.entry_points(group=_COMMIT_GROUP):
-        if entry_point.name in candidates:
-            return _require_add_message(entry_point.load(), ref)
-    try:
-        loaded = importlib.import_module(ref)
-    except ImportError as exc:
-        raise MoltError(
-            f'Could not resolve the commit-message provider "{ref}": it is not registered in the '
-            f'"{_COMMIT_GROUP}" entry-point group and could not be imported. If it was just '
-            "installed, run `uv sync` so its entry points are visible."
-        ) from exc
-    return _require_add_message(loaded, ref)
-
-
-def _require_add_message(loaded: Any, ref: str) -> Any:
-    """Accept a module or an object, as long as it can produce an ``add`` commit message."""
-    from molt.errors import MoltError
-
-    provider = getattr(loaded, "generator", loaded)
-    if not callable(getattr(provider, "get_add_message", None)):
-        raise MoltError(
-            f'The commit-message provider "{ref}" does not implement '
-            "get_add_message(changeset, skip_ci)."
-        )
-    return provider
+    return load_provider(ref, method="get_add_message")

@@ -66,6 +66,7 @@ __all__ = [
     "collect_changelog_sections",
     "generate_markdown_for_version_type",
     "get_changelog_entry",
+    "normalize_lines",
 ]
 
 #: The section heading for each bump type that has one, in the order they render
@@ -212,14 +213,38 @@ def generate_markdown_for_version_type(bump: BumpType, lines: Sequence[str]) -> 
     gap = _HEADING_GAP
     for line in kept:
         gap = min(max(gap + _leading_newlines(line), _MIN_GAP), _MAX_GAP)
-        # `strip()` on the whole line and nothing else (design D2): a multi-paragraph summary is
-        # one release line, and collapsing its interior newlines would destroy the author's
-        # formatting. The trim is also what lets a generator express preferred spacing through
-        # leading and trailing newlines without that whitespace reaching the file.
+        # The trim is what lets a generator express preferred spacing through leading and trailing
+        # newlines without that whitespace reaching the file; `normalize_lines` then applies the
+        # same [0, 1] blank-line rule *inside* the line -- see its own docstring for why.
         parts.append("\n" * gap)
-        parts.append(line.strip())
+        parts.append(normalize_lines(line.strip()))
         gap = _trailing_newlines(line)
     return "".join(parts)
+
+
+def normalize_lines(text: str) -> str:
+    """Collapse blank-line runs and strip trailing whitespace, line by line.
+
+    The interior half of the clamp, and the one place both rendering paths share it. Owner ruling
+    2026-07-30, closing gap ``CT-6``: the outer clamp works *between* release lines and never
+    reaches inside one, so a summary containing two consecutive blank lines used to emit exactly
+    the three-newline run this module's docstring says the clamp exists to prevent -- while
+    :func:`molt.changelog.render_changelog` collapsed it. Design D3 requires the two paths to
+    agree; before this they only agreed for summaries that happened to be single-paragraph.
+
+    Interior indentation is preserved (a nested ``  - pkg@1.2.3`` is structure, not stray
+    whitespace) and no substitution is used, so a ``\\1`` or a ``$&`` living in an author's summary
+    cannot be expanded (research README section 3.4).
+    """
+    kept: list[str] = []
+    for raw in text.split("\n"):
+        line = raw.rstrip()
+        if not line and (not kept or not kept[-1]):
+            # Drop a blank line that opens the text or follows another blank line; both bounds fall
+            # out of the one condition.
+            continue
+        kept.append(line)
+    return "\n".join(kept).strip("\n")
 
 
 def _section_heading(bump: BumpType) -> str:

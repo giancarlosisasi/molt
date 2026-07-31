@@ -83,8 +83,8 @@ _README_BODY = (
 #: only keys ``run`` actually writes (see the module docstring). The remaining seven are appended
 #: in the order ``Config`` declares them, so a caller that later decides to write more of the
 #: model has a deterministic position to put each key in without renegotiating the ordering
-#: contract. Cross-checked programmatically against ``Config.model_fields`` and against
-#: ``tests/config/test_parse.py``'s pinned key set: both are this exact 15-name set.
+#: contract. Cross-checked programmatically against ``Config.model_fields``: both are this exact
+#: 17-name set (15 until ``implement-version-command`` added the two changelog-template keys).
 MOLT_KEY_ORDER: tuple[str, ...] = (
     # Upstream's generator order (`init/index.ts:59-70`), minus `$schema` and `access`.
     "base_branch",
@@ -103,6 +103,9 @@ MOLT_KEY_ORDER: tuple[str, ...] = (
     "bump_workspace_sources_only",
     "ecosystem",
     "forge",
+    # molt-NEW, added with the `version` command: the changelog-entry template seam (gap `CT-1`).
+    "changelog_template",
+    "changelog_dates",
 )
 
 

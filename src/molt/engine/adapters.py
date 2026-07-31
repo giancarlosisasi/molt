@@ -17,14 +17,23 @@ preview and the release it previews can disagree.
 
 Three rules are worth reading before changing anything here.
 
-**Private packages are folded into ``ignore``** (``RPE-1``). Upstream's ``shouldSkipPackage``
-(``assemble-release-plan/src/index.ts``) is one predicate -- *ignored, or private while
-``privatePackages.version`` is false* -- consulted at every skip site: flattening, dependent
-propagation, and fixed-group forcing. The engine's ported ``Packages`` shape carries no privacy
-marker at all, so it cannot re-derive the second half; naming the private packages in ``ignore``
-reproduces the same predicate at all three sites without teaching the engine a Python-only concept.
-The one place the two differ is the mixed-changeset diagnostic -- see the ``## Open gaps`` section
-of this change's ``design.md``.
+**Private and versionless packages are folded into ``ignore``** (``RPE-1``). Upstream's
+``shouldSkipPackage`` (``assemble-release-plan/src/index.ts``) is one predicate -- *ignored, has no
+version, or private while ``privatePackages.version`` is false* -- consulted at every skip site:
+flattening, dependent propagation, and fixed-group forcing. The engine's ported ``Packages`` shape
+carries no privacy marker at all, so it cannot re-derive the second half; naming those packages in
+``ignore`` reproduces the same predicate at all three sites without teaching the engine a
+Python-only concept. The one place the two differ is the mixed-changeset diagnostic -- see the
+``## Open gaps`` section of this change's ``design.md``.
+
+The **versionless** half of that fold is what makes a repository with an app in it releasable at
+all: ``[project]`` with no ``version`` (or ``dynamic = ["version"]``) reads as
+``Package.version is None``, and :func:`molt.engine.assemble_release_plan` refuses such a package
+loudly rather than skipping it silently (``RPE-4``). That refusal is right for a package somebody
+asked to *release*; it is wrong as a reason to fail a whole run because an unrelated docs site has
+no version. Folding them into the skip list is the same answer ``molt add`` already gives
+(``molt.commands.add._versionable_packages``), and it keeps ``RPE-4`` intact for the case it exists
+for -- nothing here resolves a dynamic version, and nothing here writes one back.
 
 **A workspace source arrives already normalized.** ``[tool.uv.sources]`` is read by
 :mod:`molt.ecosystem.uv`, which records ``workspace:*`` / ``workspace:<relpath>`` on
@@ -56,6 +65,7 @@ if TYPE_CHECKING:
     from molt.ecosystem import Package, Workspace
 
 __all__ = [
+    "UNVERSIONED_PLACEHOLDER",
     "EngineConfig",
     "EngineManifest",
     "EnginePackage",
@@ -65,6 +75,13 @@ __all__ = [
     "to_engine_config",
     "to_engine_packages",
 ]
+
+#: The version a caller may substitute for a member that declares none, so the whole workspace can
+#: be indexed. It is only ever a *placeholder*: every package it applies to is in the engine's
+#: effective ``ignore`` (see :func:`skipped_package_names`), so no release is ever computed from it
+#: and it can never be written back to a manifest. Kept at the lowest legal version for the same
+#: reason ``0.0.0`` is the snapshot base -- if it ever did leak into a comparison, it loses.
+UNVERSIONED_PLACEHOLDER = "0.0.0"
 
 #: A PEP 508 requirement splits into the distribution name and everything after it -- the *tail*
 #: the ported shape puts in its constraint slot (``""``, ``"==1.0.0"``, ``"[extra]>=1 ; marker"``,
@@ -123,27 +140,39 @@ class EnginePackages:
     packages: tuple[EnginePackage, ...]
 
 
-def to_engine_packages(workspace: Workspace) -> EnginePackages:
+def to_engine_packages(
+    workspace: Workspace, *, placeholder_version: str | None = None
+) -> EnginePackages:
     """Adapt a discovered :class:`molt.ecosystem.Workspace` to the engine's input shape.
 
     Every member keeps its declared name spelling; PEP 503 folding is the engine's own job and it
     does it on both sides of every comparison. Discovery order is preserved -- it reaches the
     release plan and then the changelog, so re-sorting here would churn changelog diffs.
+
+    ``placeholder_version`` substitutes a version for a member that declares none, so the engine can
+    index the workspace at all: it parses every member's version up front
+    (``molt.engine.assemble._index_workspace``) and refuses ``None``. Pass
+    :data:`UNVERSIONED_PLACEHOLDER` **only** together with a configuration whose ``ignore`` already
+    covers those members -- which is what :func:`to_engine_config` produces -- or the placeholder
+    becomes a version molt would try to bump. Left ``None`` the refusal stands, unchanged.
     """
     root = workspace.root.as_posix()
-    packages = tuple(_engine_package(package) for package in workspace.packages)
+    packages = tuple(
+        _engine_package(package, placeholder_version) for package in workspace.packages
+    )
     root_package = None
     if workspace.root_package is not None:
-        root_package = _engine_package(workspace.root_package)
+        root_package = _engine_package(workspace.root_package, placeholder_version)
     return EnginePackages(root_package=root_package, root_dir=root, packages=packages)
 
 
-def _engine_package(package: Package) -> EnginePackage:
+def _engine_package(package: Package, placeholder_version: str | None) -> EnginePackage:
     sources = {normalize_name(name): marker for name, marker in package.workspace_sources}
+    version = package.version if package.version is not None else placeholder_version
     return EnginePackage(
         manifest=EngineManifest(
             name=package.name,
-            version=package.version,
+            version=version,
             dependencies=_constraints(package.dependencies, sources),
             dev_dependencies=_constraints(package.dev_dependencies, sources),
             optional_dependencies=_constraints(package.optional_dependencies, sources),
@@ -216,9 +245,10 @@ class EngineConfig:
     :class:`molt.apply.apply.ApplyConfigLike` at once -- deliberately, because the three describe
     one configuration and a caller holding a plan already holds everything apply needs.
 
-    ``ignore`` is the *effective* skip list: the configured one plus every private package when
-    ``private_packages.version`` is false. ``private_packages_version`` is carried through unchanged
-    so ``molt.apply``, which can still see a manifest's classifiers, keeps its own equivalent rule.
+    ``ignore`` is the *effective* skip list: the configured one, plus every versionless package,
+    plus every private package when ``private_packages.version`` is false.
+    ``private_packages_version`` is carried through unchanged so ``molt.apply``, which can still see
+    a manifest's classifiers, keeps its own equivalent rule.
     """
 
     ignore: tuple[str, ...] = ()
@@ -231,6 +261,8 @@ class EngineConfig:
     snapshot_prerelease_template: str | None = None
     private_packages_version: bool = True
     changelog: Any = None
+    changelog_template: str | None = None
+    changelog_dates: bool = False
     base_branch: str = "main"
     changed_file_patterns: tuple[str, ...] = ("**",)
 
@@ -252,25 +284,29 @@ def to_engine_config(config: Config, workspace: Workspace) -> EngineConfig:
         snapshot_prerelease_template=config.snapshot.prerelease_template,
         private_packages_version=config.private_packages.version,
         changelog=config.changelog,
+        changelog_template=config.changelog_template,
+        changelog_dates=config.changelog_dates,
         base_branch=config.base_branch,
         changed_file_patterns=tuple(config.changed_file_patterns),
     )
 
 
 def skipped_package_names(workspace: Workspace, config: Config) -> tuple[str, ...]:
-    """Every package the release must not version: the configured ``ignore``, plus private ones.
+    """Every package the release must not version: ``ignore``, versionless ones, and private ones.
 
     Configured entries come first and in their configured order -- they are already expanded to
     concrete workspace names by :mod:`molt.config`, so no globbing happens here (and must not: that
-    is what produced upstream's ``matchFixedConstraint`` bug). Private packages follow in workspace
-    discovery order. Duplicates are removed under PEP 503 folding, keeping first appearance.
+    is what produced upstream's ``matchFixedConstraint`` bug). The two derived groups follow in
+    workspace discovery order. Duplicates are removed under PEP 503 folding, keeping first
+    appearance.
     """
+    unversioned = (package.name for package in workspace.packages if package.version is None)
     private: Iterable[str] = ()
     if not config.private_packages.version:
         private = (package.name for package in workspace.packages if package.private)
     seen: set[str] = set()
     ordered: list[str] = []
-    for name in (*config.ignore, *private):
+    for name in (*config.ignore, *unversioned, *private):
         key = normalize_name(name)
         if key not in seen:
             seen.add(key)
@@ -281,10 +317,12 @@ def skipped_package_names(workspace: Workspace, config: Config) -> tuple[str, ..
 def is_versionable(package: Package, config: Config) -> bool:
     """Whether ``package`` is a package this configuration releases at all.
 
-    The Python reading of upstream's ``shouldSkipPackage``: not ignored, and not private while
-    ``private_packages.version`` is false. Used by ``molt status``'s CI gate, which asks the
-    question about a *changed* package rather than about a planned release.
+    The Python reading of upstream's ``shouldSkipPackage``: not ignored, declares a version, and not
+    private while ``private_packages.version`` is false. Used by ``molt status``'s CI gate, which
+    asks the question about a *changed* package rather than about a planned release.
     """
+    if package.version is None:
+        return False
     if package.private and not config.private_packages.version:
         return False
     key = normalize_name(package.name)

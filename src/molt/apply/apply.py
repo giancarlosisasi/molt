@@ -72,7 +72,8 @@ from molt.names import normalize_name
 from molt.versioning import BumpType, is_unconstrained, satisfies
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Callable, Iterator, Sequence
+    from datetime import datetime
 
 __all__ = ["CHANGELOG_ESCAPE_LINES", "SIDE_EFFECT_ORDER", "apply_release_plan"]
 
@@ -190,6 +191,10 @@ class ApplyConfigLike(Protocol):
     ``ignore`` arrives **already expanded to concrete workspace names** -- globbing happens in
     :mod:`molt.config`, and re-matching here is what produced upstream's ``matchFixedConstraint``
     bug (research README section 3.4). Literal membership under PEP 503 normalization is correct.
+
+    The changelog *template* keys are deliberately absent: a template is Jinja2 source text by the
+    time it reaches here, so the caller passes it as an argument rather than this layer learning how
+    to turn a filename into bytes (gap ``CT-3``).
     """
 
     @property
@@ -217,10 +222,15 @@ class _PlannedRelease:
     is right to: its out-of-range rule compares the new version against a declared specifier, and a
     string only works there by accident of ``SpecifierSet.contains`` coercing it. Parsing once, at
     the boundary, is what keeps that accident from becoming the contract.
+
+    ``old_version`` is carried for :class:`molt.changelog.RenderReleaseLike`: no entry *assembler*
+    reads it, but a user template that reports "1.4.0 -> 1.4.1" needs it, and it costs one field
+    here rather than a second adapter at the template boundary.
     """
 
     name: str
     type: BumpType
+    old_version: Version
     new_version: Version
     changesets: tuple[str, ...]
 
@@ -311,16 +321,29 @@ def apply_release_plan(
     config: ApplyConfigLike,
     *,
     cwd: Path,
-    snapshot: str | None = None,
+    snapshot: str | bool | None = None,
     pre: str | None = None,
+    forge: object | None = None,
+    changelog_template: str | None = None,
+    date: datetime | None = None,
 ) -> list[Path]:
     """Apply ``plan`` to the working tree and return every path it touched.
 
-    ``snapshot`` names the snapshot tag when this is a snapshot release, and ``pre`` the prerelease
-    tag when it is a ``--pre`` run; both are ``None`` for an ordinary release. A plan already
-    carries its computed versions, so neither changes *what* a version becomes -- ``snapshot``
-    switches dependency pins to exact ones (``version-package.ts:103-105``) and ``pre`` keeps the
-    changeset files on disk (design D6), and those are the only two things they do.
+    ``snapshot`` is the ``--snapshot`` invocation -- the tag when one was named, ``True`` for an
+    unnamed snapshot, ``None`` (or ``False``) when this is not a snapshot release -- and ``pre`` the
+    prerelease phase of a ``--pre`` run. A plan already carries its computed versions, so neither
+    changes *what* a version becomes: ``snapshot`` switches dependency pins to exact ones
+    (``version-package.ts:103-105``) and ``pre`` keeps the changeset files on disk (design D6), and
+    those are the only two things they do. The tag itself is not read, only its presence -- but the
+    keyword takes it rather than a bare bool so a caller can hand over exactly what the user typed.
+
+    ``forge``, ``changelog_template`` and ``date`` are the changelog layer's three inputs and are
+    pure pass-through. ``forge`` reaches **both** generator methods on every call, which is what
+    makes ``changelog = "github"`` produce links instead of raising (gap ``CG-3``);
+    ``changelog_template`` is Jinja2 **source text**, never a path, because reading the file is the
+    caller's job (gap ``CT-3``); and ``date`` is the single per-run timestamp a dated template
+    renders. Supplying either of the last two switches entry assembly from
+    :func:`molt.changelog.get_changelog_entry` to :func:`molt.changelog.render_changelog`.
 
     The returned list is the caller's ``git add`` argument -- ``molt version`` stages exactly these
     paths (``cli/src/commands/version/index.ts:132-138``) -- so it includes **deleted** changeset
@@ -341,21 +364,19 @@ def apply_release_plan(
     manifests = _Manifests()
 
     matched = _match_releases(plan, packages)
-    skipped = {
-        release.name
-        for release, package in matched
-        if _should_skip(package, config, manifests=manifests)
-    }
+    skip = _skip_predicate(packages, config, manifests=manifests)
+    skipped = {release.name for release, package in matched if skip(package.name)}
     live = [(release, package) for release, package in matched if release.name not in skipped]
 
     operations: list[_Operation] = []
 
     _plan_manifest_edits(
-        live,
+        matched,
+        live=live,
         packages=packages,
         config=config,
         manifests=manifests,
-        snapshot=snapshot is not None,
+        snapshot=snapshot is not None and snapshot is not False,
     )
     operations.extend(_Write(path, text.encode("utf-8")) for path, text in manifests.pending())
     operations.extend(
@@ -366,10 +387,13 @@ def apply_release_plan(
             manifests=manifests,
             packages=packages,
             project_root=project_root,
+            forge=forge,
+            changelog_template=changelog_template,
+            date=date,
         )
     )
     operations.extend(
-        _plan_changeset_deletions(plan, project_root=project_root, skipped=skipped, pre=pre)
+        _plan_changeset_deletions(plan, project_root=project_root, skip=skip, pre=pre)
     )
     operations.extend(_plan_lockfile(live, root=root))
 
@@ -402,8 +426,17 @@ def _match_releases(
     return matched
 
 
-def _should_skip(package: PackageLike, config: ApplyConfigLike, *, manifests: _Manifests) -> bool:
-    """Whether ``package`` is excluded from this release (``index.ts:214-221``).
+def _skip_predicate(
+    packages: PackagesLike, config: ApplyConfigLike, *, manifests: _Manifests
+) -> Callable[[str], bool]:
+    """``name -> is this package excluded from this release`` (``index.ts:214-221``).
+
+    A predicate over **names**, not over plan entries, because upstream's guard asks
+    ``shouldSkipPackage`` about the workspace package a changeset names -- not about a release that
+    may not exist. The difference is load-bearing: a changeset naming *only* ignored packages
+    produces no release at all, so a plan-based guard cannot see it and would delete the changeset
+    that a later, un-ignored run still needs. A name the workspace does not contain is not skipped;
+    :func:`_match_releases` has already refused any release naming one.
 
     Two guards, and both keep the package's **changesets on disk** so the release can still happen
     once the exclusion is lifted: an ignored package, and -- with
@@ -411,14 +444,21 @@ def _should_skip(package: PackageLike, config: ApplyConfigLike, *, manifests: _M
     ``Private :: Do Not Upload`` classifier, the Python analogue of npm's ``"private": true``, not
     a ``private`` key.
     """
-    normalized = normalize_name(package.name)
-    if any(normalized == normalize_name(entry) for entry in config.ignore):
-        return True
-    if config.private_packages_version:
-        return False
-    project = manifests.document(package.manifest_path).get("project", {})
-    classifiers = [entry for entry in project.get("classifiers", []) if isinstance(entry, str)]
-    return is_private(classifiers)
+    ignored = {normalize_name(entry) for entry in config.ignore}
+    members = {normalize_name(package.name): package for package in packages.packages}
+
+    def skip(name: str) -> bool:
+        normalized = normalize_name(name)
+        if normalized in ignored:
+            return True
+        package = members.get(normalized)
+        if package is None or config.private_packages_version:
+            return False
+        project = manifests.document(package.manifest_path).get("project", {})
+        classifiers = [entry for entry in project.get("classifiers", []) if isinstance(entry, str)]
+        return is_private(classifiers)
+
+    return skip
 
 
 # ======================================================================================
@@ -427,8 +467,9 @@ def _should_skip(package: PackageLike, config: ApplyConfigLike, *, manifests: _M
 
 
 def _plan_manifest_edits(
-    live: Sequence[tuple[ReleaseLike, PackageLike]],
+    matched: Sequence[tuple[ReleaseLike, PackageLike]],
     *,
+    live: Sequence[tuple[ReleaseLike, PackageLike]],
     packages: PackagesLike,
     config: ApplyConfigLike,
     manifests: _Manifests,
@@ -441,14 +482,27 @@ def _plan_manifest_edits(
     is why ``test_upper_bound_is_preserved_when_the_lower_bound_moves`` puts its dependent in the
     plan explicitly.
 
+    **Freezing a version is not freezing a file** (``version`` design D3). A skipped package -- one
+    named in ``ignore``, or private with ``private_packages = { version = false }`` -- keeps its own
+    version, and still has its pins on *released* dependencies rewritten: a pin left at a version
+    that no longer exists in the workspace breaks the frozen package for everyone. So ``matched`` is
+    walked for dependency edits and only ``live`` takes a version edit. The two rules are separate
+    and ``tests/cli/test_version.py`` separates them --
+    ``test_an_ignored_package_that_is_not_a_dependent_is_left_byte_identical`` is the byte-identical
+    half (an ignored package with nothing to rewrite is never opened) and
+    ``test_an_ignored_package_is_frozen_but_its_pin_on_a_released_dependency_still_moves`` is this
+    one. Only ``live`` releases reach ``versions``, so a skipped package is never itself a rewrite
+    *target*: its version did not move, so no dependent's pin on it may.
+
     The root is visited last and **never versioned** -- it takes dependency edits only. When the
     root *is* the single package of a non-workspace repository it is already in ``live`` and its
     version moves like any other member's.
     """
     versions = {normalize_name(release.name): release for release, _ in live}
-    for release, package in live:
+    frozen = {normalize_name(release.name) for release, _ in matched} - set(versions)
+    for release, package in matched:
         written = str(release.new_version)
-        if written != package.version:
+        if normalize_name(release.name) not in frozen and written != package.version:
             manifests.set(
                 package.manifest_path,
                 edit_toml(manifests.text(package.manifest_path), _PROJECT_VERSION_PATH, written),
@@ -463,7 +517,7 @@ def _plan_manifest_edits(
 
     root_package = packages.root_package
     if root_package is not None and not any(
-        package.manifest_path == root_package.manifest_path for _, package in live
+        package.manifest_path == root_package.manifest_path for _, package in matched
     ):
         _rewrite_dependencies(
             root_package,
@@ -595,13 +649,18 @@ def _plan_changelogs(
     manifests: _Manifests,
     packages: PackagesLike,
     project_root: Path,
+    forge: object | None = None,
+    changelog_template: str | None = None,
+    date: datetime | None = None,
 ) -> list[_Operation]:
     """Buffer one ``CHANGELOG.md`` write per released package.
 
     Wrapped whole, because this is the only step that runs **user code** -- a third-party generator
     -- and it is placed before every write precisely so that failure window stays clean
     (doc 04 section 1.4). The two escape lines are reported and the original exception re-raised
-    unchanged; a caller matching on the generator's own message still matches.
+    unchanged; a caller matching on the generator's own message still matches. A template failure
+    arrives here as :class:`molt.errors.MoltTemplateError`, which is both a ``MoltError`` and a
+    ``ValueError``, so it escapes with the same "nothing was written" promise.
     """
     try:
         generator = resolve_generator(
@@ -619,11 +678,29 @@ def _plan_changelogs(
             packages=packages,
             generator=generator.generator,
             options=generator.options,
+            forge=forge,
+            changelog_template=changelog_template,
+            date=date,
         )
     except Exception:
         for line in CHANGELOG_ESCAPE_LINES:
             _LOGGER.error(line)
         raise
+
+
+@dataclass(frozen=True)
+class _ChangelogConfigView:
+    """What a changelog template sees as ``config``.
+
+    The ``[tool.molt.changelog]`` scope of ``website/docs/guides/changelog-templates.md``, whose
+    worked example writes ``{% if config.dates %}``. molt's *written* configuration spells the same
+    switch ``changelog_dates`` at the top level (``changelog`` itself is the generator reference and
+    a mapping there is a pinned error), so the two surfaces are adapted here rather than being
+    forced to share a spelling. Handing the whole configuration to a template instead would make
+    every unrelated option part of the public template contract.
+    """
+
+    dates: bool
 
 
 def _changelog_writes(
@@ -635,28 +712,53 @@ def _changelog_writes(
     packages: PackagesLike,
     generator: Any,
     options: Any,
+    forge: object | None = None,
+    changelog_template: str | None = None,
+    date: datetime | None = None,
 ) -> list[_Operation]:
-    """Assemble every entry and fold it into the package's existing changelog."""
+    """Assemble every entry and fold it into the package's existing changelog.
+
+    Two assemblers, one decision: :func:`molt.changelog.render_changelog` when this project
+    configured a template or asked for dates, and :func:`molt.changelog.get_changelog_entry`
+    otherwise. Design D3 requires the two to produce the same bytes for the same inputs -- they
+    share their line collector and, since the ``CT-6`` ruling, their blank-line normalization -- so
+    the branch is a cost decision (the templated path pays for Jinja2), not a behavioral one.
+    """
     releases = [_planned(release) for release in plan.releases]
     by_name = {release.name: release for release in releases}
     changesets = list(plan.changesets)
     gate = _gate(config)
     on_disk = _versions_on_disk(plan, packages)
+    templated = changelog_template is not None or date is not None
     writes: list[_Operation] = []
 
     for release, package in live:
         document = manifests.document(package.manifest_path)
-        entry = get_changelog_entry(
-            by_name[release.name],
-            releases,
-            changesets,
-            generator,
-            deps=_resolved_runtime_deps(document, on_disk),
-            dev_deps=_flatten(document.get("dependency-groups")),
-            optional_deps=_flatten(document.get("project", {}).get("optional-dependencies")),
-            update_internal_dependencies=gate,
-            options=options,
-        )
+        arguments: dict[str, Any] = {
+            "deps": _resolved_runtime_deps(document, on_disk),
+            "dev_deps": _flatten(document.get("dependency-groups")),
+            "optional_deps": _flatten(document.get("project", {}).get("optional-dependencies")),
+            "update_internal_dependencies": gate,
+            "options": options,
+            "forge": forge,
+        }
+        if templated:
+            from molt.changelog import render_changelog
+
+            entry = render_changelog(
+                by_name[release.name],
+                releases,
+                changesets,
+                generator,
+                template=changelog_template,
+                config=_ChangelogConfigView(dates=date is not None),
+                date=date,
+                **arguments,
+            )
+        else:
+            entry = get_changelog_entry(
+                by_name[release.name], releases, changesets, generator, **arguments
+            )
         if entry is None:
             continue
         destination = Path(package.dir) / "CHANGELOG.md"
@@ -673,6 +775,7 @@ def _planned(release: ReleaseLike) -> _PlannedRelease:
     return _PlannedRelease(
         name=release.name,
         type=release.type,
+        old_version=_version(release.old_version),
         new_version=_version(release.new_version),
         changesets=tuple(release.changesets),
     )
@@ -731,7 +834,7 @@ def _versions_on_disk(plan: PlanLike, packages: PackagesLike) -> dict[str, str]:
 
 
 def _plan_changeset_deletions(
-    plan: PlanLike, *, project_root: Path, skipped: set[str], pre: str | None
+    plan: PlanLike, *, project_root: Path, skip: Callable[[str], bool], pre: str | None
 ) -> list[_Operation]:
     """Buffer the deletion of every changeset this run consumed.
 
@@ -739,7 +842,10 @@ def _plan_changeset_deletions(
 
     * **The skip guard** (``index.ts:214-223``). A changeset is removed only when **none** of its
       releases names a skipped package, so an ignored or unversioned-private package keeps its
-      changeset and can still be released once the exclusion is lifted.
+      changeset and can still be released once the exclusion is lifted. The question is asked of the
+      *workspace* (:func:`_skip_predicate`) and not of the plan, because a changeset naming only
+      ignored packages produces no release to ask about -- and it is exactly that changeset the
+      guard exists to preserve.
     * **Prerelease runs consume nothing** (design D6). ``concepts/prerelease.md:51`` and
       ``concepts/snapshots.md:61`` say the files stay, and they have to: the changesets *are* the
       counter, so a second ``--pre`` run over a consumed buffer would exit on "nothing to release".
@@ -747,10 +853,9 @@ def _plan_changeset_deletions(
     """
     if pre is not None:
         return []
-    skipped_names = {normalize_name(name) for name in skipped}
     deletions: list[_Operation] = []
     for changeset in plan.changesets:
-        if any(normalize_name(released.name) in skipped_names for released in changeset.releases):
+        if any(skip(released.name) for released in changeset.releases):
             continue
         path = project_root / CHANGESET_DIRNAME / f"{changeset.id}.md"
         if path.is_file():

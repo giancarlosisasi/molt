@@ -423,6 +423,35 @@ def test_the_default_template_reconciles_both_generator_spacing_shapes() -> None
     assert github_entry == "## 1.1.0\n\n### Minor Changes\n\n- one\n\n- two"
 
 
+def test_the_two_paths_agree_on_a_summary_with_a_doubled_blank_line() -> None:
+    """The ``CT-6`` pinning row (owner ruling 2026-07-30). Both paths, one blank line.
+
+    A summary carrying two consecutive blank lines used to render ``- one\\n\\n\\n  two`` through
+    :func:`molt.changelog.get_changelog_entry` and ``- one\\n\\n  two`` through this module -- the
+    assembler's clamp works *between* release lines and never reached inside one, so it emitted
+    exactly the three-newline run its own docstring says it exists to prevent. Design D3 claims the
+    two paths agree; before the ruling they agreed only for single-paragraph summaries.
+
+    Both assertions are load-bearing. The literal pins *which* answer was chosen (the template
+    path's, the more correct of the two), and the equality pins that the choice is shared rather
+    than made twice -- :func:`molt.changelog.entry.normalize_lines` is now the one implementation
+    and both paths call it.
+
+    Guarded here rather than in ``tests/apply/test_changelog_entry.py`` because the disagreement is
+    only visible when both paths are run over one input, which is this module's job. The two-space
+    indent on the continuation line is the ``git`` generator's own doing and is preserved: interior
+    indentation is structure, and only *blank* runs collapse.
+    """
+    release = Release("pkg-a", MINOR, v("1.0.0"), v("1.1.0"), ("cs-1",))
+    changesets = [Changeset("cs-1", "one\n\n\ntwo", (ChangesetRelease("pkg-a", MINOR),))]
+
+    rendered = render_changelog(release, [release], changesets, GIT, config=NO_DATES)
+    entry = get_changelog_entry(release, [release], changesets, GIT)
+
+    assert entry == "## 1.1.0\n\n### Minor Changes\n\n- one\n\n  two"
+    assert rendered == entry
+
+
 def test_a_none_release_renders_no_entry() -> None:
     """Same rule as ``get_changelog_entry`` (``get-changelog-entry.ts:31``): ``None``.
 

@@ -2010,6 +2010,270 @@ def test_unversioned_private_packages_are_frozen_but_their_pins_still_move(
 
 
 # ======================================================================================
+# Section 9b -- the seams `version` is the first command to reach end to end
+#
+# Every row below pins an owner ruling of 2026-07-30 that had no covering test when this command
+# was written; the gap it closes is named in each docstring. They are net-new to molt, so none of
+# them has an upstream row: changesets has no entry template, no forge seam and no commit-provider
+# plugin. See `openspec/GAPS.md`.
+# ======================================================================================
+
+
+#: A changelog-entry template that is unmistakably *not* the default layout, so a run that quietly
+#: ignored the configured template renders something this row can tell apart. Written with the
+#: documented context keys only (``website/docs/guides/changelog-templates.md``, "Customizing the
+#: template"), because those keys are the public contract a user's template is written against.
+CUSTOM_TEMPLATE = """## {{ release.name }} {{ release.new_version }}\
+{% if config.dates %} ({{ release.date.strftime("%Y-%m-%d") }}){% endif %}
+
+{% for line in release.minor %}{{ line }}
+{% endfor %}"""
+
+
+def test_a_configured_changelog_template_shapes_the_entry(
+    tmp_project: ProjectBuilder, console: RecordingConsole, fake_git: FakeGit
+) -> None:
+    """Closes ``CT-1`` / ``CT-2`` / ``CT-3``: templating is reachable from a real run at last.
+
+    Three separate holes, one row. ``CT-1``: ``changelog_template`` is now a config key, so a
+    project can turn entry templating on. ``CT-2``: ``molt.apply`` calls
+    :func:`molt.changelog.render_changelog` when it is set, where before *nothing* did and the
+    templated path was reachable only from a library call. ``CT-3``: the value is a **filename**
+    and the command owns the read -- the renderer still takes Jinja2 source text and never touches
+    the filesystem.
+
+    The template lives in a subdirectory and the command runs from a **nested** package directory,
+    which is what discriminates the ruling's resolution rule: relative to the *workspace root*, not
+    to the current directory. Resolving against the cwd would fail to find the file at all.
+    """
+    tmp_project.add_package("pkg-a", "1.0.0")
+    tmp_project.set_config(changelog_template="templates/entry.md.jinja")
+    write_file(tmp_project.root, "templates/entry.md.jinja", CUSTOM_TEMPLATE)
+    tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "This is a summary")
+
+    run(cwd=tmp_project.root / "packages" / "pkg-a", console=console, git=fake_git)
+
+    changelog = read_changelog(tmp_project.root, "pkg-a")
+    assert changelog is not None
+    assert "## pkg-a 1.1.0" in changelog, "the configured template shaped the heading"
+    assert "This is a summary" in changelog
+    assert "### Minor Changes" not in changelog, (
+        "the default layout must be gone entirely, not merely decorated"
+    )
+
+
+def test_changelog_dates_reach_the_template(
+    tmp_project: ProjectBuilder,
+    console: RecordingConsole,
+    fake_git: FakeGit,
+    frozen_clock: FrozenClock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The second half of ``CT-1``, and the reason ``CT-5``'s hint exists.
+
+    ``changelog_dates`` is what the docs spell ``dates`` in the template's own ``config`` object,
+    and the date itself is one timestamp for the whole run, taken from the ``molt.clock`` seam --
+    two packages released together must not be stamped with the duration of the run. With the key
+    off, ``release.date`` is a ``StrictUndefined`` carrying the hint, so a dated template reports a
+    missing date instead of raising ``AttributeError`` on ``None``.
+    """
+    frozen_clock.freeze(monkeypatch)
+    tmp_project.add_package("pkg-a", "1.0.0")
+    tmp_project.set_config(changelog_template="entry.md.jinja", changelog_dates=True)
+    write_file(tmp_project.root, "entry.md.jinja", CUSTOM_TEMPLATE)
+    tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "This is a summary")
+
+    run_version(tmp_project.root, console, fake_git)
+
+    changelog = read_changelog(tmp_project.root, "pkg-a")
+    assert changelog is not None
+    assert "## pkg-a 1.1.0 (2021-12-13)" in changelog
+
+
+def test_a_missing_changelog_template_is_reported_by_name(
+    tmp_project: ProjectBuilder, console: RecordingConsole, fake_git: FakeGit
+) -> None:
+    """``CT-3``'s failure half: the filename is quoted back, and nothing is written.
+
+    A typo in a template filename is a configuration mistake, so it has to name the file and the
+    place molt looked -- and it must not leave a half-released tree behind, which is what the
+    version assertion checks.
+    """
+    from molt.errors import MoltError  # pyrefly: ignore[missing-import]
+
+    tmp_project.add_package("pkg-a", "1.0.0")
+    tmp_project.set_config(changelog_template="does-not-exist.md.jinja")
+    tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "This is a summary")
+
+    with pytest.raises(MoltError) as excinfo:
+        run_version(tmp_project.root, console, fake_git)
+
+    assert "does-not-exist.md.jinja" in str(excinfo.value)
+    assert versions(tmp_project.root) == {"pkg-a": "1.0.0"}
+
+
+def test_a_broken_changelog_template_is_reported_without_a_traceback(
+    tmp_project: ProjectBuilder,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """Closes ``CT-4``: ``MoltTemplateError`` takes the funnel's **friendly** branch.
+
+    Driven through ``molt.cli.main`` rather than through ``run`` because that is where the claim
+    lives: the funnel catches ``MoltError`` and prints one sentence (``cli.py``'s ``except
+    MoltError``), while anything else falls through to ``except Exception``, which prints a
+    traceback and an issue-report URL. ``MoltTemplateError`` derives from **both** ``MoltError`` and
+    ``ValueError``; only the two conformance suites' ``ValueError`` half was pinned before this row,
+    so dropping the ``MoltError`` base would have sent a user's template typo down the traceback
+    branch with every suite still green. ``CliRunner`` cannot see this -- it catches the exception
+    itself, before ``main`` does -- so the entry point is called directly and ``capfd`` reads the
+    console at the file-descriptor level.
+
+    The template asks for a name the context does not carry, which ``StrictUndefined`` turns into a
+    hard error at render time -- the same class of mistake as a misspelled ``release.new_verison``.
+    """
+    pytest.importorskip("typer", reason="the CLI shell lands with adopt-typer-cli-shell")
+    import sys
+
+    from tests.cli.fake_cli import strip_ansi
+
+    from molt import cli as molt_cli  # pyrefly: ignore[missing-import]
+
+    tmp_project.add_package("pkg-a", "1.0.0")
+    tmp_project.set_config(changelog_template="entry.md.jinja")
+    write_file(tmp_project.root, "entry.md.jinja", "## {{ release.no_such_field }}\n")
+    tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "This is a summary")
+
+    monkeypatch.setattr(sys, "argv", ["molt", "version", "--cwd", str(tmp_project.root)])
+    try:
+        code = molt_cli.main()
+    except SystemExit as exit_request:  # a funnel that exits rather than returning
+        code = 1 if not isinstance(exit_request.code, int) else exit_request.code
+    captured = capfd.readouterr()
+    output = strip_ansi(captured.out + captured.err)
+
+    assert code == 1
+    assert "Traceback" not in output, output
+    assert "no_such_field" in output, output
+    assert versions(tmp_project.root) == {"pkg-a": "1.0.0"}, "nothing is written"
+
+
+def test_the_github_changelog_generator_is_given_a_forge(
+    tmp_project: ProjectBuilder, console: RecordingConsole, fake_git: FakeGit
+) -> None:
+    """Closes ``CG-3``: ``molt version`` wires a forge through to the changelog layer.
+
+    The ``github`` generator refuses ``forge=None`` with ``MoltForgeError`` before it does anything
+    else (ratified 2026-07-30 -- a linkless changelog under the ``github`` name is worse than a
+    loud failure). ``molt.apply`` passed no forge at all until this change, so a project configured
+    with ``changelog = "github"`` could not run at all. **This row passes only if a real forge
+    instance reached the generator**, which is what makes it the discriminator: the run below makes
+    no network request, because a changeset with no commit and no ``pr:``/``commit:`` directive has
+    nothing to look up.
+
+    The repository comes from the generator's own ``repo`` option so the row does not depend on
+    ``GITHUB_REPOSITORY`` being set or unset in the environment running the suite.
+    """
+    tmp_project.add_package("pkg-a", "1.0.0")
+    tmp_project.set_config(changelog=["github", {"repo": "acme/acme"}])
+    tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "This is a summary")
+
+    run_version(tmp_project.root, console, fake_git)
+
+    changelog = read_changelog(tmp_project.root, "pkg-a")
+    assert changelog is not None
+    assert "This is a summary" in changelog
+    assert versions(tmp_project.root) == {"pkg-a": "1.1.0"}
+
+
+def test_a_github_changelog_with_no_repository_fails_loudly(
+    tmp_project: ProjectBuilder,
+    console: RecordingConsole,
+    fake_git: FakeGit,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The other half of ``CG-3``: no repository is an error, not a linkless changelog.
+
+    ``GITHUB_REPOSITORY`` is cleared explicitly rather than assumed absent -- the suite may well be
+    running inside an Action, where it is set, and a row whose outcome depends on the environment
+    it runs in is not a row.
+    """
+    from molt.errors import MoltForgeError  # pyrefly: ignore[missing-import]
+
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    tmp_project.add_package("pkg-a", "1.0.0")
+    tmp_project.set_config(changelog="github")
+    tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "This is a summary")
+
+    with pytest.raises(MoltForgeError):
+        run_version(tmp_project.root, console, fake_git)
+
+    assert versions(tmp_project.root) == {"pkg-a": "1.0.0"}, "nothing is written"
+
+
+SKIP_CI_SETTINGS = [
+    (True, "commit = true normalizes to {skip_ci = 'version'} (config.ts:177-179)"),
+    (
+        ["molt.commit.default", {"skip_ci": True}],
+        "a bare `true` is the command's own target: `version` here, never `add`",
+    ),
+    (
+        ["molt.commit.default", {"skip_ci": "version"}],
+        "the literal spelling, which is the only form the 8-row commit gate ever exercised",
+    ),
+]
+
+
+@pytest.mark.parametrize(("setting", "why"), SKIP_CI_SETTINGS)
+def test_the_version_commit_carries_the_skip_ci_marker(
+    tmp_project: ProjectBuilder,
+    console: RecordingConsole,
+    fake_git: FakeGit,
+    setting: Any,
+    why: str,
+) -> None:
+    """Closes the version half of ``CM-1`` and pins ``CM-2``'s narrowed ``skip_ci``.
+
+    ``CM-1``: nothing read ``config.commit`` for ``molt version`` and nothing called
+    ``get_version_message`` -- the provider is now loaded through the ``molt.commit`` entry-point
+    group, exactly as ``molt add`` loads it, so a project can substitute its own convention for
+    both commit points at once.
+
+    ``CM-2``: ``skip_ci`` used to accept ``bool | str`` with an untested ``is True`` branch in both
+    message functions. It is now ``Literal["add", "version"] | False``, and the *resolution layer*
+    turns a written ``true`` into the concrete target. All three written spellings must therefore
+    produce the same commit message, which is what the parameter table asserts.
+    """
+    tmp_project.add_package("pkg-a", "1.0.0")
+    tmp_project.set_config(commit=setting)
+    tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "This is a summary")
+
+    run_version(tmp_project.root, console, fake_git)
+
+    assert len(fake_git.commits) == 1, why
+    assert fake_git.commits[0].endswith("[skip ci]\n"), why
+
+
+def test_a_skip_ci_target_of_add_leaves_the_version_commit_unmarked(
+    tmp_project: ProjectBuilder, console: RecordingConsole, fake_git: FakeGit
+) -> None:
+    """``CM-2``'s discriminator: the *other* command's target is a deliberate no-op.
+
+    One ``skip_ci`` value gates one commit point (``commit/index.ts:6-19``), which is the whole
+    reason the option takes a command name rather than a boolean. Without this row, resolving every
+    written value to "this command" would pass the table above.
+    """
+    tmp_project.add_package("pkg-a", "1.0.0")
+    tmp_project.set_config(commit=["molt.commit.default", {"skip_ci": "add"}])
+    tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "This is a summary")
+
+    run_version(tmp_project.root, console, fake_git)
+
+    assert len(fake_git.commits) == 1
+    assert "[skip ci]" not in fake_git.commits[0]
+
+
+# ======================================================================================
 # Section 10 -- molt-native surface: --dry-run, --pre, the lockfile, exit codes
 # ======================================================================================
 

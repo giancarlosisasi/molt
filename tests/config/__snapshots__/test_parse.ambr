@@ -10,6 +10,8 @@
       'molt.changelog.default',
       None,
     ),
+    'changelog_dates': False,
+    'changelog_template': None,
     'commit': False,
     'ecosystem': 'auto',
     'fixed': tuple(

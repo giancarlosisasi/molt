@@ -48,13 +48,17 @@ Two consequences you can rely on:
 
 ## Customizing the template
 
-Point the `[tool.molt]` changelog template at a Jinja2 file:
+Point molt at a Jinja2 file:
 
 ```toml
-[tool.molt.changelog]
-template = "changelog-entry.md.jinja"
-dates = true
+[tool.molt]
+changelog_template = "changelog-entry.md.jinja"
+changelog_dates = true
 ```
+
+`changelog_template` is a **filename**, and a relative one is resolved against the workspace root -- the directory your `[tool.molt]` configuration lives in -- so one template describes the whole monorepo. `changelog_dates` gives the template a release date: one timestamp for the whole `molt version` run, so two packages released together are never stamped seconds apart.
+
+The two are separate top-level keys rather than a `[tool.molt.changelog]` table because `changelog` is already the *generator* option (`changelog = "git"`, `changelog = ["github", { repo = "acme/acme" }]`). Inside a template they still appear under `config`, which is where the example below reads `config.dates`.
 
 The template receives the [release](/concepts/release-plan) for one package. The most useful fields:
 

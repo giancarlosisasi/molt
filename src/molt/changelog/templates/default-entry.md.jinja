@@ -2,7 +2,7 @@
 
    This file IS the default layout -- it is not a fallback for one. Shipping it as a package asset
    rather than a Python string constant means a project can copy it as the starting point for its
-   own `[tool.molt.changelog] template`, and it is what makes
+   own `[tool.molt] changelog_template`, and it is what makes
    `test_the_default_template_agrees_with_get_changelog_entry` a meaningful guard rather than a
    comparison of one function against itself (design D8, D3).
 

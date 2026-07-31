@@ -21,6 +21,7 @@ a JSON-ready payload, shared by every command that prints a plan.
 from __future__ import annotations
 
 from molt.engine.adapters import (
+    UNVERSIONED_PLACEHOLDER,
     EngineConfig,
     EngineManifest,
     EnginePackage,
@@ -65,6 +66,7 @@ from molt.engine.view import (
 )
 
 __all__ = [
+    "UNVERSIONED_PLACEHOLDER",
     "WORKSPACE_PREFIX",
     "ChangesetLike",
     "ChangesetReleaseLike",

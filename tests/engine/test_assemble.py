@@ -331,6 +331,123 @@ def test_snapshot_release_with_a_tag_keeps_the_tag_in_the_local_segment(
     assert str(plan.releases[0].new_version) == f"0.0.0.dev{digits}+foo"
 
 
+#: The frozen ``getCurrentCommitId`` value the CLI suite uses, restated here so this module keeps
+#: its "no cross-suite imports" property (``tests/cli/fake_cli.py::FROZEN_COMMIT``).
+_SNAPSHOT_COMMIT = "abcdefghijklmnopqrstuvwxyz"
+
+#: Where each ``prerelease_template`` placeholder lands in the composed PEP 440 version.
+#:
+#: **This table is the pin for research open decision #2, ruled by the owner on 2026-07-30**
+#: (gaps ``RPE-5``/``RPE-6``). ``0.0.0.dev<datetime>`` with the tag -- or a rendered template -- in
+#: the local segment is molt's snapshot shape, and the rule the ruling fixes is the *split*:
+#:
+#: * a **numeric** placeholder (``{timestamp}``, ``{datetime}``) supplies the ``.devN`` counter,
+#:   first one in the template wins, datetime by default;
+#: * every other placeholder renders into the ``+local`` segment, in template order.
+#:
+#: Before this row landed, ``tests/cli/test_version.py::SNAPSHOT_TEMPLATE_CASES`` was the only
+#: place the composition was asserted and it was skipped, so **any** placement passed the engine
+#: gate -- that is exactly what ``RPE-5`` recorded. Each entry is
+#: ``(template, tag, expected version, why)``; the versions are literals rather than derived, so a
+#: change to the rule shows up here as a diff and nowhere else.
+SNAPSHOT_TEMPLATE_CASES: list[tuple[str, str | None, str, str]] = [
+    ("{tag}", "test", "0.0.0.dev{d}+test", "a free-form tag is legal only in the local segment"),
+    (
+        "{tag}-{tag}",
+        "test",
+        "0.0.0.dev{d}+test.test",
+        "PEP 440 normalizes the `-` separator inside a local label to `.`",
+    ),
+    (
+        "{commit}",
+        None,
+        f"0.0.0.dev{{d}}+{_SNAPSHOT_COMMIT}",
+        "a sha is not numeric, so it cannot be the .devN counter",
+    ),
+    (
+        "{commit-short}",
+        None,
+        f"0.0.0.dev{{d}}+{_SNAPSHOT_COMMIT[:7]}",
+        "the 7-character form, same placement",
+    ),
+    ("{timestamp}", None, "0.0.0.dev{ms}", "epoch milliseconds ARE the .devN, and only that"),
+    ("{datetime}", None, "0.0.0.dev{d}", "the default composition, spelled explicitly"),
+    (
+        "{tag}.{timestamp}.{commit}",
+        "alpha",
+        f"0.0.0.dev{{ms}}+alpha.{_SNAPSHOT_COMMIT}",
+        "the numeric token wins the .devN; the rest keep template order in the local segment",
+    ),
+    (
+        "{tag}.{commit-short}",
+        "alpha",
+        f"0.0.0.dev{{d}}+alpha.{_SNAPSHOT_COMMIT[:7]}",
+        "no numeric token, so the datetime default supplies the .devN",
+    ),
+    (
+        "{datetime}-{tag}",
+        "alpha",
+        "0.0.0.dev{d}+alpha",
+        "the datetime moves into .devN even when it is written after the tag",
+    ),
+]
+
+
+@pytest.mark.parametrize(("template", "tag", "expected", "why"), SNAPSHOT_TEMPLATE_CASES)
+def test_the_snapshot_prerelease_template_places_each_placeholder(
+    setup: FakeFullState,
+    default_config: FakeConfig,
+    frozen_clock: FrozenClock,
+    monkeypatch: pytest.MonkeyPatch,
+    template: str,
+    tag: str | None,
+    expected: str,
+    why: str,
+) -> None:
+    """Ratifies research open decision #2 -- see :data:`SNAPSHOT_TEMPLATE_CASES`.
+
+    Every produced version is asserted to be **normalized** PEP 440, not merely parseable: PyPI
+    stores a package under the normalized spelling, so a version molt writes into a manifest and a
+    version an index records must be the same string.
+    """
+    frozen_clock.freeze(monkeypatch)
+    digits = frozen_clock.moment.strftime("%Y%m%d%H%M%S")
+    milliseconds = str(int(frozen_clock.moment.timestamp() * 1000))
+    config = dataclasses.replace(default_config, snapshot_prerelease_template=template)
+
+    plan = _plan(
+        setup,
+        config,
+        snapshot=SnapshotParams(tag=tag, commit=_SNAPSHOT_COMMIT),
+    )
+
+    version = str(plan.releases[0].new_version)
+    assert version == expected.format(d=digits, ms=milliseconds), why
+    assert str(Version(version)) == version, f"{version!r} is not a normalized PEP 440 version"
+
+
+def test_a_numeric_snapshot_tag_stays_in_the_local_segment(
+    setup: FakeFullState,
+    default_config: FakeConfig,
+    frozen_clock: FrozenClock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The discriminator for :func:`_dev_counter` reading the *template*, not the rendered text.
+
+    ``--snapshot 123`` is a tag that happens to be all digits. An implementation that picked the
+    ``.devN`` counter by looking for a numeric-looking rendered token would put the tag there and
+    silently lose the timestamp -- and ``tests/cli/test_cli.py`` already pins that a numeric
+    snapshot name stays a ``str`` precisely because a user can type one.
+    """
+    frozen_clock.freeze(monkeypatch)
+    digits = frozen_clock.moment.strftime("%Y%m%d%H%M%S")
+    config = dataclasses.replace(default_config, snapshot_prerelease_template="{tag}")
+
+    plan = _plan(setup, config, snapshot=SnapshotParams(tag="123"))
+
+    assert str(plan.releases[0].new_version) == f"0.0.0.dev{digits}+123"
+
+
 def test_every_snapshot_version_in_one_plan_shares_the_timestamp(
     setup: FakeFullState,
     default_config: FakeConfig,

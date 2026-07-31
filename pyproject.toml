@@ -90,6 +90,13 @@ default = "molt.commit"
 # distribution metadata, not this file.
 git = "molt.changelog.git:generator"
 github = "molt.changelog.github:generator"
+# The name `molt.config`'s `BUILTIN_CHANGELOG` ("molt.changelog.default") resolves to once the
+# group prefix is stripped -- the same shape `[project.entry-points."molt.commit"] default` has,
+# and the reason both defaults reach their built-in through the *plugin* mechanism rather than
+# through a privileged branch in the loader. An alias for `git`, deliberately: "the default
+# changelog generator" and "the git changelog generator" are the same object, so a project can
+# name either and get the same bytes.
+default = "molt.changelog.git:generator"
 
 [project.urls]
 Homepage = "https://github.com/giancarlosisasi/molt"

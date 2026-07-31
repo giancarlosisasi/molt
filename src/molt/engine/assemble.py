@@ -138,6 +138,12 @@ _BUMPING_SECTIONS: frozenset[DependencyKind] = frozenset({"runtime", "optional"}
 #: The placeholders ``snapshot.prerelease_template`` understands (research doc 01 section 11.1).
 _PLACEHOLDERS = re.compile(r"\{(tag|commit|commit-short|timestamp|datetime)\}")
 
+#: The two placeholders whose value is a **number**, and which therefore supply the ``.devN``
+#: counter rather than the local segment. PEP 440 requires ``devN`` to be an integer, so these are
+#: the only tokens that can live there -- and the first of them in the template wins, because a
+#: version has exactly one ``.devN``. See :func:`_snapshot_suffix` for the whole composition rule.
+_NUMERIC_PLACEHOLDERS = frozenset({"timestamp", "datetime"})
+
 #: Everything PEP 440 forbids in a local version label, collapsed to the canonical ``.`` separator.
 _NOT_LOCAL_SAFE = re.compile(r"[^A-Za-z0-9]+")
 
@@ -632,8 +638,16 @@ def _dependency_version_ranges(
     }
     for section in _SECTION_ORDER:
         raw = _declared_range(sections[section], dependency.normalized)
-        if not raw:
-            continue  # absent, or an empty specifier: nothing that can ever be violated
+        if raw is None:
+            continue  # not declared in this section at all: there is no edge to consider
+        # A declaration with **no specifier** is not the same as no declaration, and the difference
+        # is only visible under ``update_internal_dependents = "always"``. ``pkg-b`` is the PEP 508
+        # spelling of npm's ``*``, which upstream pushes into the range list as a real entry
+        # (``determine-dependents.ts:180-186``: it skips a *falsy* range, and ``"*"`` is truthy in
+        # JavaScript while ``""`` is falsy in Python). Every version satisfies it, so the
+        # out-of-range policy still never bumps its holder -- but ``always``, which bypasses the
+        # satisfaction check entirely, must reach it. Dropping the entry here is what silently made
+        # ``always`` mean "always, except for unconstrained edges".
         if raw.strip().startswith(WORKSPACE_PREFIX):
             resolved = resolve_workspace_range(
                 raw, release.old_version, dependency_path=dependency.path
@@ -887,10 +901,21 @@ def _snapshot_suffix(
     second boundary and emit two suffixes -- on PyPI that would burn two version numbers for one
     snapshot, permanently (design D7).
 
-    Where upstream joins tag and datetime into one semver prerelease string, PEP 440 splits them:
-    the datetime becomes the ``.devN`` counter and the free-form part becomes the local segment. A
-    ``prerelease_template`` therefore renders **into the local segment**, the only free-form field
-    PEP 440 defines; its placeholders and its two validation errors are ported unchanged.
+    Where upstream joins tag and datetime into one semver prerelease string, PEP 440 splits them
+    across the two fields it has, and the split is the whole composition rule (owner ruling
+    2026-07-30, closing gaps ``RPE-5``/``RPE-6``):
+
+    * a **numeric** placeholder -- ``{timestamp}`` or ``{datetime}`` -- supplies the ``.devN``
+      counter, and the first one in the template wins, because a version has exactly one ``.devN``.
+      With no numeric placeholder the datetime is used, which is also the whole of the no-template
+      default;
+    * **every other** placeholder renders into the **local segment**, in template order. The local
+      segment is the only free-form field PEP 440 defines, so a tag or a commit sha has nowhere
+      else to go.
+
+    Literal separators between placeholders are not preserved, because PEP 440 normalizes every
+    run of non-alphanumerics inside a local label to ``.`` anyway -- ``{tag}-{tag}`` and
+    ``{tag}.{tag}`` are the same version. The two validation errors are ported unchanged.
     """
     datetime_digits = moment.strftime(_DATETIME_FORMAT)
     template = config.snapshot_prerelease_template
@@ -912,20 +937,43 @@ def _snapshot_suffix(
         "timestamp": str(int(moment.timestamp() * 1000)),
         "datetime": datetime_digits,
     }
-    return _SnapshotSuffix(dev=datetime_digits, local=_local_segment(_render(template, values)))
+    return _SnapshotSuffix(
+        dev=_dev_counter(template, values, datetime_digits),
+        local=_local_segment(_render(template, values)),
+    )
+
+
+def _dev_counter(template: str, values: Mapping[str, str | None], default: str) -> str:
+    """The ``.devN`` digits: the first numeric placeholder's value, or the datetime.
+
+    Reads the template rather than the rendered text on purpose -- a *tag* that happens to be all
+    digits is still a tag and belongs in the local segment.
+    """
+    for match in _PLACEHOLDERS.finditer(template):
+        key = match.group(1)
+        if key in _NUMERIC_PLACEHOLDERS:
+            value = values[key]
+            if value is not None:
+                return value
+    return default
 
 
 def _render(template: str, values: Mapping[str, str | None]) -> str:
-    """Substitute the snapshot placeholders, using a replacement **function**.
+    """Render the template's **local-segment** half, using a replacement **function**.
 
     Design D8 / research README section 3.3: with a replacement *string*, a commit sha or tag
     containing ``\\1`` or ``\\g<0>`` would be expanded as a backreference and corrupt the version.
     A function replacement is inserted verbatim, which is the same reason upstream passes a callback
     to ``String.replace``.
+
+    A numeric placeholder renders as the empty string here because :func:`_dev_counter` has already
+    consumed it. Emitting it in both fields would duplicate the timestamp in every version.
     """
 
     def substitute(match: re.Match[str]) -> str:
         key = match.group(1)
+        if key in _NUMERIC_PLACEHOLDERS:
+            return ""
         value = values[key]
         if value is None:
             raise MoltError(
