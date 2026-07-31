@@ -69,7 +69,7 @@ import pytest
 
 pytest.importorskip("molt.action", reason="build step 9 - molt.action is a TDD target")
 
-from molt.action import run_publish, run_version  # pyrefly: ignore[missing-import]
+from molt.action import run_publish, run_version
 
 if TYPE_CHECKING:
     from tests.conftest import GitRepo

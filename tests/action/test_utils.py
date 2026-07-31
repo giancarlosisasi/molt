@@ -42,7 +42,7 @@ import pytest
 
 pytest.importorskip("molt.action", reason="build step 9 - molt.action is a TDD target")
 
-from molt.action import (  # pyrefly: ignore[missing-import]
+from molt.action import (
     BUMP_LEVELS,
     get_changelog_entry,
     sort_changelog_entries,

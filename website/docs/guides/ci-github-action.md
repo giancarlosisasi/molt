@@ -17,7 +17,9 @@ Every push to your base branch triggers one of two behaviors, and molt decides w
 
 So the human loop is simply: merge feature PRs (each carrying a changeset), watch the "Version Packages" PR accumulate, and merge it when you want to cut a release. Merging it is the release.
 
-The release PR lives on a dedicated branch, `molt/release/<base>` (for a `main` base, `molt/release/main`). Molt owns that branch and force-updates it -- do not hand-edit it, your changes are replaced on the next push.
+The release PR lives on a dedicated branch, `changeset-release/<base>` (for a `main` base, `changeset-release/main`). Molt owns that branch and force-updates it -- do not hand-edit it, your changes are replaced on the next push. The name is deliberately the one changesets uses, so a repository migrating from changesets keeps its existing release branch, its open release PR, and any branch protection rule written against that name.
+
+The commit molt writes on that branch is titled "Version Packages" by default; the version loop takes the message as a parameter, so a workflow may set its own.
 
 ## A copy-pasteable workflow
 

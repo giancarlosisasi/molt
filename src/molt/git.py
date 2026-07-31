@@ -272,6 +272,67 @@ class Git:
         return {line.strip() for line in self._run("tag").splitlines() if line.strip()}
 
     # ----------------------------------------------------------------------------------
+    # Branches and the remote -- the CI-loop surface (``release-utils/src/gitUtils.ts``)
+    #
+    # These five are used by :mod:`molt.action` and by nothing else. They are **not** part of the
+    # command surface ``tests/cli/fake_cli.py::FakeGit`` doubles: no command pushes, and adding a
+    # push to that double would let a command acquire one without a test noticing.
+    # ----------------------------------------------------------------------------------
+
+    def current_branch(self) -> str:
+        """The checked-out branch name (``gitUtils.ts``'s ``github.context.ref`` stand-in).
+
+        ``HEAD`` on a detached checkout, which is what ``rev-parse --abbrev-ref`` answers. Callers
+        that need a real branch name pass one in rather than guessing from this.
+        """
+        return self.rev_parse("--abbrev-ref", "HEAD")
+
+    def is_clean(self) -> bool:
+        """Whether the working tree has nothing to commit (``gitUtils.ts``'s ``checkIfClean``)."""
+        return not self.status().strip()
+
+    def switch_to_maybe_existing_branch(self, branch: str) -> None:
+        """Check ``branch`` out, creating it at HEAD when it does not exist yet.
+
+        Upstream decides which of the two happened by *string-matching git's stderr*
+        (``gitUtils.ts``), which breaks under any locale but English. Trying the checkout and
+        falling back on its exit status asks git the same question in a way that has one answer
+        everywhere.
+        """
+        try:
+            self._run("checkout", branch)
+        except GitError:
+            self._run("checkout", "-b", branch)
+
+    def reset(self, ref: str, *, mode: str = "hard") -> None:
+        """``git reset --<mode> <ref>``.
+
+        The version loop resets onto the commit being released, so a re-run **replaces** the
+        previous run's branch instead of stacking a second release on top of it.
+        """
+        self._run("reset", f"--{mode}", ref)
+
+    def push(self, branch: str, *, force: bool = False, remote: str = "origin") -> None:
+        """Push HEAD to ``branch`` on ``remote`` (``release-utils/src/run.ts:146``).
+
+        ``HEAD:<branch>`` rather than a bare branch name: the local branch may be checked out under
+        a different name in a detached CI checkout, and the destination is the part that matters.
+        """
+        args = ["push", remote, f"HEAD:{branch}"]
+        if force:
+            args.append("--force")
+        self._run(*args)
+
+    def push_tags(self, *, remote: str = "origin") -> None:
+        """Push every local tag to ``remote`` (``release-utils/src/run.ts:41``).
+
+        ``--tags`` rather than ``--follow-tags``: the publish loop's tags point at commits the
+        remote already has, and ``--follow-tags`` would refuse to push them without also pushing a
+        branch this loop deliberately does not touch.
+        """
+        self._run("push", remote, "--tags")
+
+    # ----------------------------------------------------------------------------------
     # Queries
     # ----------------------------------------------------------------------------------
 
