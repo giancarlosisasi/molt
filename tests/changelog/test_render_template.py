@@ -52,7 +52,6 @@ pytest.importorskip(
     reason="build step 7 -- molt.changelog not yet implemented (TDD target)",
 )
 
-# pyrefly: ignore[missing-import]  -- molt.changelog is the TDD target of build step 7.
 from molt.changelog.template import (
     RELEASE_LINE_TOKENS,
     build_release_line_tokens,

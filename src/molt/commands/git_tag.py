@@ -41,9 +41,10 @@ faithful preview, not an approximation.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+
+from molt.events import git_tag_event, write_ndjson
 
 __all__ = ["run"]
 
@@ -62,7 +63,7 @@ class _TagItem:
 
     def event(self) -> dict[str, Any]:
         """The NDJSON event for this tag, snake_case keys (design D6)."""
-        return {"type": "git-tag", "tag": self.tag, "package_name": self.package_name}
+        return git_tag_event(self.tag, self.package_name)
 
 
 def run(
@@ -115,7 +116,7 @@ def run(
     to_create = [item for item in plan if item.tag not in existing]
 
     if output is not None:
-        _write_ndjson(output, to_create)
+        write_ndjson(output, [item.event() for item in to_create])
 
     if dry_run:
         for item in to_create:
@@ -206,19 +207,7 @@ def _tag_name(package: Package, workspace: Workspace) -> str:
 
 # ======================================================================================
 # The NDJSON event stream (design D5/D6)
+#
+# The writer itself lives in :mod:`molt.events`, shared with ``molt publish`` -- the two streams
+# are asserted byte-identical by two suites, so they are produced by one function.
 # ======================================================================================
-
-
-def _write_ndjson(path: str | Path, items: list[_TagItem]) -> None:
-    """Write one NDJSON event per item, LF-terminated, created even when ``items`` is empty.
-
-    An empty file (rather than no file) is the signal that the command ran and found nothing to do
-    (design D5). Written as bytes so no platform newline translation can turn the LF-only stream a
-    line-oriented consumer expects into CRLF.
-    """
-    from pathlib import Path as _Path
-
-    target = _Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    lines = "".join(json.dumps(item.event(), separators=(",", ":")) + "\n" for item in items)
-    target.write_bytes(lines.encode("utf-8"))

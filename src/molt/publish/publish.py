@@ -37,11 +37,11 @@ the skip decision was taken against a project of the same name on pypi.org.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from molt.errors import MoltError
+from molt.events import git_tag_event, write_ndjson
 from molt.publish.plan import PLAN_FILENAME, tag_name
 
 if TYPE_CHECKING:
@@ -234,7 +234,7 @@ def publish(
         # downstream reads this file without checking whether it exists, and a run that published
         # two chunks and then failed still has to report the two tags it created.
         if output is not None:
-            _write_ndjson(output, events)
+            write_ndjson(output, events)
 
 
 def _publish(
@@ -571,25 +571,10 @@ def _event(tag: str, package_name: str) -> dict[str, Any]:
     that is a contract rather than a coincidence: a consumer reading the stream cannot tell which
     command produced it, so upstream's camelCase ``packageName`` (``utils/output.ts:6-10``) must
     stay renamed in both. ``tests/publish/test_publish.py`` asserts the exact bytes against the
-    same reader ``tests/cli/test_git_tag.py`` uses.
+    same reader ``tests/cli/test_git_tag.py`` uses. Both call one builder in :mod:`molt.events`,
+    so the agreement is structural rather than maintained by hand (gap ``PY-8``).
     """
-    return {"type": "git-tag", "tag": tag, "package_name": package_name}
-
-
-def _write_ndjson(path: Path | str, events: Sequence[dict[str, Any]]) -> None:
-    """Write one line per event, LF-terminated, creating the file even when there are none.
-
-    An empty file rather than no file is the signal that the command ran and had nothing to tag; a
-    consumer that reads a missing file as "zero events" cannot tell a skipped run from a crash.
-    Written as bytes so no platform newline translation turns the LF-only stream a line-oriented
-    consumer expects into CRLF.
-    """
-    from pathlib import Path as _Path
-
-    target = _Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    lines = "".join(json.dumps(event, separators=(",", ":")) + "\n" for event in events)
-    target.write_bytes(lines.encode("utf-8"))
+    return git_tag_event(tag, package_name)
 
 
 # ======================================================================================

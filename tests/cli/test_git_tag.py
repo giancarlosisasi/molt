@@ -44,7 +44,6 @@ from tests.cli.fake_cli import FakeGit, RecordingConsole, read_ndjson
 
 pytest.importorskip("molt.commands.git_tag", reason="build step 6 - `molt git-tag` is a TDD target")
 
-# pyrefly: ignore[missing-import]  -- molt.commands.git_tag is the TDD target of build step 6.
 from molt.commands.git_tag import run
 
 if TYPE_CHECKING:

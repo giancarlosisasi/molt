@@ -49,10 +49,7 @@ from tests.cli.fake_cli import RecordingConsole, ScriptedPrompts
 pytest.importorskip("molt.commands.init", reason="build step 6 - `molt init` is a TDD target")
 pytest.importorskip("molt.errors", reason="build step 6 - molt.errors lands with the cli shell")
 
-# pyrefly: ignore[missing-import]  -- molt.commands.init is the TDD target of build step 6.
 from molt.commands.init import run
-
-# pyrefly: ignore[missing-import]  -- molt.errors lands with the adopt-typer-cli-shell change.
 from molt.errors import ExitError
 
 if TYPE_CHECKING:

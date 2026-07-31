@@ -113,13 +113,8 @@ pytest.importorskip(
 import httpx
 import respx
 
-# pyrefly: ignore[missing-import]  -- molt.changelog is the TDD target of build step 7.
 from molt.changelog.git import generator as git_generator
-
-# pyrefly: ignore[missing-import]  -- molt.changelog is the TDD target of build step 7.
 from molt.changelog.github import generator as github_generator
-
-# pyrefly: ignore[missing-import]  -- molt.forge is the TDD target of build step 9.
 from molt.forge import GitHubForge
 
 # Markers are applied PER TEST, not module-wide. An earlier revision set

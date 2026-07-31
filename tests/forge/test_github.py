@@ -111,7 +111,6 @@ pytest.importorskip("molt.forge", reason="build step 9 - molt.forge is a TDD tar
 import httpx
 import respx
 
-# pyrefly: ignore[missing-import]  -- molt.forge is the TDD target of build step 9.
 from molt.forge import Forge, GitHubForge
 
 # ======================================================================================

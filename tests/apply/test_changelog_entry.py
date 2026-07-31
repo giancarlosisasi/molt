@@ -125,7 +125,7 @@ pytest.importorskip(
     "molt.changelog", reason="build step 7 - changelog not yet implemented (TDD target)"
 )
 
-from molt.changelog import (  # pyrefly: ignore[missing-import]
+from molt.changelog import (
     generate_markdown_for_version_type,
     get_changelog_entry,
 )

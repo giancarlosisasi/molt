@@ -65,10 +65,7 @@ import pytest
 pytest.importorskip("molt.errors", reason="build step 9 - molt.errors is a TDD target")
 pytest.importorskip("molt.git", reason="build step 9 - molt.git is a TDD target")
 
-# pyrefly: ignore[missing-import]  -- molt.errors is the TDD target of build step 9.
 from molt.errors import GitError
-
-# pyrefly: ignore[missing-import]  -- molt.git is the TDD target of build step 9.
 from molt.git import Git
 
 if TYPE_CHECKING:

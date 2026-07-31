@@ -55,7 +55,6 @@ pytest.importorskip(
     "molt.changeset", reason="build step 3 - changeset IO not yet implemented (TDD target)"
 )
 
-# pyrefly: ignore[missing-import]  -- `molt.changeset` is the TDD target of build step 3.
 from molt.changeset import read_changesets
 
 pytestmark = pytest.mark.functional

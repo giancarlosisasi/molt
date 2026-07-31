@@ -89,8 +89,8 @@ pytest.importorskip(
     "molt.errors", reason="build step 9 - molt.errors not yet implemented (TDD target)"
 )
 
-from molt.apply import edit_toml, set_dependency_specifier  # pyrefly: ignore[missing-import]
-from molt.errors import MoltKeyPathError, MoltParseError  # pyrefly: ignore[missing-import]
+from molt.apply import edit_toml, set_dependency_specifier
+from molt.errors import MoltKeyPathError, MoltParseError
 
 pytestmark = pytest.mark.unit
 
