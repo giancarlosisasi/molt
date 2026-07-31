@@ -51,11 +51,31 @@ The startup banner (`molt v<version>`, prefixed with a butterfly glyph) prints o
 
 > `-v` is **not** a global alias for `--version`. On [`molt status`](/cli/status), `-v` means `--verbose`. Use the long `--version` form for the version string.
 
+## The stream contract
+
+**Every human-facing byte goes to stderr. stdout carries machine-readable payloads only.**
+
+That covers the startup banner, every levelled message (`info`, `success`, `warn`, `error`), notes, spinners and progress -- all stderr. The only things molt writes to stdout are the `--output json` payload and the bare `molt --version` string.
+
+The split is what makes the documented CI recipe work:
+
+```bash
+molt status --output json | jq '.releases[].name'
+```
+
+With the banner on stdout, `jq` (or `json.loads`) reads it first and the pipeline dies. Redirecting the payload to a file behaves the same way:
+
+```bash
+molt status --output json > plan.json   # plan.json is exactly one JSON document
+```
+
+So a script may treat stdout as parseable without filtering it, and may show stderr to a human without stripping data out of it.
+
 ## Machine-readable output
 
 Molt produces a machine-readable [plan object](/concepts/release-plan) on every mutating command, and structured output on read commands:
 
-- **`molt status` and `molt publish-plan`** accept `--output json` to print the plan as a JSON document to stdout.
+- **`molt status` and `molt publish-plan`** accept `--output json` (short: `-o`) to print the plan as a JSON document to stdout. Plan keys are **snake_case** -- `old_version`, `new_version`, `package_name`.
 - **`molt publish` and `molt git-tag`** accept `--output <file>` to write an NDJSON event stream -- one `{"type":"git-tag", ...}` object per line -- to a file.
 - The **`MOLT_OUTPUT`** environment variable back-fills `--output` when the flag is not passed, so CI can set it once for the whole pipeline.
 

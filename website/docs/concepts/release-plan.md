@@ -22,22 +22,22 @@ molt version --dry-run
     {
       "name": "acme-core",
       "type": "major",
-      "oldVersion": "1.4.2",
-      "newVersion": "2.0.0",
+      "old_version": "1.4.2",
+      "new_version": "2.0.0",
       "changesets": ["slow-lions-cough"]
     },
     {
       "name": "acme-http",
       "type": "patch",
-      "oldVersion": "2.1.0",
-      "newVersion": "2.1.1",
+      "old_version": "2.1.0",
+      "new_version": "2.1.1",
       "changesets": []
     },
     {
       "name": "acme-cli",
       "type": "patch",
-      "oldVersion": "0.8.0",
-      "newVersion": "0.8.1",
+      "old_version": "0.8.0",
+      "new_version": "0.8.1",
       "changesets": []
     }
   ],
@@ -122,7 +122,7 @@ The three passes run in that order on purpose, and the order is observable in th
 A loop that "repeats until nothing changes" only halts if change cannot go on forever. molt's does, because **every mutation is monotone up a finite lattice**:
 
 - A release's bump type only ever climbs `none < patch < minor < major`, and a pass refuses to re-assign a type a release already has. It can go up; it can never come back down.
-- The `oldVersion` a group aligns to is `max(current versions of the group's members)`, read **from disk** -- never from the evolving plan. It is a fixed target, not a moving one.
+- The `old_version` a group aligns to is `max(current versions of the group's members)`, read **from disk** -- never from the evolving plan. It is a fixed target, not a moving one.
 - The set of releasing packages only grows, and it is bounded by the size of the workspace.
 
 So the number of state changes is bounded (roughly "packages times bump levels"), and the loop provably reaches a fixpoint. This is not a detail to gloss over: a naive implementation that reports "changed" on every pass unconditionally never terminates. molt's property tests pin both **termination** (the loop always halts) and **confluence** (the final version numbers do not depend on the order changesets were fed in, even though the *output* order is insertion-defined). The monotonicity that makes the bump arithmetic strictly increasing is the same property the loop's termination rests on -- see [Versioning and PEP 440](/concepts/versioning-pep440).

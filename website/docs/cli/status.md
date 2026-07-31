@@ -27,11 +27,13 @@ molt status [OPTIONS]
 |---|---|---|---|
 | `--since <ref>` | string | base branch | Compare against `<ref>` to decide which packages and changesets are "new". |
 | `-v`, `--verbose` | flag | off | Also print each projected new version and the changeset files behind it. |
-| `--output json` | string | human-readable | Emit the release plan as JSON on stdout instead of the rendered view. Back-filled by `MOLT_OUTPUT`. |
+| `-o`, `--output json` | string | human-readable | Emit the release plan as JSON on stdout instead of the rendered view. `json` is the only accepted value -- `status` writes no files. Back-filled by `MOLT_OUTPUT`. |
 | `--cwd <path>` | path | current directory | Directory to run in; root discovery starts here. |
 | `-h`, `--help` | flag | -- | Show help and exit. |
 
 > On `molt status`, `-v` means `--verbose`, not `--version` -- a deliberate carry-over from changesets. Use the long `--version` on `molt` itself for the version string.
+
+The rendered view and the CI gate's guidance go to **stderr**; only the `--output json` payload goes to stdout. That is what makes `molt status --output json | jq` work -- see [the stream contract](/cli/overview#the-stream-contract).
 
 ## Exit codes
 
@@ -92,8 +94,8 @@ molt status --output json
     {
       "name": "acme-core",
       "type": "minor",
-      "oldVersion": "1.0.0",
-      "newVersion": "1.1.0",
+      "old_version": "1.0.0",
+      "new_version": "1.1.0",
       "changesets": [ "tidy-eels-return" ]
     }
   ]
