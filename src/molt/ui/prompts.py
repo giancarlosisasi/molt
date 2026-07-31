@@ -1,10 +1,13 @@
 """The prompt adapter -- the single choke point every interactive question passes through.
 
 Ports ``packages/cli/src/utils/cli-utilities.ts`` and ``askWithEditor`` (research doc 03 §2), but
-only as a **protocol**: the concrete ``questionary`` implementation lands with the ``add``-flow
-change, because the grouped multiselect it has to reproduce (§11.2) is command work, not shell work.
-What lands now is everything the shell owns -- the protocol commands may depend on, the uniform
-cancellation contract, and the ``--non-interactive`` choke point.
+only as a **protocol**: the concrete implementation is still owed, because the grouped multiselect
+it has to reproduce (§11.2) is command work, not shell work. This paragraph used to name the
+``add``-flow change as its home; that change shipped without it, driving every prompt through an
+injected double instead -- see :class:`QuestionaryPrompts`.
+
+What the shell owns is here -- the protocol commands may depend on, the uniform cancellation
+contract and its :data:`CANCEL` sentinel, and the ``--non-interactive`` choke point.
 
 Method names are molt's (``multiselect``/``select``/``confirm``/``text``/``editor``), not upstream's
 ``askMultiselect``/``askList``/``askQuestion``/``askConfirm``: the ``ask`` prefix restates what a
@@ -34,9 +37,11 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 __all__ = [
+    "CANCEL",
     "Prompts",
     "QuestionaryPrompts",
     "cancelable",
+    "is_cancel",
     "is_non_interactive",
     "non_interactive_answer",
     "set_non_interactive",
@@ -78,6 +83,41 @@ class Prompts(Protocol):
 # ======================================================================================
 
 
+class _Cancel:
+    """Sentinel type for :data:`CANCEL`.
+
+    Falsy on purpose. A command that forgets the explicit check and reaches for truthiness still
+    treats a cancellation as "no answer" rather than as a real, empty one -- the wrong outcome, but
+    the *safe* wrong outcome.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid only
+        return "CANCEL"
+
+    def __bool__(self) -> bool:
+        return False
+
+
+#: The value a :class:`Prompts` implementation returns when the user aborted the question.
+#:
+#: ``questionary`` reports a cancellation by returning ``None``, so ``None`` stays accepted
+#: (:func:`is_cancel`); this sentinel exists because a prompt whose *legitimate* answer is ``None``
+#: -- or a test double scripting a cancellation -- needs something unambiguous to hand back.
+CANCEL: Final = _Cancel()
+
+
+def is_cancel(value: Any) -> bool:
+    """Whether ``value`` means "the user aborted this prompt".
+
+    The one predicate every prompt result goes through, so "was this cancelled?" cannot be spelled
+    two ways in two commands. Both accepted forms are here: ``questionary``'s ``None`` and molt's
+    own :data:`CANCEL`.
+    """
+    return value is None or isinstance(value, _Cancel)
+
+
 def cancelable(value: Any) -> Any:
     """Pass ``value`` through, or report a cancellation and exit 0.
 
@@ -85,8 +125,12 @@ def cancelable(value: Any) -> Any:
     every call site would have to remember the check -- and the one that forgot would treat a
     cancellation as an empty answer. Raising :class:`typer.Exit` rather than calling ``sys.exit``
     keeps the funnel in ``molt.cli.main`` in charge of the actual process exit.
+
+    A command that has cleanup of its own to do -- ``molt add`` must report "Canceled" and leave
+    ``.changeset/`` untouched -- tests :func:`is_cancel` directly instead, which is the same
+    contract without the control flow.
     """
-    if value is None:
+    if is_cancel(value):
         console.info("Canceled")
         raise typer.Exit(0)
     return value
@@ -139,10 +183,18 @@ def non_interactive_answer(message: str, *, default: Any = _UNSET) -> Any:
 class QuestionaryPrompts:
     """The concrete :class:`Prompts` implementation -- **deferred**.
 
-    Registered here so the seam has a named home and the import graph is settled; the bodies land
-    with the ``add``-flow change, together with the grouped multiselect (research doc 03 §2,
-    §11.2) that is the only genuinely hard prompt in molt. Every method must route its result
-    through :func:`cancelable` and consult :func:`is_non_interactive` first.
+    Registered here so the seam has a named home and the import graph is settled.
+
+    **The bodies did not land with the ``add``-flow change, contrary to what this docstring used to
+    predict.** That change drives every prompt through an injected double, so no conformance row
+    reaches these methods and molt still has no prompt library as a dependency. What is owed is the
+    concrete implementation plus the grouped multiselect (research doc 03 §2, §11.2), which is the
+    only genuinely hard prompt in molt. Until then a fully interactive ``molt add`` -- one with no
+    selection flags, no ``--stdin`` and no ``--empty`` -- raises from here; every non-interactive
+    surface works.
+
+    Every method must route its result through :func:`cancelable` (or :func:`is_cancel`) and
+    consult :func:`is_non_interactive` first.
     """
 
     def multiselect(self, message: str, choices: Sequence[Any] = (), **kwargs: Any) -> Any:
