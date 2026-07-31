@@ -31,6 +31,12 @@ And one deliberate divergence that is not a bug fix: the flag path does **no** c
 detection (design D7). Detection is a git call, a caller who has already named the packages should
 not pay for it, and in a shallow CI clone it can fail outright. Upstream runs it unconditionally
 (``add/index.ts:72-89``) and then ignores the answer in that flow.
+
+**Owner ruling AC-3 (2026-07-30) narrows the previous paragraph's "molt falls through in both".**
+That is still true of the *interactive* flow. On the *flag* path there is no minor prompt to fall
+through to, so a declined flag-selected first major now **aborts the whole run** -- nothing is
+written, exit code 0, one line reported -- rather than being silently downgraded to a minor. See
+:func:`_confirm_first_majors` and :class:`_FirstMajorAborted`.
 """
 
 from __future__ import annotations
@@ -96,6 +102,12 @@ _SUMMARY_RETRY_PROMPT: Final = (
 )
 _CANCELED: Final = "Canceled"
 
+#: Printed when a **flag-selected** first major is declined (owner ruling AC-3, 2026-07-30). A
+#: distinct message from ``_CANCELED``: "you said no to a first major" and "you hit Ctrl-C" are
+#: different events, and reporting the wrong one would tell a bot the wrong thing to search its log
+#: for.
+_FIRST_MAJOR_ABORTED: Final = "First major declined for {name}; nothing was written."
+
 #: Group labels of the partitioned package multiselect (``createChangeset.ts:59-64``). Changed
 #: packages come first, and an empty group is omitted rather than rendered as an empty box.
 _CHANGED_GROUP: Final = "changed packages"
@@ -127,6 +139,26 @@ class _Canceled(Exception):
     at anything. An exception rather than a sentinel threaded through six return types, because
     every prompt in the flow can produce one and all of them unwind to the same place.
     """
+
+
+class _FirstMajorAborted(Exception):
+    """Internal control flow: a **flag-selected** first major was declined. Caught in :func:`run`,
+    never escapes it -- the same exit-0/writes-nothing contract as :class:`_Canceled` (owner ruling
+    AC-3, 2026-07-30), but its own message: "nothing was written because a first major was
+    declined" is a different event from "nothing was written because a prompt was cancelled", and
+    conflating the two would misreport why to a user or a bot scanning the log.
+
+    The **interactive** flow is unchanged by this ruling -- a declined confirmation there still
+    falls through to the minor prompt (research doc 03 section 10.8; molt divergence item 2),
+    because the interactive path always has a next question left to ask. The flag path never did,
+    which is exactly why upstream skips the guard there entirely (research doc 03 section 10.7) and
+    why silently downgrading to minor was the wrong fix: the caller asked for major and never
+    agreed to minor.
+    """
+
+    def __init__(self, package_name: str) -> None:
+        super().__init__(package_name)
+        self.package_name = package_name
 
 
 @dataclasses.dataclass(frozen=True)
@@ -232,6 +264,7 @@ def run(
             git=git,
             root=root,
             config=config,
+            workspace=workspace,
             versionable=versionable,
             empty=empty,
             since=since,
@@ -246,6 +279,12 @@ def run(
         )
     except _Canceled:
         console.info(_CANCELED)
+        return
+    except _FirstMajorAborted as exc:
+        # Owner ruling AC-3 (2026-07-30): a flag-selected first major that was declined aborts the
+        # whole run, exactly like a cancelled prompt -- exit 0, nothing written -- but with its own
+        # message naming which package and why.
+        console.info(_FIRST_MAJOR_ABORTED.format(name=exc.package_name))
         return
 
     changeset = _build_changeset(changeset_dir, selection, summary)
@@ -341,6 +380,7 @@ def _resolve(
     git: Any,
     root: Path,
     config: Config,
+    workspace: Workspace,
     versionable: list[Package],
     empty: bool,
     since: str | Sequence[str] | None,
@@ -383,7 +423,9 @@ def _resolve(
         raise ExitError(1)
 
     if supplied is not None:
-        selection = _validate(supplied.requests, versionable, console)
+        selection = _validate(
+            supplied.requests, versionable, console, workspace=workspace, config=config
+        )
         selection = _confirm_first_majors(selection, prompts, non_interactive=non_interactive)
     else:
         selection = _interactive_selection(
@@ -589,8 +631,54 @@ def _stdin_payload(console: Any) -> dict[str, Any]:
 # ======================================================================================
 
 
+def _not_releasable_message(request: _Request, package: Package | None, config: Config) -> str:
+    """The message for one request naming a package outside the versionable set.
+
+    Owner ruling AC-4 (2026-07-30): a name matching **nothing** discovered in the project reports
+    the pre-existing "not found" message; a name that resolves to a package the project *did*
+    discover, but excludes from releasing, names the package and the reason class instead --
+    reporting the second as though it were the first sends the user chasing a typo that is not
+    there.
+    """
+    if package is None:
+        return (
+            f"The package {request.name} is passed to the `{request.source}` option "
+            "but it is not found in the project."
+        )
+    return (
+        f"The package {request.name} is passed to the `{request.source}` option "
+        f"but it is {_unreleasable_reason(package, config)} and cannot be released."
+    )
+
+
+def _unreleasable_reason(package: Package, config: Config) -> str:
+    """Which of :func:`_versionable_packages`'s three rules excludes ``package``.
+
+    Re-applies the same three checks, in the same order, rather than inventing a second
+    classification: a change to one rule changes its explanation for free. A package can fail more
+    than one rule at once; the first is reported. The fallback string is defensive only -- every
+    caller of this function already knows ``package`` is outside the versionable set, so one of the
+    three checks always fires.
+    """
+    from molt.names import normalize_name
+
+    if package.version is None:
+        return "versionless (it declares no `version` in its pyproject.toml)"
+    ignored = {normalize_name(name) for name in config.ignore}
+    if package.normalized_name in ignored:
+        return "ignored (listed in this project's `ignore` configuration)"
+    if package.private and not config.private_packages.version:
+        return "private, and `private_packages.version` is disabled for this project"
+    return "not releasable"  # pragma: no cover - defensive; see docstring
+
+
 def _validate(
-    requests: Sequence[_Request], versionable: Sequence[Package], console: Any
+    requests: Sequence[_Request],
+    versionable: Sequence[Package],
+    console: Any,
+    *,
+    workspace: Workspace,
+    config: Config,
 ) -> list[tuple[Package, BumpType]]:
     """Resolve every request to a package, in a **fixed order: existence, then duplication**.
 
@@ -601,16 +689,22 @@ def _validate(
 
     Every message from one pass is emitted as a **single** console error joined by newlines: a bot
     fixing one typo per run would otherwise need three runs to find three typos.
+
+    **Owner ruling AC-4 (2026-07-30) distinguishes two failure classes** that used to share one
+    message: a name matching **nothing** discovered in the project, and a name that resolves to a
+    **discovered-but-excluded** package (ignored, private with private-package versioning off, or
+    versionless). ``workspace`` and ``config`` exist on this signature only to answer that second
+    question -- ``versionable`` alone cannot, because it has already dropped the excluded packages.
     """
     from molt.errors import ExitError
     from molt.names import normalize_name
     from molt.versioning import BumpType
 
     known = {pkg.normalized_name: pkg for pkg in versionable}
+    discovered = {pkg.normalized_name: pkg for pkg in _selectable_packages(workspace)}
 
     unknown = [
-        f"The package {request.name} is passed to the `{request.source}` option "
-        "but it is not found in the project."
+        _not_releasable_message(request, discovered.get(normalize_name(request.name)), config)
         for request in requests
         if normalize_name(request.name) not in known
     ]
@@ -675,13 +769,22 @@ def _confirm_message(package: Package) -> str:
 def _confirm_first_majors(
     selection: list[tuple[Package, BumpType]], prompts: Any, *, non_interactive: bool
 ) -> list[tuple[Package, BumpType]]:
-    """Ask before a flag-selected first major, and **downgrade** rather than abort on a decline.
+    """Ask before a flag-selected first major, and **abort** rather than downgrade on a decline.
 
     Upstream never calls ``confirmMajorRelease`` on the flag path (``createChangeset.ts:148-170``),
     so ``changeset --major pkg-a`` silently bypasses the one safety net first majors have. molt
     applies the guard here too (research doc 03 section 11.7 item 3).
 
-    ``--non-interactive`` proceeds without asking, which is what keeps the fix usable from a bot:
+    **Owner ruling AC-3 (2026-07-30).** A declined confirmation used to be silently downgraded to a
+    minor -- the flag path's only option, since it has no minor prompt to fall through to the way
+    the interactive multiselect does. The owner ruled that silence is the wrong failure: the caller
+    asked for a major and never agreed to a minor, so declining now raises
+    :class:`_FirstMajorAborted`, which :func:`run` turns into a clean, nothing-written exit. This
+    function is called **only** from the flag/``--package``/``--stdin`` path (:func:`_resolve`'s
+    ``supplied is not None`` branch); the interactive flow's own confirmation logic lives in
+    :func:`_monorepo_flow` and :func:`_single_package_flow` and is untouched by this ruling.
+
+    ``--non-interactive`` proceeds without asking, which is what keeps the guard usable from a bot:
     without that escape hatch molt's improvement would make ``--major`` unusable in CI.
     """
     from molt.versioning import BumpType
@@ -697,7 +800,9 @@ def _confirm_first_majors(
         answer = prompts.confirm(_confirm_message(package))
         if is_cancel(answer):
             raise _Canceled
-        confirmed.append((package, BumpType.MAJOR if answer else BumpType.MINOR))
+        if not answer:
+            raise _FirstMajorAborted(package.name)
+        confirmed.append((package, BumpType.MAJOR))
     return confirmed
 
 

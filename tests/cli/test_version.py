@@ -1272,6 +1272,34 @@ def test_a_dependent_changelog_records_the_dependency_update(
     )
 
 
+def test_a_path_sourced_dependency_is_treated_as_a_workspace_edge(
+    tmp_project: ProjectBuilder, console: RecordingConsole, fake_git: FakeGit
+) -> None:
+    """SC-4 (owner ruling, 2026-07-30). A ``{ path = ... }`` ``[tool.uv.sources]`` entry that
+    resolves onto a workspace member is an internal edge exactly like ``{ workspace = true }`` --
+    ``molt.ecosystem.uv`` already reads it that way (``_workspace_marker``); ``molt.apply.apply``
+    now agrees. The only difference from the previous test
+    (``test_a_dependent_changelog_records_the_dependency_update``) is how the source is spelled --
+    everything else about the fixture and the assertions is identical, which is what makes this the
+    first row proving the path-source reading end to end (previously nothing did: `SC-5`).
+    """
+    tmp_project.add_package("pkg-a", "1.0.0")
+    tmp_project.add_package("pkg-b", "1.0.0", deps=["pkg-a"])
+    append_table(tmp_project.root, "pkg-b", "tool.uv.sources", ['pkg-a = { path = "../pkg-a" }'])
+    tmp_project.set_config(update_internal_dependents="always")
+    tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "This is a summary")
+
+    run_version(tmp_project.root, console, fake_git)
+
+    changelog = read_changelog(tmp_project.root, "pkg-b")
+    assert changelog is not None, "a dependency-only release still explains itself"
+    assert "### Patch Changes" in changelog
+    assert "pkg-a@1.1.0" in changelog
+    assert deps(tmp_project.root, "pkg-b") == ["pkg-a"], (
+        "the bare path-sourced pin is left untouched, same as a bare workspace = true pin"
+    )
+
+
 def test_a_dependency_named_in_several_sections_is_rewritten_in_all_of_them(
     tmp_project: ProjectBuilder, console: RecordingConsole, fake_git: FakeGit
 ) -> None:

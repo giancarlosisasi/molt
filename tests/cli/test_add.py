@@ -694,6 +694,33 @@ def test_release_type_flags_still_ask_the_first_major_confirmation(
     assert prompts.kinds == ["confirm"], "only the guard prompts; -m skips the summary"
 
 
+def test_declining_the_first_major_on_the_flag_path_aborts_and_writes_nothing(
+    tmp_project: ProjectBuilder,
+) -> None:
+    """AC-3 (owner ruling, 2026-07-30): the flag path has no minor prompt to fall through to, so a
+    declined flag-selected first major now **aborts** -- exit 0, nothing written, one line reported
+    -- instead of being silently downgraded to a minor. Only the *accepted* answer was tested before
+    this ruling (the previous test). The **interactive** flow is unchanged: see
+    ``test_declining_the_first_major_falls_through_to_the_minor_prompt`` and
+    ``test_declining_the_first_major_in_a_single_package_repo_does_not_abort``, both still pinning
+    fall-through.
+    """
+    root = monorepo(tmp_project, "pkg-a", "pkg-b", version="0.4.0")
+    console = RecordingConsole()
+    prompts = ScriptedPrompts(confirm=[False])
+
+    code = exit_code_of(
+        lambda: add_changeset(
+            root, console=console, prompts=prompts, major=["pkg-a"], message=SUMMARY
+        )
+    )
+
+    assert code == 0, "declining aborts cleanly, it does not fail the run"
+    assert changeset_ids(root) == [], "nothing may be written when a first major is declined"
+    assert console.contains("pkg-a")
+    assert console.contains("nothing was written")
+
+
 def test_non_interactive_major_flag_proceeds_without_confirmation(
     tmp_project: ProjectBuilder,
 ) -> None:
@@ -1081,6 +1108,57 @@ def test_unknown_package_names_are_not_also_reported_as_duplicates(
         )
 
 
+#: (config, package_kwargs, reason substring) -- a package the project *discovers* but does not
+#: consider releasable, and the reason class the new message must name (AC-4, owner ruling
+#: 2026-07-30). Distinct from `test_release_type_flags_validate_unknown_package_names`, where the
+#: name matches nothing discovered at all.
+NOT_RELEASABLE_CASES: Final = [
+    (
+        {"ignore": ["pkg-b"]},
+        {},
+        "ignored",
+    ),
+    (
+        {"private_packages": {"version": False}},
+        {"private": True},
+        "private",
+    ),
+]
+
+
+@pytest.mark.parametrize(("config", "package_kwargs", "reason_fragment"), NOT_RELEASABLE_CASES)
+def test_a_discovered_but_not_releasable_package_explains_why(
+    tmp_project: ProjectBuilder,
+    config: dict[str, Any],
+    package_kwargs: dict[str, Any],
+    reason_fragment: str,
+) -> None:
+    """AC-4 (owner ruling, 2026-07-30): a name that resolves to a package the project *discovers*
+    but does not consider releasable reports the package and the reason -- distinct from the
+    blanket "not found in the project" message, which stays reserved for a name matching nothing
+    discovered at all (see the row above).
+
+    ``src/molt/commands/add.py::_validate`` built ``known`` from the *versionable* set only, so
+    before this ruling both cases printed the same "not found" message as a genuinely unknown name
+    -- true of the releasable set, false of the repository.
+    """
+    root = monorepo(tmp_project, "pkg-a")
+    tmp_project.add_package("pkg-b", version="1.0.0", **package_kwargs)
+    tmp_project.set_config(**config)
+    console = RecordingConsole()
+
+    with pytest.raises(ExitError) as excinfo:
+        add_changeset(root, console=console, message="test", patch=["pkg-b"])
+
+    assert excinfo.value.code == 1
+    assert len(console.errors) == 1
+    error = console.errors[0]
+    assert "pkg-b" in error
+    assert reason_fragment in error
+    assert "not found in the project" not in error, "pkg-b exists; that message is for unknowns"
+    assert changeset_ids(root) == []
+
+
 def test_release_type_flags_write_a_changeset_without_prompting(
     tmp_project: ProjectBuilder,
 ) -> None:
@@ -1120,6 +1198,23 @@ def test_package_and_bump_write_a_changeset_without_prompting(
     written = read_only_changeset(root)
     assert written.releases == [("pkg-a", "minor"), ("pkg-b", "minor")]
     assert prompts.calls == []
+
+
+def test_package_flag_without_bump_is_a_hard_error(tmp_project: ProjectBuilder) -> None:
+    """AC-2 (owner ruling, 2026-07-30): ``--package`` names *which* packages, ``--bump`` says *how
+    much*; naming packages with ``--package`` and no ``--bump`` is refused rather than falling into
+    the interactive bump prompts for exactly those packages.
+    """
+    root = monorepo(tmp_project, "pkg-a")
+    console = RecordingConsole()
+
+    with pytest.raises(ExitError) as excinfo:
+        add_changeset(root, console=console, package=["pkg-a"])
+
+    assert excinfo.value.code == 1
+    assert len(console.errors) == 1
+    assert "--bump" in console.errors[0]
+    assert changeset_ids(root) == []
 
 
 # (project name, flag spelling, why) -- PEP 503 says these are all the same package.

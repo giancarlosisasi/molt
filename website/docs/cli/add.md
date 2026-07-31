@@ -35,9 +35,9 @@ Cancelling any prompt with Ctrl-C exits 0 and writes nothing.
 
 Choosing a **major** bump for a package still **below `1.0.0`** asks one extra yes/no question before the changeset is written. Below 1.0.0 a major release is the package's *first* major: it takes the version to `1.0.0` and declares the API stable, which is not something to do by accident during a repo-wide sweep. At or above 1.0.0 the question is not asked.
 
-**Declining does not abort.** The package simply falls back into the next prompt, so you can pick `minor` instead and keep the changeset you were writing.
+**Declining does not abort -- in the interactive flow.** The package simply falls back into the next prompt, so you can pick `minor` instead and keep the changeset you were writing.
 
-The confirmation is not limited to the interactive flow: **`--major` triggers it too.** `molt add --major pkg-a -m "..."` asks it, even though every other part of that run is non-interactive.
+The confirmation is not limited to the interactive flow: **`--major` triggers it too.** `molt add --major pkg-a -m "..."` asks it, even though every other part of that run is non-interactive. But on the flag path there is no next prompt to fall back into, so **declining there aborts the whole run**: nothing is written, the command exits `0`, and one line reports that nothing was written for that package.
 
 To take a first major with no question -- from CI, a bot, or a script -- add `--non-interactive`:
 

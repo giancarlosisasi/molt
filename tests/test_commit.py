@@ -257,3 +257,22 @@ def test_default_commit_functions_are_registered_as_entry_points() -> None:
     loaded = entry_points["default"].load()
     assert callable(loaded.get_add_message)
     assert callable(loaded.get_version_message)
+
+
+def test_load_provider_resolves_molt_commit_default_by_stripping_the_group_prefix() -> None:
+    """AC-7 (owner ruling, 2026-07-30): the prefix-strip resolution mechanism is ratified.
+
+    ``commit = true`` normalizes to the ref ``"molt.commit.default"``, which matches neither the
+    entry-point name (``"default"``) nor an importable module by that name. ``load_provider``
+    resolves it anyway by also trying the ref with the ``molt.commit.`` group prefix stripped --
+    the same mechanism ``molt.apply.generators`` uses for ``"molt.changelog.default"``. Asserting
+    module identity (rather than only "no exception was raised") pins the mechanism itself: a
+    special-cased branch keyed on the literal ref would also avoid raising, but would not be this
+    resolution path.
+    """
+    import molt.commit as commit_module
+    from molt.commit import load_provider
+
+    provider = load_provider("molt.commit.default", method="get_add_message")
+
+    assert provider is commit_module

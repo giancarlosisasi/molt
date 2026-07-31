@@ -1488,6 +1488,28 @@ def test_no_changelog_is_generated_when_changelog_is_disabled(tmp_path: Path) ->
     assert not (root / "packages" / "pkg-a" / "CHANGELOG.md").exists()
 
 
+def test_the_default_changelog_ref_resolves_to_the_git_generator(tmp_path: Path) -> None:
+    """AC-7 (owner ruling, 2026-07-30): the prefix-strip resolution mechanism is ratified.
+
+    ``molt.config``'s ``BUILTIN_CHANGELOG`` is the ref ``"molt.changelog.default"``, which matches
+    neither the entry-point name (``"default"``) nor an importable module. ``resolve_generator``
+    reaches it anyway by also trying the ref with the ``molt.changelog.`` group prefix stripped --
+    the same mechanism ``molt.commit.load_provider`` uses for ``"molt.commit.default"``. Asserting
+    generator identity (rather than only "no exception was raised") pins the mechanism itself: a
+    branch special-cased on the literal ref would also avoid raising, but would not be this
+    resolution path.
+    """
+    from molt.apply.generators import resolve_generator
+    from molt.changelog.git import generator as git_generator
+
+    resolved = resolve_generator(
+        "molt.changelog.default", changeset_dir=tmp_path, project_root=tmp_path
+    )
+
+    assert resolved is not None
+    assert resolved.generator is git_generator
+
+
 def test_a_changelog_is_created_for_one_package(tmp_path: Path) -> None:
     """Row 28 (Port) -- ``index.test.ts:2118-2155``; ``index.ts:333-341``.
 
