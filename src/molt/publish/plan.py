@@ -85,6 +85,7 @@ __all__ = [
     "plan_envelope",
     "publishable_members",
     "read_publish_plan",
+    "tag_name",
     "targets_public_pypi",
     "write_publish_plan",
 ]
@@ -358,7 +359,7 @@ def _classify(
             continue
         directory = _relative_directory(package, workspace)
         if package.private:
-            if _tag_name(package.name, version) not in tagged:
+            if tag_name(package.name, version) not in tagged:
                 entries.append(_entry(_TAG_ONLY, package.name, version, directory))
             continue
         if version not in published.get(package.normalized_name, frozenset()):
@@ -387,8 +388,21 @@ def _relative_directory(package: Package, workspace: Workspace) -> str:
         return package.directory.as_posix()
 
 
-def _tag_name(name: str, version: str) -> str:
-    """The tag ``molt git-tag`` writes: the PEP 503 normalized name, ``@``, the version."""
+def tag_name(name: str, version: str) -> str:
+    """The tag a publish run writes: the PEP 503 normalized name, ``@``, the version.
+
+    Public because **two** stages compose tags and they must agree: this module asks "is this
+    private release already tagged?" and :func:`molt.publish.publish` creates the tag after an
+    upload. A second spelling of the rule in either place is how a release tagged by ``publish``
+    becomes invisible to the idempotency check in ``molt git-tag`` and gets re-tagged on every run
+    (``tests/publish/test_publish.py::test_publish_tags_use_pep_503_normalized_names`` says so in
+    as many words).
+
+    Note the one deliberate difference from :mod:`molt.commands.git_tag`: that command spells a
+    **single-package** repository's tag ``v<version>``, because there is only one candidate and the
+    version alone identifies it. The publish path has no such branch -- a plan entry names a
+    distribution, and the distribution name is what PyPI published it under. See ``PY-4``.
+    """
     return f"{normalize_name(name)}@{version}"
 
 

@@ -56,6 +56,6 @@ Two things to know before you click:
 
 ## See also
 
-- [`molt yank`](/cli/yank) -- flags, confirmation behavior, and exit codes.
+- [`molt yank`](/cli/yank) -- flags, why the yank itself is manual, and exit codes.
 - [Publishing](/guides/publishing) -- why PyPI immutability shapes the whole publish flow.
 - [Why Molt?](/introduction/why-molt) -- how PyPI's constraints become a feature changesets structurally cannot offer.

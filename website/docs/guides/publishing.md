@@ -18,20 +18,25 @@ molt publish
 Under the hood, `molt publish` is a pipeline you can also drive stage by stage:
 
 1. **Plan** -- query PyPI for each package to decide what actually needs uploading, then order the work by the dependency graph. `molt publish --dry-run` prints this [plan](/guides/dry-run-and-plans) and uploads nothing.
-2. **Pack** -- build an sdist and a wheel per package. [`molt pack`](/cli/pack) does this on its own and writes the artifacts (plus a checksum for each) into an out directory.
+2. **Build** -- build an sdist and a wheel per package. [`molt build`](/cli/pack) does this on its own and writes the artifacts (plus a checksum for each) into an out directory.
 3. **Publish** -- upload the built artifacts, then git-tag each successfully published package.
 
 Running `molt publish` on its own does all three. Splitting them matters in CI, where you want to build in an unprivileged job and upload from a separate job that holds the publish credential:
 
 ```bash
+# Decide once, on any machine
+molt publish-plan --output publish-plan.json
+
 # Build once, in a low-privilege job
-molt pack --out-dir dist/
+molt build --from-publish-plan publish-plan.json --out-dir dist/
 
 # Upload the prebuilt artifacts from a job that has the OIDC grant
 molt publish --from-pack-dir dist/
 ```
 
-See [`molt publish`](/cli/publish) and [`molt pack`](/cli/pack) for the full flag surface.
+The build stage writes an enriched `publish-plan.json` into the out directory, which is what `--from-pack-dir` reads: the upload job never recomputes the plan, so it uploads exactly the artifacts that were reviewed.
+
+The command is `molt build`, not `molt pack` -- `build` is what the Python packaging ecosystem calls this stage, and there is no `pack` alias. See [`molt publish`](/cli/publish) and [`molt build`](/cli/pack) for the full flag surface.
 
 ## Trusted Publishing over OIDC -- no long-lived token
 
@@ -88,7 +93,21 @@ Pass `--output` to write a newline-delimited JSON stream of `git-tag` events -- 
 
 ## Snapshots go to a separate index
 
-Do **not** publish snapshot builds to PyPI. Because every version is permanent, a throwaway snapshot would burn a public version number forever, and PyPI has no dist-tag to hide it behind. Molt targets a **separate index** for snapshots by default. See [Snapshot releases](/concepts/snapshots) for how that works and how to point it at your dev index.
+Do **not** publish snapshot builds to PyPI. Because every version is permanent, a throwaway snapshot would burn a public version number forever, and PyPI has no dist-tag to hide it behind.
+
+Molt does not silently reroute a snapshot -- it cannot invent the URL of your private index -- so it **refuses** instead. A release whose version has the snapshot shape aborts the run before molt reads the index and before it writes any output file:
+
+```
+Refusing to publish a snapshot release to PyPI: acme-core 0.0.0.dev20211213000730.
+```
+
+Name an index and the guardrail clears:
+
+```bash
+molt publish --repository snapshots
+```
+
+See [Snapshot releases](/concepts/snapshots) for how snapshot versions are built and [`molt publish`](/cli/publish) for the exact trigger shape.
 
 ## When a release goes wrong
 
