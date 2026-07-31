@@ -32,7 +32,16 @@ If a build fails, molt **surfaces the error and writes no plan file** -- there i
 | `--cwd <path>` | path | current directory | Directory to run in; root discovery starts here. |
 | `-h`, `--help` | flag | -- | Show help and exit. |
 
-The publish plan is a versioned envelope (`{ "version": 1, "plan": [...] }`); a plan file with an unrecognized version is rejected.
+The publish plan is a versioned envelope (`{ "version": 1, "plan": [...] }`); a plan file with an unrecognized version is rejected. The check is equality, not a floor -- an older envelope is a different document, not a compatible one -- and it also rejects a missing `version`, a `plan` that is not a list of chunks, and an envelope that is not an object at all. Nothing is built before the file is accepted.
+
+Each publish entry gains an `artifacts` list of **exactly two** entries, sdist first and wheel second, each with a `path` relative to the output directory and an `integrity` of the form `sha256=<hex>`. Paths are written with forward slashes on every platform, so a plan built on Windows is readable by the Linux job that uploads it. **Tag-only entries pass through untouched** and never gain an `artifacts` key -- they are never built and never uploaded.
+
+`molt build` has no `--repository` flag. When it computes the plan itself it therefore targets the default index, which means the [snapshot guardrail](/cli/publish) applies. To build a snapshot release, compute the plan against your own index first and hand the file over:
+
+```bash
+molt publish-plan --repository https://packages.internal.example/simple/ --output publish-plan.json
+molt build --from-publish-plan publish-plan.json --out-dir dist
+```
 
 ## Exit codes
 

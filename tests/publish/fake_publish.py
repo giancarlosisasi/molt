@@ -18,7 +18,8 @@ What this module owns (do not redefine these in a test file):
 * :class:`FakeUploader` -- stands in for the twine upload (#3), including the
   ``400 File already exists`` and auth-failure responses.
 * :class:`FakeOIDC` -- stands in for the PyPI Trusted-Publishing token exchange (#4).
-* :func:`require_publish` / :func:`require_pack` -- the two-stage import guards.
+* :func:`require_publish_plan` / :func:`require_publish` / :func:`require_pack` -- the two-stage
+  import guards, one per stage of the pipeline.
 
 NDJSON reading is **not** redefined here: ``tests.cli.fake_cli.read_ndjson`` is already the frozen
 reader for the ``--output`` event stream and ``tests/cli/test_git_tag.py`` asserts against it.
@@ -54,6 +55,7 @@ __all__ = [
     "publish_plan",
     "require_pack",
     "require_publish",
+    "require_publish_plan",
     "sdist_name",
     "tag_only_entry",
     "wheel_name",
@@ -364,14 +366,39 @@ class FakeOIDC:
 # --------------------------------------------------------------------------------------
 
 
-def require_publish() -> Any:
-    """Import ``molt.publish`` or skip the whole module.
+def require_publish_plan() -> Any:
+    """Import ``molt.publish`` or skip the whole module -- the **plan** stage's guard.
 
     Two-stage on purpose (progress.md Session 5, practice 2): ``importorskip`` only skips while the
-    module is *absent*, so the moment a placeholder ``publish.py`` lands the guard stops guarding
-    and every test in the file goes red. The attribute check keeps the suite green until the
-    module is real. ``src/molt/`` has no publish stub today -- this is insurance, and it costs one
-    call.
+    module is *absent*, so the moment a placeholder lands the guard stops guarding and every test in
+    the file goes red. The attribute check keeps the suite green until the module is real.
+
+    **Why this is a separate guard from :func:`require_publish`.** ``molt.publish`` lands across two
+    changes: the plan/pack half (``build_publish_plan`` / ``read_publish_plan``) and, later, the
+    upload half (``publish`` / ``yank``). One shared guard keyed on ``publish`` would tie them
+    together -- the plan suite could not run until the uploader existed, and the moment it did the
+    not-yet-written upload suites would go red rather than stay skipped. So each stage guards on the
+    attribute it actually drives, which is the same correction ``tests/apply/test_apply.py`` and
+    ``tests/changelog/test_render_changelog.py`` already carry, and which ``test_yank.py`` was
+    written with from the start (it adds its own ``yank`` stage on top of this one).
+    """
+    module = pytest.importorskip(
+        "molt.publish", reason="build step 8 - molt.publish is a TDD target"
+    )
+    if getattr(module, "build_publish_plan", None) is None:
+        pytest.skip(
+            "molt.publish exists but exposes no build_publish_plan() yet (build step 8)",
+            allow_module_level=True,
+        )
+    return module
+
+
+def require_publish() -> Any:
+    """Import ``molt.publish`` or skip the whole module -- the **upload** stage's guard.
+
+    Same two-stage shape as :func:`require_publish_plan`, keyed on the attribute the upload suites
+    drive. ``molt.publish`` existing is not enough: ``publish()`` is a later change than the plan
+    and the pack stages, and this suite must stay skipped until it lands.
     """
     module = pytest.importorskip(
         "molt.publish", reason="build step 8 - molt.publish is a TDD target"

@@ -35,6 +35,32 @@ Molt publishes in **topological order**: a dependency uploads before its depende
 
 `molt publish-plan` resolves and prints the same plan **without uploading anything**. It emits the versioned publish-plan envelope (`{ "version": 1, "plan": [...] }`), which [`molt build`](/cli/pack) can consume and `molt publish --from-pack-dir` can then upload. Use `--output` (or `MOLT_OUTPUT`) to write it to a file.
 
+The envelope is written **even when there is nothing to publish** -- `{ "version": 1, "plan": [] }`. The next CI job reads that file unconditionally, so "no file" and "an empty plan" must not look alike to it.
+
+Every key in a plan entry is `snake_case`, and entries carry no npm vocabulary: there is no `access` and no `tag`, because PyPI has neither per-package access nor dist-tags.
+
+### Snapshots are refused against PyPI
+
+A release whose version has molt's **snapshot shape** -- `0.0.0.dev` followed by a 14-digit timestamp, which is what [`molt version --snapshot`](/cli/version) writes -- is **refused** when the plan targets the public index:
+
+```
+Refusing to publish a snapshot release to PyPI: acme-core 0.0.0.dev20211213000730.
+```
+
+`publish-plan` is a separate invocation from `molt version`, so it has no memory of the `--snapshot` flag; the trigger is the version itself. The refusal fires **before molt reads the index and before it writes any output file**, so a refused run leaves nothing behind for a later stage to pick up.
+
+Molt refuses rather than quietly sending the snapshot somewhere else, because it cannot invent the URL of your private index. Name one and the guardrail clears:
+
+```bash
+molt publish-plan --repository https://packages.internal.example/simple/ --output publish-plan.json
+```
+
+An ordinary developmental release is unaffected -- `1.2.3.dev5` and `0.0.0.dev1` are planned normally, and so is anything `molt version --pre dev` produces.
+
+### Naming an index turns the pypi.org query off
+
+With `--repository` or `--index-url` pointing anywhere other than pypi.org, molt does **not** query pypi.org for already-published versions, and every local version is planned as unpublished. An explicitly named index is the index; molt does not consult a second one behind your back. Querying a private index for its published version set is not implemented yet.
+
 ## Options
 
 | Option | Type | Default | Description |
