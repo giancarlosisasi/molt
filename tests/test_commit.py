@@ -46,7 +46,6 @@ pytest.importorskip(
     "molt.commit", reason="build step 7 - molt.commit not yet implemented (TDD target)"
 )
 
-# pyrefly: ignore[missing-import]  -- molt.commit is the TDD target of build step 7.
 from molt.commit import get_add_message, get_version_message
 
 pytestmark = pytest.mark.unit

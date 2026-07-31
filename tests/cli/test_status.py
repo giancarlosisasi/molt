@@ -50,10 +50,7 @@ from molt.versioning import BumpType
 pytest.importorskip("molt.commands.status", reason="build step 6 - `molt status` is a TDD target")
 pytest.importorskip("molt.errors", reason="build step 6 - molt.errors lands with the cli shell")
 
-# pyrefly: ignore[missing-import]  -- molt.commands.status is the TDD target of build step 6.
 from molt.commands.status import run
-
-# pyrefly: ignore[missing-import]  -- molt.errors lands with the adopt-typer-cli-shell change.
 from molt.errors import ExitError
 
 if TYPE_CHECKING:

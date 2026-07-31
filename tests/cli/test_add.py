@@ -80,10 +80,7 @@ if TYPE_CHECKING:
 pytest.importorskip("molt.commands.add", reason="build step 6 - `molt add` is a TDD target")
 pytest.importorskip("molt.errors", reason="build step 9 - molt.errors is a TDD target")
 
-# pyrefly: ignore[missing-import]  -- molt.commands.add is the TDD target of build step 6.
 from molt.commands.add import run
-
-# pyrefly: ignore[missing-import]  -- molt.errors is the TDD target of build step 9.
 from molt.errors import ExitError
 
 pytestmark = pytest.mark.functional
