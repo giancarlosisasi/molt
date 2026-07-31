@@ -2112,6 +2112,40 @@ def test_a_missing_changelog_template_is_reported_by_name(
     assert versions(tmp_project.root) == {"pkg-a": "1.0.0"}
 
 
+def test_a_changeset_naming_a_version_less_package_is_refused(
+    tmp_project: ProjectBuilder, console: RecordingConsole, fake_git: FakeGit
+) -> None:
+    """Keeps ``RPE-4``'s loud refusal reachable from the command, and pins ``VC-1``'s boundary.
+
+    A package with no ``[project].version`` is *skipped* by this command, which is what makes a
+    repository containing an app releasable at all (rows 59, 64 and the version-less pin row all
+    require it). That skip must not quietly extend to a package somebody **asked** to release: by
+    the time the engine sees it, a versionless package is indistinguishable from an ignored one, so
+    its changeset would be neither applied nor consumed and nothing would say why -- the exact
+    "silently drop half a repo" failure ``RPE-4`` exists to prevent.
+
+    The contrast with :func:`test_a_private_package_without_a_version_field_is_skipped_cleanly` is
+    the whole point: same manifest, and the only difference is whether a changeset names it.
+    """
+    tmp_project.add_package("pkg-a", "1.0.0")
+    tmp_project.add_package("pkg-b", "1.0.0")
+    manifest = manifest_path(tmp_project.root, "pkg-b")
+    text = manifest.read_bytes().decode("utf-8")
+    manifest.write_bytes(
+        re.sub(r'(?m)^version = "1\.0\.0"\r?\n', "", text, count=1).encode("utf-8")
+    )
+    tmp_project.write_changeset("some-id-0", {"pkg-b": "minor"}, "This is a summary")
+
+    with pytest.raises(ExitError) as excinfo:
+        run_version(tmp_project.root, console, fake_git)
+
+    assert excinfo.value.code == 1
+    message = "\n".join(console.errors)
+    assert "pkg-b" in message and "some-id-0" in message, message
+    assert versions(tmp_project.root)["pkg-a"] == "1.0.0", "nothing is written"
+    assert changeset_ids(tmp_project.root) == ["some-id-0"], "and the changeset survives"
+
+
 def test_a_broken_changelog_template_is_reported_without_a_traceback(
     tmp_project: ProjectBuilder,
     monkeypatch: pytest.MonkeyPatch,

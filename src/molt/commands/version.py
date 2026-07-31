@@ -154,6 +154,11 @@ def run(
         console.warn(_NO_CHANGESETS)
         raise ExitError(1)
 
+    unversionable = _unversionable_releases(changesets, workspace)
+    if unversionable:
+        console.error("\n".join(unversionable))
+        raise ExitError(1)
+
     effective = config if ignore is None else config.model_copy(update={"ignore": tuple(ignore)})
     plan, view = _assemble(
         changesets,
@@ -302,6 +307,38 @@ def _unskipped_dependents(workspace: Workspace, config: Config) -> list[str]:
                 f'"{dependent}" is not being skipped. Add it to `--ignore` too, or stop skipping '
                 f'"{name}" -- releasing "{dependent}" now would publish a stale constraint.'
             )
+    return failures
+
+
+def _unversionable_releases(changesets: Sequence[Any], workspace: Workspace) -> list[str]:
+    """Changesets that ask to release a package which declares no version. One failure each.
+
+    The command-level face of ``RPE-4``, and the reason folding versionless packages into the skip
+    list does not quietly become "molt skips dynamic versions". Two different situations share one
+    representation (``Package.version is None``) and need opposite answers:
+
+    * a versionless package **nobody asked to release** -- an app, a docs site -- must not fail the
+      run. It is skipped, exactly as ``molt add`` already refuses to offer it;
+    * a versionless package **a changeset names** is a request molt cannot satisfy, and answering it
+      with silence is the "silently drop half a repo" failure the whole `RPE-4` refusal exists to
+      prevent. Without this check the changeset is neither applied nor consumed and nothing says
+      why, because by then the package is indistinguishable from an ignored one.
+
+    Asked after the changesets are read, so it is not part of the pre-read validation block; it is
+    the same phase upstream validates changeset contents in (``index.ts:235-284``). A name the
+    workspace does not contain is left alone -- the engine reports that one, with its own message.
+    """
+    failures: list[str] = []
+    for changeset in changesets:
+        for release in changeset.releases:
+            package = workspace.get(release.name)
+            if package is not None and package.version is None:
+                failures.append(
+                    f'Changeset {changeset.id} asks to release "{release.name}", which declares no '
+                    "[project].version (or declares it dynamic). molt cannot yet resolve a dynamic "
+                    "version source, so it cannot compute a release for that package. Give it a "
+                    "static version, or remove it from the changeset."
+                )
     return failures
 
 
