@@ -58,7 +58,6 @@ import pytest
 
 pytest.importorskip("molt.config", reason="build step 3 - config not yet implemented (TDD target)")
 
-# pyrefly: ignore[missing-import]
 from molt.config import Config, default_config, load_config, parse_config
 
 if TYPE_CHECKING:

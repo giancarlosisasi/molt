@@ -153,8 +153,8 @@ from tests.cli.fake_cli import (
 pytest.importorskip("molt.errors", reason="build step 9 - molt.errors is a TDD target")
 pytest.importorskip("molt.commands.version", reason="build step 6 - `molt version` is a TDD target")
 
-from molt.commands.version import run  # pyrefly: ignore[missing-import]
-from molt.errors import ExitError  # pyrefly: ignore[missing-import]
+from molt.commands.version import run
+from molt.errors import ExitError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -2128,7 +2128,7 @@ def test_a_missing_changelog_template_is_reported_by_name(
     place molt looked -- and it must not leave a half-released tree behind, which is what the
     version assertion checks.
     """
-    from molt.errors import MoltError  # pyrefly: ignore[missing-import]
+    from molt.errors import MoltError
 
     tmp_project.add_package("pkg-a", "1.0.0")
     tmp_project.set_config(changelog={"template": "does-not-exist.md.jinja"})
@@ -2200,7 +2200,7 @@ def test_a_broken_changelog_template_is_reported_without_a_traceback(
 
     from tests.cli.fake_cli import strip_ansi
 
-    from molt import cli as molt_cli  # pyrefly: ignore[missing-import]
+    from molt import cli as molt_cli
 
     tmp_project.add_package("pkg-a", "1.0.0")
     tmp_project.set_config(changelog={"template": "entry.md.jinja"})
@@ -2261,7 +2261,7 @@ def test_a_github_changelog_with_no_repository_fails_loudly(
     running inside an Action, where it is set, and a row whose outcome depends on the environment
     it runs in is not a row.
     """
-    from molt.errors import MoltForgeError  # pyrefly: ignore[missing-import]
+    from molt.errors import MoltForgeError
 
     monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
     tmp_project.add_package("pkg-a", "1.0.0")
