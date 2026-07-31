@@ -325,6 +325,22 @@ def test_a_private_root_package_is_not_tagged(
     assert fake_git.tags == []
 
 
+def test_single_package_project_emits_an_ndjson_event(
+    tmp_path: Path, console: RecordingConsole, fake_git: FakeGit
+) -> None:
+    """Closes a carried test gap (tasks.md 6.1): no row previously asserted an NDJSON event for a
+    ``v``-prefixed single-package tag -- every NDJSON row above uses the workspace ``name@version``
+    shape. Upstream emits an event for this shape too (``utils/output.ts:6-10`` is shape-agnostic),
+    so the event's ``tag`` carries no package name even though ``package_name`` still does.
+    """
+    root = make_single_package(tmp_path / "project", Pkg("acme", version="1.0.0"))
+    out = tmp_path / "output.ndjson"
+
+    run(cwd=root, output=out, console=console, git=fake_git)
+
+    assert read_ndjson(out) == [event("v1.0.0", "acme")]
+
+
 # --------------------------------------------------------------------------------------
 # molt-NEW - PEP 503 tag normalization and --dry-run
 # --------------------------------------------------------------------------------------
