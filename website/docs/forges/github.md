@@ -16,7 +16,7 @@ The GitHub backend implements the [forge protocol](/forges/overview) against Git
 
 ## Attribution via GraphQL
 
-Molt asks GitHub for attribution with a small, hand-written GraphQL query over `httpx` -- not a heavyweight REST client. One batched query resolves many commits or PRs at once, instead of the two-or-three REST round-trips per commit a REST-first client would force. For each commit it fetches the associated pull requests and authors; the **PR author is preferred over the raw commit author**, and when several PRs are associated, the earliest-merged one wins -- so a change is credited to the human who proposed it.
+Molt asks GitHub for attribution with a small, hand-written GraphQL query over `httpx` -- not a heavyweight REST client. Each distinct commit or pull request costs exactly one request; a repeated lookup for the same commit or pull request is answered from the per-instance cache instead of asking GitHub again, so a changelog with several lines pointing at the same commit fetches it once. For each commit it fetches the associated pull requests and authors; the **PR author is preferred over the raw commit author**, and when several PRs are associated, the earliest-merged one wins -- so a change is credited to the human who proposed it.
 
 Because this runs over plain `httpx`, GitHub Enterprise Server is supported by pointing molt at your instance (see configuration below) -- no separate code path.
 

@@ -36,10 +36,11 @@ A generator provides `get_release_line` and `get_dependency_release_line`. molt 
 from __future__ import annotations
 
 from importlib.resources import files
+from typing import Any
 
 from jinja2 import Template
 
-from molt.changelog import Changeset, DependencyRelease, Forge
+from molt.forge import Forge
 
 _LINE = Template((files(__package__) / "entry.md.jinja").read_text(encoding="utf-8"))
 
@@ -51,7 +52,7 @@ class EmojiGenerator:
 
     def get_release_line(
         self,
-        changeset: Changeset,
+        changeset: Any,
         bump: str,
         options: dict | None,
         forge: Forge | None,
@@ -70,8 +71,8 @@ class EmojiGenerator:
 
     def get_dependency_release_line(
         self,
-        changesets: list[Changeset],
-        dependencies: list[DependencyRelease],
+        changesets: list[Any],
+        dependencies: list[Any],
         options: dict | None,
         forge: Forge | None,
     ) -> str:
@@ -94,6 +95,7 @@ The template is plain Jinja2:
 
 A few things this example demonstrates:
 
+- **`changeset` and `dependencies` are read structurally.** molt has no `Changeset` or `DependencyRelease` class to import -- the generator receives plain objects: a changeset-shaped one exposing `.id`, `.summary`, `.commit` and `.front_matter`, and each dependency-shaped one exposing `.name` and `.new_version`. Both positions are typed `Any` in `molt.changelog.ChangelogGenerator`, the real protocol these two methods satisfy. `Forge`, when supplied, is real and importable from `molt.forge`.
 - **molt injects the forge.** `forge` is molt's cached, rate-limited [GitHub](/forges/github) adapter when GitHub is active, and `None` otherwise -- so the same generator degrades gracefully off a forge instead of crashing or opening its own client.
 - **The forge hands back links, not ids.** `forge.commit_info(sha)` returns `None` when the forge has nothing for that commit, and otherwise an object with three parts: `info.commit`, `info.author` and `info.pull`. Each carries `.url` and a ready-made `.markdown_link`, so a generator never builds a URL itself -- that is what keeps the same generator working against a forge other than GitHub. `info.commit` is always present; `info.author` and `info.pull` can be `None`.
 - **You never touch the file.** No reading `CHANGELOG.md`, no regex insertion, no blank-line juggling. You return one bullet's text; molt places it in the right `### Major/Minor/Patch Changes` section, keeps dependency bumps last in the patch section, and clamps the spacing. molt emits correct Markdown directly -- there is no formatter pass to repair it afterward.

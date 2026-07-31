@@ -467,6 +467,29 @@ def test_dependency_release_line_falls_back_to_a_bare_code_span(
 
 
 @pytest.mark.network
+def test_release_line_falls_back_to_a_bare_code_span_when_its_commit_is_unknown(
+    forge_api: ForgeAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``CG-4`` (owner-ruled 2026-07-30) -- the same fallback, pinned on a *release* line.
+
+    ``index.ts:84``'s "no link when the forge knows nothing" fallback had a covering test only
+    for the dependency line (the test above). This row drives the same ``commit_found=False``
+    shape through ``get_release_line``: with no ``pr:``/``commit:`` directive, the changeset's
+    own commit is the lookup target, the forge cannot find it, and the commit position renders
+    a bare seven-character code span -- no invented ``<server>/<repo>/commit/<sha>`` URL (forge
+    design D8), and the segment is not omitted.
+    """
+    forge_api.set_response(forge_payload(commit_found=False))
+    forge = make_forge(monkeypatch)
+
+    line = github_generator.get_release_line(
+        changeset("something", commit=COMMIT_SHA), BumpType.MINOR, OPTIONS, forge
+    )
+
+    assert line == release_line("something", prefix=f"`{COMMIT_SHA}`")
+
+
+@pytest.mark.network
 def test_dependency_release_line_omits_empty_brackets_when_no_changeset_has_a_commit(
     forge_api: ForgeAPI, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -580,6 +603,40 @@ def test_a_commit_directive_overrides_the_changeset_commit(
     query = forge_api.last_query or ""
     assert f'commit__{COMMIT_SHA}: object(expression: "{COMMIT_SHA}")' in query
     assert "wrongcommit" not in query, "the directive sha wins over the changeset's own"
+
+
+@pytest.mark.network
+def test_a_declared_commit_wins_over_the_pull_requests_merge_commit(
+    forge_api: ForgeAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``CG-5`` (owner-ruled 2026-07-30) -- both ``pr:`` and ``commit:`` declared together.
+
+    ``index.ts:133-142``: the pull request still wins the pull position outright. But the
+    declared commit is resolved through the forge and REPLACES the pull request's own
+    merge-commit link in the commit position -- the author declared it, so it wins, at the
+    cost of one extra forge lookup. No earlier row drove both directives at once.
+    """
+    other_sha = "b1c2d3e"
+    forge_api.set_response(forge_payload(commits=(other_sha,), pulls=(PULL_NUMBER,)))
+    forge = make_forge(monkeypatch)
+    other_link = f"[`{other_sha}`]({SERVER_URL}/{REPO}/commit/{other_sha})"
+
+    line = github_generator.get_release_line(
+        changeset(f"something\npr: #{PULL_NUMBER}\ncommit: {other_sha}", commit=COMMIT_SHA),
+        BumpType.MINOR,
+        OPTIONS,
+        forge,
+    )
+
+    expected_prefix = f"{PULL_LINK} {other_link} Thanks {AUTHOR_LINK}!"
+    assert line == release_line("something", prefix=expected_prefix)
+    queries = sent_queries(forge_api)
+    assert any(f"pull__{PULL_NUMBER}: pullRequest(number: {PULL_NUMBER})" in q for q in queries), (
+        "the pull request must still be looked up, even though its merge commit is replaced"
+    )
+    assert any(f'commit__{other_sha}: object(expression: "{other_sha}")' in q for q in queries), (
+        "the declared commit must be resolved through the forge, not pasted onto a base URL"
+    )
 
 
 AUTHOR_DIRECTIVE_CASES = [

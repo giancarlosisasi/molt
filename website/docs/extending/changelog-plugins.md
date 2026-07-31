@@ -33,28 +33,31 @@ molt's own `git` and `github` generators are registered exactly this way, so the
 A generator implements two functions -- the direct descendants of changesets' `getReleaseLine` and `getDependencyReleaseLine`. One renders a line for *this package changed*; the other renders a line for *a dependency of this package changed*.
 
 ```python
-from typing import Protocol
-from molt.changelog import Changeset, DependencyRelease, Forge
+from typing import Any
+from molt.changelog import ChangelogGenerator
+from molt.forge import Forge
 
-class ChangelogGenerator(Protocol):
+class MyGenerator:
     def get_release_line(
         self,
-        changeset: Changeset,      # id, summary, and commit sha if known
-        bump: str,                 # "major" | "minor" | "patch"
-        options: dict | None,      # the options table from config, verbatim
-        forge: Forge | None,       # injected forge adapter, or None
+        changeset: Any,             # .id, .summary, .commit (sha or None), .front_matter
+        bump: str,                  # "major" | "minor" | "patch"
+        options: dict | None,       # the options table from config, verbatim
+        forge: Forge | None,        # injected forge adapter, or None
     ) -> str: ...
 
     def get_dependency_release_line(
         self,
-        changesets: list[Changeset],
-        dependencies: list[DependencyRelease],  # the internal deps that moved
+        changesets: list[Any],
+        dependencies: list[Any],    # the internal deps that moved; each has .name, .new_version
         options: dict | None,
         forge: Forge | None,
     ) -> str: ...
 ```
 
-Both functions may be **sync or async** -- molt inspects each at call time, so a generator that needs the network (resolving commit authors, PR numbers) can be `async def` while the plain `git` generator stays synchronous.
+`molt.changelog.ChangelogGenerator` is the protocol above, and it is real and importable -- but the two data positions, `changeset` / `changesets` and `dependencies`, are typed `Any`, not a `Changeset` or `DependencyRelease` class. molt has no such classes: it reads both **structurally** instead, so there is nothing to import for them. `Forge`, when supplied, is a real, importable protocol -- `from molt.forge import Forge` -- and `forge` is `None` whenever no forge is configured.
+
+Both functions are **synchronous**. molt calls each directly, with no `await` and no inspection of whether it returns a coroutine, so a generator that needs the network (resolving commit authors, PR numbers) must resolve it synchronously -- exactly what the built-in `github` generator does, over a sync `httpx` client.
 
 Key points:
 
@@ -63,7 +66,7 @@ Key points:
 - **Options pass through verbatim.** Whatever you put in the config options table arrives as the `options` dict, untouched. A generator validates its own options (and may declare a typed options model so molt can check them at startup rather than mid-release).
 - **Errors abort before any write.** If a generator raises, molt fails the whole `version` run before touching a single file -- consistent with its [atomic, buffer-then-flush](/reference/design-decisions) discipline. You never get a half-written changelog.
 
-Unlike changesets -- whose changelog plugins only ever see the two callback arguments -- molt also exposes the surrounding [release plan](/concepts/release-plan) to a generator that wants it, closing a gap changesets flagged as future work in 2020 and never shipped.
+The contract is exactly the four parameters above, always supplied, in this order -- like changesets, molt does not pass the surrounding release plan to a generator.
 
 ## Choosing a generator
 
