@@ -59,12 +59,16 @@ Deviations from the group file / upstream, all deliberate
 
 Guard
 -----
-``require_publish()`` is called through its module object rather than followed by a
+``require_publish_plan()`` is called through its module object rather than followed by a
 ``from molt.publish import ...``: ruff's E402 exemption covers a bare ``pytest.importorskip(...)``
 call but **not** the harness wrapper (verified with ``ruff check`` -- the ``from`` form reports
 ``E402``, and the contract forbids ``# noqa: E402`` because ``RUF100`` then fails). Resolving the
 two functions off the module object keeps the file lint-clean and still fails loudly if
 ``molt.publish`` ever lands without them.
+
+The guard is keyed on ``build_publish_plan``, not on ``publish``: ``molt.publish`` lands across two
+changes, and the upload half is the later one. See :func:`tests.publish.fake_publish
+.require_publish_plan` for why each stage guards on the attribute it actually drives.
 """
 
 from __future__ import annotations
@@ -84,13 +88,13 @@ from tests.publish.fake_publish import (
     integrity_of,
     publish_entry,
     publish_plan,
-    require_publish,
+    require_publish_plan,
     sdist_name,
     tag_only_entry,
     wheel_name,
 )
 
-molt_publish = require_publish()
+molt_publish = require_publish_plan()
 
 #: ``molt.publish.build_publish_plan`` -- see the module docstring's "Guard" section for why these
 #: are attribute lookups instead of a late ``from molt.publish import ...``.
@@ -162,8 +166,12 @@ def kind_of(path: str) -> str:
     return f"unknown ({path})"
 
 
-def write_plan_file(path: Path, envelope: dict[str, Any]) -> Path:
-    """Serialize a plan envelope the way ``--output`` does (LF bytes, 2-space indent)."""
+def write_plan_file(path: Path, envelope: Any) -> Path:
+    """Serialize a plan envelope the way ``--output`` does (LF bytes, 2-space indent).
+
+    ``envelope`` is deliberately ``Any`` rather than a mapping: the rows that prove the reader's
+    envelope guard have to be able to write a document that is *not* an envelope at all.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes((json.dumps(envelope, indent=2) + "\n").encode("utf-8"))
     return path
@@ -866,4 +874,44 @@ def test_a_publish_entry_with_a_bad_artifact_list_is_rejected(
     assert "pkg-a" in str(excinfo.value), (
         f"pre-flight validation names the release it refuses, or the operator cannot act on it "
         f"({why})"
+    )
+
+
+# (envelope, why the reader must refuse it)
+UNSUPPORTED_ENVELOPES: list[tuple[Any, str]] = [
+    ({"version": PUBLISH_PLAN_VERSION + 1, "plan": []}, "a newer envelope than this build knows"),
+    (
+        {"version": PUBLISH_PLAN_VERSION - 1, "plan": []},
+        "older: the guard is equality, not a floor",
+    ),
+    ({"plan": []}, "no version key at all (`getPublishPlan.ts:69-73`)"),
+    ([], "the envelope must be an object (`getPublishPlan.ts:61-63`)"),
+]
+
+
+@pytest.mark.parametrize(("envelope", "why"), UNSUPPORTED_ENVELOPES)
+def test_the_envelope_version_guard_lives_in_the_plan_reader(
+    tmp_path: Path, envelope: Any, why: str
+) -> None:
+    """molt-NEW, added by review: the guard's **location** is the contract, not just its effect.
+
+    ``tests/publish/test_pack.py::test_rejects_an_unsupported_plan_file_version`` drives the same
+    guard through ``molt build``, so it passes just as happily against an implementation that
+    inlines the check in ``pack()``. That implementation then leaves ``molt publish
+    --from-pack-dir`` -- which reads the plan out of the artifact directory, ``publish/index.ts``
+    :89-91 -- completely unguarded, and a foreign plan reaching *that* stage is an irreversible
+    upload from a document molt did not produce (design D6; the risk this change's ``design.md``
+    names first).
+
+    Calling :func:`read_publish_plan` directly is the only way to pin that, because it is the one
+    function both consumers go through.
+    """
+    path = write_plan_file(tmp_path / "publish-plan.json", envelope)
+
+    with pytest.raises(Exception, match=r"(?i)publish plan") as excinfo:
+        read_publish_plan(path)
+
+    assert path.name in str(excinfo.value), (
+        f"the refusal names the file it refuses, or an operator holding three plan files cannot "
+        f"tell which one is wrong ({why})"
     )
