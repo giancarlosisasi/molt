@@ -20,7 +20,13 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from molt.config.models import Config, PrivatePackages, SnapshotOptions, field_aliases
+from molt.config.models import (
+    ChangelogOptions,
+    Config,
+    PrivatePackages,
+    SnapshotOptions,
+    field_aliases,
+)
 from molt.config.result import ConfigIssue, ConfigResult
 from molt.config.rules import (
     check_dependents_of_ignored,
@@ -46,9 +52,29 @@ EXPERIMENTAL_KEY = "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH"
 #: clean up after itself (research README section 5 item 13; research doc 02 section 12.1).
 _JS_FORMATTERS = ("auto", "prettier", "oxfmt", "deno", "dprint", "biome")
 
-#: Options molt refuses to model, with the reason the warning carries. Tolerated on input is not
-#: the same as supported -- ``tests/config/test_deliberately_not_ported.py`` is the audit record.
+#: Options molt refuses to model, and options molt has **moved**, with the reason the warning
+#: carries. Tolerated on input is not the same as supported --
+#: ``tests/config/test_deliberately_not_ported.py`` is the audit record for the refused ones.
+#:
+#: The two ``changelog_*`` entries are the second kind. They were real molt options until the
+#: 2026-07-30 ruling closing ``VC-4`` folded them into the ``changelog`` table; naming them here is
+#: what turns "your template stopped being applied" into a sentence that says where the setting
+#: went. They warn and never fail, like every other unknown key.
 _DROPPED_OPTIONS: dict[str, str] = {
+    "changelog_template": (
+        "it moved into the `changelog` table. Write "
+        '`changelog = { template = "changelog-entry.md.jinja" }` instead.'
+    ),
+    "changelogTemplate": (
+        "it moved into the `changelog` table. Write "
+        '`changelog = { template = "changelog-entry.md.jinja" }` instead.'
+    ),
+    "changelog_dates": (
+        "it moved into the `changelog` table. Write `changelog = { dates = true }` instead."
+    ),
+    "changelogDates": (
+        "it moved into the `changelog` table. Write `changelog = { dates = true }` instead."
+    ),
     "access": (
         "npm scoped-package publish permission. PyPI has no per-package equivalent; choose an "
         "index with `molt publish --repository` instead."
@@ -60,7 +86,17 @@ _DROPPED_OPTIONS: dict[str, str] = {
 }
 
 #: Sub-tables whose keys are canonicalized and checked the same way the top level is.
-_NESTED_MODELS = {"snapshot": SnapshotOptions, "private_packages": PrivatePackages}
+#:
+#: ``changelog`` is here only for its *table* form -- the pass runs on a ``Mapping`` and leaves the
+#: generator-reference forms alone. Being in this table is what makes an unknown member of the
+#: changelog table **warn** rather than fail, exactly as an unknown member of ``snapshot`` does: the
+#: standing contract is that unknown keys never fail the parse, and a sub-table is not an exception
+#: to it (owner ruling 2026-07-30 closing ``VC-4``; design D3).
+_NESTED_MODELS = {
+    "changelog": ChangelogOptions,
+    "snapshot": SnapshotOptions,
+    "private_packages": PrivatePackages,
+}
 
 #: Backends molt recognizes but cannot run yet; scheduled after the 0.1 MVP.
 #:

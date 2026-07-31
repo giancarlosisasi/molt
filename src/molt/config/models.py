@@ -18,16 +18,28 @@ What the schema deliberately does **not** carry (research README section 4.4, an
 - the peer-dependency propagation flag and the experimental wrapper it lived in, Python having no
   peer-dependency concept.
 
-Two keys have **no** changesets counterpart at all: ``changelog_template`` and ``changelog_dates``,
-which turn on molt's Jinja2 changelog-entry template (research README section 5 item 5; gap
-``CT-1``). They are flat keys rather than the ``[tool.molt.changelog]`` sub-table
-``website/docs/guides/changelog-templates.md`` first sketched, because ``changelog`` is already the
-*generator reference* and ``tests/config/test_parse.py`` row 29 pins that a mapping there is a hard
-error. The template still sees ``config.dates``, exactly as the guide's worked example writes it --
-:mod:`molt.apply` passes it a changelog-scoped view, so what a user types and what a template reads
-are two different surfaces on purpose.
+One option has **no** changesets counterpart beyond its first member: ``changelog`` also accepts a
+**table** carrying ``generator``, ``template`` and ``dates``, the last two turning on molt's Jinja2
+changelog-entry template (research README section 5 item 5; gap ``CT-1``). Step 18 shipped those two
+as flat ``changelog_template`` / ``changelog_dates`` keys because ``tests/config/test_parse.py``
+row 29 pinned a mapping under ``changelog`` as a hard error, and recorded the shape as gap ``VC-4``.
+**Owner ruling 2026-07-30:** the table is the wanted shape and row 29 may be renegotiated, so the
+three settings collapse into one key and the flat spellings become unknown keys that warn.
 
-All three are still *accepted* on input with a warning so a migrating changesets configuration
+The generator-reference forms are untouched by that widening -- a bare string still normalizes to
+``(ref, None)``, ``false`` still disables changelogs, and the ``[ref, options]`` pair still passes
+through -- so ``Config.changelog`` is a union. It is collapsed **once**, by the three properties
+below (``changelog_generator`` / ``changelog_template`` / ``changelog_dates``), and nothing outside
+this module branches on which written form arrived. Being properties rather than fields is what
+takes the two removed keys off the written surface: pydantic builds ``model_fields`` from fields
+only, so they are absent from the parser's known-key set, from ``model_dump()`` and from the
+generated JSON Schema, while every existing call site keeps reading them.
+
+The template still sees ``config.dates``, exactly as the guide's worked example writes it --
+:mod:`molt.apply` passes it a changelog-scoped view, so a template's ``config`` is the changelog
+scope rather than the whole configuration.
+
+Dropped keys are still *accepted* on input with a warning so a migrating changesets configuration
 loads (see :mod:`molt.config.parse`); tolerated is not the same as supported, which is why they are
 absent here.
 """
@@ -42,6 +54,7 @@ __all__ = [
     "BUILTIN_CHANGELOG",
     "BUILTIN_COMMIT",
     "BUILTIN_COMMIT_OPTIONS",
+    "ChangelogOptions",
     "Config",
     "Ecosystem",
     "Forge",
@@ -144,6 +157,56 @@ def _normalize_private_packages(value: Any) -> Any:
     return {"version": False} if value is False else value
 
 
+#: The ``changelog`` generator reference in every written form, normalized.
+#:
+#: Named once and used twice -- for ``changelog`` written directly and for the ``generator`` member
+#: of its table form -- so the two can never drift into accepting different spellings. A fork there
+#: would be a second resolution path beside the one :mod:`molt.apply.generators` owns (gap
+#: ``AC-7``), which the 2026-07-30 ruling explicitly forbids.
+_GeneratorField = Annotated[
+    GeneratorRef | Literal[False],
+    BeforeValidator(
+        _normalize_changelog,
+        json_schema_input_type=GeneratorRef | str | Literal[False],
+    ),
+]
+
+
+class ChangelogOptions(BaseModel):
+    """The changelog subsystem written as one table: ``changelog = { generator, template, dates }``.
+
+    molt-native in all but its first member. changesets has a ``changelog`` option and nothing else
+    here -- there is no entry template upstream at all (research README section 5 item 5) -- so
+    ``template`` and ``dates`` have no ``camelCase`` migration alias, because there is nothing to
+    migrate from.
+
+    Every member is optional. An empty table is therefore exactly the defaults, which is what makes
+    ``changelog = { dates = true }`` mean "the built-in generator, dated" rather than "no
+    generator".
+
+    ``generator = false`` is accepted and means what ``changelog = false`` means -- no
+    ``CHANGELOG.md`` is written. Odd to write beside a ``template``, but refusing it would be a
+    second, differently-shaped rule for one concept.
+    """
+
+    model_config = ConfigDict(extra="ignore", frozen=True, populate_by_name=True)
+
+    generator: _GeneratorField = Field(
+        default=(BUILTIN_CHANGELOG, None),
+        description="Changelog generator to run, with optional generator options.",
+    )
+    template: str | None = Field(
+        default=None,
+        description=(
+            "Filename of a Jinja2 changelog-entry template, resolved against the workspace root."
+        ),
+    )
+    dates: bool = Field(
+        default=False,
+        description="Give the changelog template a release date (one timestamp per version run).",
+    )
+
+
 class PrivatePackages(BaseModel):
     """Whether packages marked unpublishable are still versioned.
 
@@ -207,25 +270,16 @@ class Config(BaseModel):
         description="Which files inside a package directory count as a change for that package.",
     )
     changelog: Annotated[
-        GeneratorRef | Literal[False],
+        ChangelogOptions | GeneratorRef | Literal[False],
         BeforeValidator(
             _normalize_changelog,
-            json_schema_input_type=GeneratorRef | str | Literal[False],
+            json_schema_input_type=ChangelogOptions | GeneratorRef | str | Literal[False],
         ),
     ] = Field(
         default=(BUILTIN_CHANGELOG, None),
-        description="Changelog generator to run, with optional generator options.",
-    )
-    changelog_dates: bool = Field(
-        default=False,
-        validation_alias=AliasChoices("changelog_dates", "changelogDates"),
-        description="Give the changelog template a release date (one timestamp per version run).",
-    )
-    changelog_template: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("changelog_template", "changelogTemplate"),
         description=(
-            "Filename of a Jinja2 changelog-entry template, resolved against the workspace root."
+            "Changelog generator to run, or a table carrying that generator plus an entry "
+            "template and the release-date switch."
         ),
     )
     commit: Annotated[
@@ -294,6 +348,44 @@ class Config(BaseModel):
         ),
         description="Only rewrite dependency pins that are backed by a workspace source.",
     )
+
+    # ----------------------------------------------------------------------------------
+    # The one place ``changelog``'s union is collapsed.
+    #
+    # These are ``property`` rather than ``Field`` on purpose (owner ruling 2026-07-30, closing
+    # ``VC-4``). pydantic builds ``model_fields`` from fields only, so a property is absent from
+    # the parser's known-key set, from ``model_dump()`` and from the generated JSON Schema --
+    # which is exactly what removes ``changelog_template`` / ``changelog_dates`` from the written
+    # surface while every existing reader keeps its call site. Writing either one now falls
+    # through to the unknown-option warning, which is the migration story.
+    # ----------------------------------------------------------------------------------
+
+    @property
+    def changelog_generator(self) -> GeneratorRef | Literal[False]:
+        """The changelog generator, whichever written form carried it.
+
+        :mod:`molt.apply.generators` resolves this and nothing else, so a reference written inside
+        the table takes the identical path a directly-written one takes.
+        """
+        changelog = self.changelog
+        return changelog.generator if isinstance(changelog, ChangelogOptions) else changelog
+
+    @property
+    def changelog_template(self) -> str | None:
+        """Filename of the Jinja2 entry template, or ``None`` when none is configured.
+
+        A generator reference written without a table configures no template, which is why the
+        non-table branch is ``None`` rather than an error: the two forms are not exclusive
+        alternatives, one is simply the short spelling of the other.
+        """
+        changelog = self.changelog
+        return changelog.template if isinstance(changelog, ChangelogOptions) else None
+
+    @property
+    def changelog_dates(self) -> bool:
+        """Whether the entry template is given a release date."""
+        changelog = self.changelog
+        return changelog.dates if isinstance(changelog, ChangelogOptions) else False
 
 
 def default_config() -> Config:

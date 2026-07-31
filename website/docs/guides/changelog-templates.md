@@ -52,13 +52,23 @@ Point molt at a Jinja2 file:
 
 ```toml
 [tool.molt]
-changelog_template = "changelog-entry.md.jinja"
-changelog_dates = true
+changelog = { template = "changelog-entry.md.jinja", dates = true }
 ```
 
-`changelog_template` is a **filename**, and a relative one is resolved against the workspace root -- the directory your `[tool.molt]` configuration lives in -- so one template describes the whole monorepo. `changelog_dates` gives the template a release date: one timestamp for the whole `molt version` run, so two packages released together are never stamped seconds apart.
+`template` is a **filename**, and a relative one is resolved against the workspace root -- the directory your `[tool.molt]` configuration lives in -- so one template describes the whole monorepo. `dates` gives the template a release date: one timestamp for the whole `molt version` run, so two packages released together are never stamped seconds apart.
 
-The two are separate top-level keys rather than a `[tool.molt.changelog]` table because `changelog` is already the *generator* option (`changelog = "git"`, `changelog = ["github", { repo = "acme/acme" }]`). Inside a template they still appear under `config`, which is where the example below reads `config.dates`.
+Both are members of the `changelog` table, alongside `generator` -- the option that used to be the whole value of that key (`changelog = "git"` still works and still means the same thing). Add a generator when you want one:
+
+```toml
+[tool.molt]
+changelog = { generator = ["github", { repo = "acme/acme" }], template = "changelog-entry.md.jinja", dates = true }
+```
+
+Inside a template these appear under `config`, which is where the example below reads `config.dates` -- the written name and the template name are the same word.
+
+:::warning Migrating from `changelog_template` / `changelog_dates`
+Those two flat keys were removed. Move them into the `changelog` table -- an old configuration still loads, but molt warns that each key was ignored and no entry template is applied until you migrate.
+:::
 
 The template receives the [release](/concepts/release-plan) for one package. The most useful fields:
 

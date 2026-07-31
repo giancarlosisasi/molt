@@ -2,6 +2,85 @@
 # name: test_generates_the_expected_json_schema
   dict({
     '$defs': dict({
+      'ChangelogOptions': dict({
+        'description': '''
+          The changelog subsystem written as one table: ``changelog = { generator, template, dates }``.
+          
+          molt-native in all but its first member. changesets has a ``changelog`` option and nothing else
+          here -- there is no entry template upstream at all (research README section 5 item 5) -- so
+          ``template`` and ``dates`` have no ``camelCase`` migration alias, because there is nothing to
+          migrate from.
+          
+          Every member is optional. An empty table is therefore exactly the defaults, which is what makes
+          ``changelog = { dates = true }`` mean "the built-in generator, dated" rather than "no
+          generator".
+          
+          ``generator = false`` is accepted and means what ``changelog = false`` means -- no
+          ``CHANGELOG.md`` is written. Odd to write beside a ``template``, but refusing it would be a
+          second, differently-shaped rule for one concept.
+        ''',
+        'properties': dict({
+          'dates': dict({
+            'default': False,
+            'description': 'Give the changelog template a release date (one timestamp per version run).',
+            'title': 'Dates',
+            'type': 'boolean',
+          }),
+          'generator': dict({
+            'anyOf': list([
+              dict({
+                'maxItems': 2,
+                'minItems': 2,
+                'prefixItems': list([
+                  dict({
+                    'type': 'string',
+                  }),
+                  dict({
+                    'anyOf': list([
+                      dict({
+                        'additionalProperties': True,
+                        'type': 'object',
+                      }),
+                      dict({
+                        'type': 'null',
+                      }),
+                    ]),
+                  }),
+                ]),
+                'type': 'array',
+              }),
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'const': False,
+                'type': 'boolean',
+              }),
+            ]),
+            'default': list([
+              'molt.changelog.default',
+              None,
+            ]),
+            'description': 'Changelog generator to run, with optional generator options.',
+            'title': 'Generator',
+          }),
+          'template': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'Filename of a Jinja2 changelog-entry template, resolved against the workspace root.',
+            'title': 'Template',
+          }),
+        }),
+        'title': 'ChangelogOptions',
+        'type': 'object',
+      }),
       'PrivatePackages': dict({
         'description': '''
           Whether packages marked unpublishable are still versioned.
@@ -93,6 +172,9 @@
       'changelog': dict({
         'anyOf': list([
           dict({
+            '$ref': '#/$defs/ChangelogOptions',
+          }),
+          dict({
             'maxItems': 2,
             'minItems': 2,
             'prefixItems': list([
@@ -125,27 +207,8 @@
           'molt.changelog.default',
           None,
         ]),
-        'description': 'Changelog generator to run, with optional generator options.',
+        'description': 'Changelog generator to run, or a table carrying that generator plus an entry template and the release-date switch.',
         'title': 'Changelog',
-      }),
-      'changelog_dates': dict({
-        'default': False,
-        'description': 'Give the changelog template a release date (one timestamp per version run).',
-        'title': 'Changelog Dates',
-        'type': 'boolean',
-      }),
-      'changelog_template': dict({
-        'anyOf': list([
-          dict({
-            'type': 'string',
-          }),
-          dict({
-            'type': 'null',
-          }),
-        ]),
-        'default': None,
-        'description': 'Filename of a Jinja2 changelog-entry template, resolved against the workspace root.',
-        'title': 'Changelog Template',
       }),
       'commit': dict({
         'anyOf': list([

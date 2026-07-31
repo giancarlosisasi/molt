@@ -252,6 +252,11 @@ def test_default_config_has_no_dropped_changesets_keys(key: str) -> None:
 # exactly like upstream's `{ ...defaultConfig, <override> }` (`parse.test.ts:175-364`).
 # --------------------------------------------------------------------------------------
 
+# The built-in generator reference, read off the defaults rather than spelled out: the ref string
+# is molt's own (see `test_default_changelog_is_a_normalized_generator_ref`), so pinning it twice
+# would make this table assert the spelling instead of the shape.
+BUILTIN_CHANGELOG: Any = defaults()["changelog"]
+
 # (written, package names, expected overrides on the default dump, expected warning count, why)
 VALID_CASES: list[tuple[dict[str, Any], list[str], dict[str, Any], int | None, str]] = [
     ({}, DEFAULT_PKGS, {}, 0, "row 5: empty config is exactly the defaults"),
@@ -416,6 +421,52 @@ VALID_CASES: list[tuple[dict[str, Any], list[str], dict[str, Any], int | None, s
         {"forge": "gitlab"},
         0,
         "molt-native: the forge seam exists from day one (research README section 5, item 7)",
+    ),
+    # ------------------------------------------------------------------------------
+    # `changelog` as a table. Row 29 used to live in INVALID_SHAPE_CASES, pinning that a
+    # mapping here is a hard error; the owner renegotiated it on 2026-07-30 (gap `VC-4`)
+    # so that the three settings describing one subsystem live under one key. The
+    # generator-reference rows 6-8 above are deliberately untouched by that widening.
+    # ------------------------------------------------------------------------------
+    (
+        {"changelog": {}},
+        DEFAULT_PKGS,
+        {"changelog": {"generator": BUILTIN_CHANGELOG, "template": None, "dates": False}},
+        0,
+        "row 29 (renegotiated 2026-07-30): an empty changelog table is exactly the defaults",
+    ),
+    (
+        {"changelog": {"generator": "molt_ext.changelog", "template": "e.md.jinja", "dates": True}},
+        DEFAULT_PKGS,
+        {
+            "changelog": {
+                "generator": ["molt_ext.changelog", None],
+                "template": "e.md.jinja",
+                "dates": True,
+            }
+        },
+        0,
+        "the table carries all three members; the ref normalizes exactly as row 6 does",
+    ),
+    (
+        {"changelog": {"generator": ["molt_ext.changelog", {"something": True}]}},
+        DEFAULT_PKGS,
+        {
+            "changelog": {
+                "generator": ["molt_ext.changelog", {"something": True}],
+                "template": None,
+                "dates": False,
+            }
+        },
+        0,
+        "the nested ref takes the [name, options] pair too - one resolution path, not two",
+    ),
+    (
+        {"changelog": {"generator": False}},
+        DEFAULT_PKGS,
+        {"changelog": {"generator": False, "template": None, "dates": False}},
+        0,
+        "false inside the table means what `changelog = false` means: write no CHANGELOG.md",
     ),
 ]
 
@@ -792,7 +843,30 @@ def test_a_fixed_group_member_resolves_through_pep_503_normalization() -> None:
 
 # (written, expected loc prefix, why)
 INVALID_SHAPE_CASES: list[tuple[dict[str, Any], tuple[Any, ...], str]] = [
-    ({"changelog": {}}, ("changelog",), "row 29: a bare mapping is none of the accepted forms"),
+    # Row 29 is NOT here any more: `changelog = {}` became valid when the owner renegotiated it on
+    # 2026-07-30 (gap `VC-4`). Its discriminating power moved rather than disappearing -- the four
+    # rows below prove that a mapping is still not coerced into a generator ref member by member,
+    # and that a wrong-typed `changelog` value of any other shape still fails.
+    (
+        {"changelog": 123},
+        ("changelog",),
+        "row 29 (successor): a scalar is none of the accepted forms",
+    ),
+    (
+        {"changelog": {"dates": "not true"}},
+        ("changelog",),
+        "row 29 (successor): a table member of the wrong type is a hard error",
+    ),
+    (
+        {"changelog": {"template": 123}},
+        ("changelog",),
+        "row 29 (successor): as above for the template member",
+    ),
+    (
+        {"changelog": {"generator": [1, 2]}},
+        ("changelog",),
+        "row 29 (successor): the nested ref is validated exactly like the top-level one",
+    ),
     (
         {"changelog": ["a", "b", "c"]},
         ("changelog",),
@@ -862,6 +936,80 @@ def test_invalid_shape_reports_a_structured_error(
         f"{why}: expected an error at {loc}, got {error_locs(errors)}"
     )
     assert config is None, why
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("written", "member"),
+    [
+        ({"changelog": {"dates": "not true"}}, "dates"),
+        ({"changelog": {"template": 123}}, "template"),
+        ({"changelog": {"generator": [1, 2]}}, "generator"),
+    ],
+)
+def test_an_invalid_changelog_table_member_is_located_at_the_member(
+    written: dict[str, Any], member: str
+) -> None:
+    """The error names the offending *member*, not merely ``changelog``.
+
+    Asserted as "the member appears somewhere in the path" rather than as an exact ``loc``, because
+    pydantic inserts its union-member tag between the two -- the real path is
+    ``("changelog", "ChangelogOptions", "dates")``. Pinning the tag would couple this row to
+    pydantic's union layout, which is the thing ``has_error_at``'s prefix matching exists to avoid;
+    pinning only ``("changelog",)`` would not discriminate a located member error from the
+    whole-value error every union failure also produces.
+    """
+    config, _warnings, errors = parse_config(written, package_names=DEFAULT_PKGS)
+    assert config is None
+    assert any(member in loc for loc in error_locs(errors)), (
+        f"expected some error path to name {member!r}, got {error_locs(errors)}"
+    )
+
+
+@pytest.mark.unit
+def test_an_unknown_changelog_table_member_warns_and_never_fails() -> None:
+    """An unknown member of the ``changelog`` table is a warning, exactly like ``snapshot``'s.
+
+    Deliberate (owner ruling 2026-07-30 closing ``VC-4``; design D3): the standing contract is that
+    unknown keys warn and never fail so a migrating configuration keeps loading, and a sub-table is
+    not an exception to it. The cost is that a typo leaves templating quietly off, which is why the
+    warning carries a suggestion.
+    """
+    config, warnings, errors = parse_config(
+        {"changelog": {"templat": "entry.md.jinja"}}, package_names=DEFAULT_PKGS
+    )
+    assert list(errors) == []
+    assert config is not None
+    assert config.changelog_template is None, "an unknown member configures nothing"
+    assert error_locs(warnings) == [("changelog", "templat")]
+    assert 'Did you mean "template"?' in joined(warnings)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "written",
+    [
+        {"changelog_template": "entry.md.jinja", "changelog_dates": True},
+        {"changelogTemplate": "entry.md.jinja", "changelogDates": True},
+    ],
+)
+def test_the_removed_flat_changelog_keys_warn_as_unknown(written: dict[str, Any]) -> None:
+    """The migration story for the keys the ``VC-4`` ruling removed.
+
+    ``changelog_template`` / ``changelog_dates`` were real options between
+    ``implement-version-command`` and the 2026-07-30 ruling that folded them into the ``changelog``
+    table. Failing on them would break the pinned "unknown keys never fail" contract, so an
+    un-migrated configuration still loads -- with a warning per key that says where the setting
+    went, and with no template applied until it is migrated.
+    """
+    config, warnings, errors = parse_config(written, package_names=DEFAULT_PKGS)
+    assert list(errors) == []
+    assert config is not None
+    assert config.changelog_template is None
+    assert config.changelog_dates is False
+    assert len(list(warnings)) == 2
+    assert "`changelog = { template =" in joined(warnings)
+    assert "`changelog = { dates = true }`" in joined(warnings)
 
 
 @pytest.mark.unit

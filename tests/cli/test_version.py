@@ -2063,8 +2063,8 @@ def test_a_configured_changelog_template_shapes_the_entry(
 ) -> None:
     """Closes ``CT-1`` / ``CT-2`` / ``CT-3``: templating is reachable from a real run at last.
 
-    Three separate holes, one row. ``CT-1``: ``changelog_template`` is now a config key, so a
-    project can turn entry templating on. ``CT-2``: ``molt.apply`` calls
+    Three separate holes, one row. ``CT-1``: ``changelog = { template = ... }`` is a config
+    setting, so a project can turn entry templating on. ``CT-2``: ``molt.apply`` calls
     :func:`molt.changelog.render_changelog` when it is set, where before *nothing* did and the
     templated path was reachable only from a library call. ``CT-3``: the value is a **filename**
     and the command owns the read -- the renderer still takes Jinja2 source text and never touches
@@ -2075,7 +2075,7 @@ def test_a_configured_changelog_template_shapes_the_entry(
     to the current directory. Resolving against the cwd would fail to find the file at all.
     """
     tmp_project.add_package("pkg-a", "1.0.0")
-    tmp_project.set_config(changelog_template="templates/entry.md.jinja")
+    tmp_project.set_config(changelog={"template": "templates/entry.md.jinja"})
     write_file(tmp_project.root, "templates/entry.md.jinja", CUSTOM_TEMPLATE)
     tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "This is a summary")
 
@@ -2099,15 +2099,16 @@ def test_changelog_dates_reach_the_template(
 ) -> None:
     """The second half of ``CT-1``, and the reason ``CT-5``'s hint exists.
 
-    ``changelog_dates`` is what the docs spell ``dates`` in the template's own ``config`` object,
-    and the date itself is one timestamp for the whole run, taken from the ``molt.clock`` seam --
+    The written key and the template key are the same word since the ``VC-4`` ruling: a project
+    writes ``changelog = { dates = true }`` and a template reads ``config.dates``. The date itself
+    is one timestamp for the whole run, taken from the ``molt.clock`` seam --
     two packages released together must not be stamped with the duration of the run. With the key
     off, ``release.date`` is a ``StrictUndefined`` carrying the hint, so a dated template reports a
     missing date instead of raising ``AttributeError`` on ``None``.
     """
     frozen_clock.freeze(monkeypatch)
     tmp_project.add_package("pkg-a", "1.0.0")
-    tmp_project.set_config(changelog_template="entry.md.jinja", changelog_dates=True)
+    tmp_project.set_config(changelog={"template": "entry.md.jinja", "dates": True})
     write_file(tmp_project.root, "entry.md.jinja", CUSTOM_TEMPLATE)
     tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "This is a summary")
 
@@ -2130,7 +2131,7 @@ def test_a_missing_changelog_template_is_reported_by_name(
     from molt.errors import MoltError  # pyrefly: ignore[missing-import]
 
     tmp_project.add_package("pkg-a", "1.0.0")
-    tmp_project.set_config(changelog_template="does-not-exist.md.jinja")
+    tmp_project.set_config(changelog={"template": "does-not-exist.md.jinja"})
     tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "This is a summary")
 
     with pytest.raises(MoltError) as excinfo:
@@ -2202,7 +2203,7 @@ def test_a_broken_changelog_template_is_reported_without_a_traceback(
     from molt import cli as molt_cli  # pyrefly: ignore[missing-import]
 
     tmp_project.add_package("pkg-a", "1.0.0")
-    tmp_project.set_config(changelog_template="entry.md.jinja")
+    tmp_project.set_config(changelog={"template": "entry.md.jinja"})
     write_file(tmp_project.root, "entry.md.jinja", "## {{ release.no_such_field }}\n")
     tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "This is a summary")
 

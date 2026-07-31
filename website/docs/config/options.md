@@ -77,9 +77,10 @@ Molt drops changesets' `privatePackages.tag` sub-option. It gated whether privat
 
 | Option | Type | Default | Meaning |
 |---|---|---|---|
-| `changelog` | `false \| string \| [string, table]` | molt's built-in generator | Changelog generator to run, with optional generator options. |
-| `changelog_template` | `string` | -- | Filename of a Jinja2 changelog-entry template, resolved against the workspace root. |
-| `changelog_dates` | `boolean` | `false` | Give the entry template a release date -- one timestamp per `version` run. |
+| `changelog` | `false \| string \| [string, table] \| table` | molt's built-in generator | The changelog subsystem: the generator to run, and optionally an entry template and a release date. |
+| `changelog.generator` | `false \| string \| [string, table]` | molt's built-in generator | Changelog generator to run, with optional generator options. |
+| `changelog.template` | `string` | -- | Filename of a Jinja2 changelog-entry template, resolved against the workspace root. |
+| `changelog.dates` | `boolean` | `false` | Give the entry template a release date -- one timestamp per `version` run. |
 | `commit` | `boolean \| string \| [string, table]` | `false` | Auto-commit generator to run after `version`/`publish`, with optional options. |
 | `format` | `false \| "mdformat"` | `false` | Optional external formatter run over files molt writes. |
 
@@ -92,15 +93,31 @@ changelog = ["molt.changelog.github", { repo = "acme/acme" }]
 
 See [Changelog plugins](/extending/changelog-plugins) for the generator contract.
 
-`changelog_template` and `changelog_dates` shape the entry *around* those lines -- the heading, the section titles and their order, and whether a date is rendered:
+### The table form
+
+Write `changelog` as a **table** when you want more than a generator. `template` and `dates` shape the entry *around* the generator's lines -- the heading, the section titles and their order, and whether a date is rendered:
 
 ```toml
 [tool.molt]
-changelog_template = "changelog-entry.md.jinja"
-changelog_dates = true
+changelog = { generator = "molt.changelog.github", template = "changelog-entry.md.jinja", dates = true }
 ```
 
-They are separate top-level keys, not a `[tool.molt.changelog]` table, because `changelog` itself is the generator reference. See [Changelog templates](/guides/changelog-templates).
+Every member is optional. `generator` falls back to molt's built-in generator, so `changelog = { dates = true }` means "the built-in generator, dated". A generator written inside the table is resolved exactly like one written directly under `changelog` -- same entry points, same `module:attr` references, one code path.
+
+TOML's section syntax is the same document, so this is equivalent:
+
+```toml
+[tool.molt.changelog]
+generator = "molt.changelog.github"
+template = "changelog-entry.md.jinja"
+dates = true
+```
+
+See [Changelog templates](/guides/changelog-templates).
+
+:::warning Migrating from `changelog_template` / `changelog_dates`
+Those two flat keys were removed. Move them into the `changelog` table -- an old configuration still loads, but molt warns that each key was ignored and no entry template is applied until you migrate.
+:::
 
 `commit` works the same way: `false` (default) leaves committing to you; `true` uses molt's built-in commit generator; a string or tuple selects a custom one.
 

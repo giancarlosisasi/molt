@@ -23,11 +23,18 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from molt.config.json_schema import config_json_schema
     from molt.config.load import load_config
-    from molt.config.models import Config, PrivatePackages, SnapshotOptions, default_config
+    from molt.config.models import (
+        ChangelogOptions,
+        Config,
+        PrivatePackages,
+        SnapshotOptions,
+        default_config,
+    )
     from molt.config.parse import parse_config
     from molt.config.result import ConfigIssue, ConfigResult
 
 __all__ = [
+    "ChangelogOptions",
     "Config",
     "ConfigIssue",
     "ConfigResult",
@@ -42,6 +49,7 @@ __all__ = [
 #: Public name -> the submodule that defines it. The map is explicit rather than derived so a
 #: typo in ``__all__`` fails loudly at import of the name, not silently at first use.
 _EXPORTS: dict[str, str] = {
+    "ChangelogOptions": "molt.config.models",
     "Config": "molt.config.models",
     "ConfigIssue": "molt.config.result",
     "ConfigResult": "molt.config.result",

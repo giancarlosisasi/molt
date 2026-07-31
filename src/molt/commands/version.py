@@ -499,11 +499,16 @@ def _apply(
 def _changelog_template(root: Path, config: Config) -> str | None:
     """Read the configured changelog-entry template, or ``None`` when there is none.
 
-    The config value is a **filename** and a relative one resolves against the **workspace root**
-    (owner ruling 2026-07-30, closing gap ``CT-3``): that is the directory the configuration itself
-    lives in, it is the only anchor every package shares, and it is what makes one template
-    describe a whole monorepo. :func:`molt.changelog.render_changelog` keeps taking Jinja2 *source
-    text*, so the filesystem stops here.
+    The setting is the ``template`` member of the ``changelog`` table
+    (``changelog = { template = "..." }``, owner ruling 2026-07-30 closing gap ``VC-4``), read here
+    through :attr:`molt.config.Config.changelog_template`, which is the one place the table and
+    generator-reference forms of that key are collapsed.
+
+    The value is a **filename** and a relative one resolves against the **workspace root** (owner
+    ruling 2026-07-30, closing gap ``CT-3``): that is the directory the configuration itself lives
+    in, it is the only anchor every package shares, and it is what makes one template describe a
+    whole monorepo. :func:`molt.changelog.render_changelog` keeps taking Jinja2 *source text*, so
+    the filesystem stops here.
 
     CRLF is folded to LF on read, for the same reason the built-in asset is: a template edited on
     Windows must not put a stray carriage return into every changelog the project publishes.
@@ -520,7 +525,7 @@ def _changelog_template(root: Path, config: Config) -> str | None:
     if not resolved.is_file():
         raise MoltError(
             f'The changelog template "{name}" was not found (looked in {resolved}). '
-            "`changelog_template` is a filename; a relative one is resolved against the "
+            "`changelog.template` is a filename; a relative one is resolved against the "
             "workspace root."
         )
     return resolved.read_text(encoding="utf-8").replace("\r\n", "\n")
