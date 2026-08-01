@@ -11,8 +11,14 @@ The GitHub backend is molt's first-class forge: it attributes changes to pull re
 The GitHub backend implements the [forge protocol](/forges/overview) against GitHub's API:
 
 - **Attribution.** Resolves the pull request and author behind each commit, so [changelog templates](/guides/changelog-templates) can link the PR (`[#1613](...)`), credit the author (`Thanks [@author](...)!`), and link the commit.
-- **Releases.** After a successful [publish](/guides/publishing), creates one GitHub Release per package, tagged with the package's tag and carrying its changelog entry as the body.
-- **Release pull request.** Opens and updates the "Version Packages" PR that the [CI loop](/guides/ci-github-action) keeps in sync.
+- **Releases.** Creates a GitHub Release for a package's tag, carrying its changelog entry as the body. The backend can do this today; nothing in the CLI calls it yet -- the loop that will create one release per published package lives in the [CI action](/guides/ci-github-action), which is still being built.
+- **Release pull request.** Opens and updates the "Version Packages" PR that the [CI loop](/guides/ci-github-action) keeps in sync. Not implemented yet.
+
+## Creating releases: the one REST call
+
+Everything above except release creation is GraphQL. GitHub's GraphQL schema has no release-creation mutation at all, so that one call goes to the REST API instead -- `POST {api}/repos/{owner}/{name}/releases` -- and it is the only place molt leaves GraphQL. It is not a second, weaker client: the same token, the same timeout, the same bounded jittered retry and the same `Retry-After` handling apply to it as to every attribution query.
+
+Two behaviors to expect from it. A tag that already has a release is reported as "nothing created" rather than as an error, so re-running a half-failed publish finishes the job instead of failing on what already succeeded. And the prerelease flag follows PEP 440 -- `1.0.0rc1`, `1.0.0a1` and every snapshot version are marked as prereleases, a post-release and a local version are not.
 
 ## Attribution via GraphQL
 
@@ -34,6 +40,7 @@ The backend resolves its endpoints and repository from the environment, which CI
 - `GITHUB_TOKEN` -- the API token described above.
 - `GITHUB_SERVER_URL` -- defaults to `https://github.com`; override for GitHub Enterprise Server.
 - `GITHUB_GRAPHQL_URL` -- defaults to `https://api.github.com/graphql`; override for GHES.
+- `GITHUB_API_URL` -- the REST base used for creating releases; defaults to `GITHUB_GRAPHQL_URL` with the trailing `/graphql` removed. Every GitHub Actions runner sets it, GHES included, so it is normally already correct. Set it yourself for a self-hosted instance you run molt against from outside Actions: a GHES REST base is `https://your-host/api/v3`, which is not what stripping `/graphql` off its GraphQL URL produces.
 
 For local runs, molt also reads these from a `.env` file if present. The GitHub-flavored [changelog generator](/guides/changelog-templates) can take an explicit `repo` in its options instead of relying on `GITHUB_REPOSITORY`.
 

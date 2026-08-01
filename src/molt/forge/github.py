@@ -1,5 +1,11 @@
 """The GitHub forge backend: hand-written GraphQL over ``httpx``, with a cache that hits.
 
+Release publication is the one exception to "GraphQL": GitHub's schema has no release-creation
+mutation, so :meth:`GitHubForge.create_release` posts to the REST API instead
+(``changesets/action`` v1.9.0 ``src/run.ts::createRelease`` reaches for
+``octokit.rest.repos.createRelease`` for the same reason). Both transports go through the one
+:meth:`GitHubForge._send` loop, so the second one cannot ship without the resilience the first has.
+
 Ports ``packages/get-github-info`` @ v3.0.0-next.9 -- ``env.ts``, ``utils.ts``, ``dataloader.ts``,
 ``get-commit-info.ts`` and ``get-pull-request-info.ts`` (research doc 08, the two
 ``get-github-info`` test sections: 9 rows, all "Adapt"). No GraphQL client library and no Octokit:
@@ -49,6 +55,7 @@ from molt.forge.protocol import (
     CommitRef,
     PullRef,
     PullRequestInfo,
+    ReleaseInfo,
     validate_repo_name,
 )
 from molt.forge.retry import (
@@ -67,6 +74,7 @@ __all__ = [
     "ASSOCIATED_PULL_REQUESTS_LIMIT",
     "DEFAULT_GRAPHQL_URL",
     "DEFAULT_SERVER_URL",
+    "GITHUB_API_VERSION",
     "REQUEST_TIMEOUT_SECONDS",
     "GitHubForge",
 ]
@@ -88,12 +96,25 @@ ASSOCIATED_PULL_REQUESTS_LIMIT = 50
 #: github.md`` promises one. Without it a hung connection stalls a release with no output.
 REQUEST_TIMEOUT_SECONDS = 30.0
 
-#: The variables ``env.ts:5-34`` reads, in the order that page documents them.
+#: The REST API version header GitHub asks every REST client to pin. Unpinned, a future default
+#: version changes the response shape :meth:`GitHubForge.create_release` reads ``html_url`` and
+#: ``id`` out of, in somebody's CI, with no change on molt's side.
+GITHUB_API_VERSION = "2022-11-28"
+
+#: The suffix a GraphQL endpoint carries, stripped to derive the REST base when ``GITHUB_API_URL``
+#: is not set (design D5).
+_GRAPHQL_PATH_SUFFIX = "/graphql"
+
+#: The variables ``env.ts:5-34`` reads, in the order that page documents them, plus
+#: ``GITHUB_API_URL`` -- the REST base, which every GitHub Actions runner exports (GitHub
+#: Enterprise Server included). It joins this tuple rather than being read on its own so the
+#: ``.env`` fallback covers it on exactly the same terms as the other four.
 _ENVIRONMENT_VARIABLES = (
     "GITHUB_TOKEN",
     "GITHUB_REPOSITORY",
     "GITHUB_SERVER_URL",
     "GITHUB_GRAPHQL_URL",
+    "GITHUB_API_URL",
 )
 
 # The two queries, written out. `string.Template` rather than an f-string or `.format()` on
@@ -196,7 +217,7 @@ def _dotenv_values(path: Path) -> dict[str, str]:
 
 
 def _environment() -> dict[str, str]:
-    """The four GitHub variables, with the real environment winning over ``.env``.
+    """The five GitHub variables, with the real environment winning over ``.env``.
 
     Precedence matters and is the same as every dotenv loader's default: an exported variable is a
     deliberate act -- what CI does -- and a ``.env`` is a convenience for a local run, so the file
@@ -214,6 +235,52 @@ def _environment() -> dict[str, str]:
         if actual:
             values[key] = actual
     return values
+
+
+def _rest_base(api_url: str, configured: str | None) -> str:
+    """The REST base URL: ``GITHUB_API_URL`` if it is set, else the GraphQL URL minus ``/graphql``.
+
+    Release creation is the one call that cannot be GraphQL -- GitHub's schema has no
+    release-creation mutation, which is why upstream reaches for ``octokit.rest.repos
+    .createRelease`` -- so the backend needs a second base URL. It stays **private** and never
+    reaches :class:`molt.forge.Forge` (design D5): the protocol's endpoint is ``api_url``
+    precisely so a backend whose transport is REST does not have to pretend it speaks GraphQL, and
+    a second, transport-named attribute on the protocol would re-import that mistake.
+
+    The derived fallback is exact for ``https://api.github.com/graphql`` and **approximate** for
+    GitHub Enterprise Server, whose REST base is ``/api/v3`` while its GraphQL base is
+    ``/api/graphql``. Recorded as a gap rather than papered over: on a real GHES runner
+    ``GITHUB_API_URL`` is set and this fallback never runs.
+    """
+    if configured:
+        return configured.rstrip("/")
+    return api_url.rstrip("/").removesuffix(_GRAPHQL_PATH_SUFFIX).rstrip("/")
+
+
+def _is_duplicate_release(response: httpx.Response) -> bool:
+    """Whether ``response`` says the host already carries a release for that tag.
+
+    A **conjunction**, deliberately: HTTP 422 *and* an ``errors[].code`` of ``already_exists``.
+    GitHub answers an ordinary validation failure -- a body over the size limit, a malformed tag
+    -- with the same 422, and reading that as "already released" would drop a release with no
+    error anywhere. Anything unrecognised stays a failure, which is the safe direction. Same shape
+    as :func:`molt.publish.is_duplicate_upload_error` for the package index, and for the same
+    reason.
+    """
+    if response.status_code != httpx.codes.UNPROCESSABLE_ENTITY:
+        return False
+    try:
+        body = response.json()
+    except ValueError:
+        return False
+    if not isinstance(body, dict):
+        return False
+    errors = body.get("errors")
+    if not isinstance(errors, list):
+        return False
+    return any(
+        isinstance(entry, dict) and entry.get("code") == "already_exists" for entry in errors
+    )
 
 
 def _is_rate_limited_forbidden(response: httpx.Response) -> bool:
@@ -317,6 +384,8 @@ class GitHubForge:
         self.api_url = api_url or environment.get("GITHUB_GRAPHQL_URL") or DEFAULT_GRAPHQL_URL
         self.server_url = server_url or environment.get("GITHUB_SERVER_URL") or DEFAULT_SERVER_URL
         self._token = token if token is not None else environment.get("GITHUB_TOKEN")
+        #: The REST base, private on purpose -- see :func:`_rest_base`.
+        self._rest_url = _rest_base(self.api_url, environment.get("GITHUB_API_URL"))
         #: ``(repo, kind, id) -> result``, the fix for the identity-keyed DataLoader. ``None``
         #: results are cached too: "this commit does not exist" is an answer, and re-asking for it
         #: once per changelog line is the storm the cache exists to prevent.
@@ -343,6 +412,85 @@ class GitHubForge:
         target = self._target_repo(repo)
         node = self._lookup("pull", target, str(pull))
         return node if isinstance(node, PullRequestInfo) else None
+
+    def create_release(
+        self,
+        tag: str,
+        *,
+        name: str,
+        body: str,
+        prerelease: bool = False,
+        repo: str | None = None,
+    ) -> ReleaseInfo | None:
+        """Create a GitHub Release for ``tag``; ``None`` if one already exists.
+
+        Ports ``changesets/action`` v1.9.0 ``src/run.ts::createRelease``, which sends exactly
+        these four fields once per released package, after ``git.pushTag`` -- so the tag exists
+        before the release references it. molt changes three things about it:
+
+        * **The transport is REST** (design D3). GitHub's GraphQL schema has no release-creation
+          mutation, so this is the one call that leaves :meth:`_request`'s body handling behind.
+          It still goes through :meth:`_send`, so the bounded retry budget, the ``Retry-After``
+          floor, the 403 ruling and the mandatory token all apply to it unchanged.
+        * **A duplicate is a value, not an exception** (design D2). Upstream throws whatever the
+          API returns, so re-running a publish that half-failed fails again on the packages that
+          already succeeded.
+        * **``prerelease`` is the caller's answer, not this backend's** (design D4). Upstream
+          derives it from ``version.includes("-")``, which is npm semver's rule and wrong for PEP
+          440; :func:`molt.versioning.is_prerelease` is where that decision lives.
+
+        The repository is validated before any socket is opened -- the same guard the attribution
+        path keeps, and load-bearing here too, because the slug is interpolated into the URL.
+        """
+        owner, _, repository = self._target_repo(repo).partition("/")
+        response = self._send(
+            "POST",
+            f"{self._rest_url}/repos/{owner}/{repository}/releases",
+            json={"tag_name": tag, "name": name, "body": body, "prerelease": prerelease},
+            # The two headers GitHub's REST API asks a client to pin. The GraphQL path sends
+            # `Accept: application/json`, which is right there and wrong here.
+            headers={
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": GITHUB_API_VERSION,
+            },
+        )
+        if response.status_code == httpx.codes.CREATED:
+            return self._release_info(response, tag=tag, name=name)
+        if _is_duplicate_release(response):
+            return None
+        raise self._http_error(response)
+
+    @staticmethod
+    def _release_info(response: httpx.Response, *, tag: str, name: str) -> ReleaseInfo:
+        """Read a created-release response into a :class:`ReleaseInfo`.
+
+        ``html_url`` and ``id`` are read off the response and never built from a base URL
+        (design D8), which is what makes a GitHub Enterprise Server install work with no backend
+        change. ``tag`` and ``name`` echo the caller, the same way ``CommitRef.sha`` does.
+
+        A response that is missing either field is reported with an empty URL and a ``0`` id
+        rather than raised on, deliberately: the release **was** created, and failing after a
+        successful write would leave a caller believing nothing happened, then meeting a duplicate
+        on the retry. A body that is not JSON at all is a different thing -- that means the
+        response did not come from the API -- and does raise.
+        """
+        try:
+            document = response.json()
+        except ValueError as exc:
+            raise MoltForgeError(
+                f"The GitHub API returned a {response.status_code} that is not JSON: "
+                f"{response.text[:200]!r}"
+            ) from exc
+        if not isinstance(document, dict):
+            raise MoltForgeError(f"The GitHub API returned an unexpected payload: {document!r}")
+        url = document.get("html_url")
+        identifier = document.get("id")
+        return ReleaseInfo(
+            tag=tag,
+            name=name,
+            url=url if isinstance(url, str) else "",
+            id=identifier if isinstance(identifier, int) else 0,
+        )
 
     # -- resolution --------------------------------------------------------------------
 
@@ -493,33 +641,50 @@ class GitHubForge:
             "Accept": "application/json",
         }
 
-    def _request(self, query: str) -> Mapping[str, Any]:
-        """POST ``query``, retrying transient failures within a bounded budget, and return ``data``.
+    def _send(
+        self,
+        method: str,
+        url: str,
+        *,
+        json: Any,
+        headers: Mapping[str, str] | None = None,
+    ) -> httpx.Response:
+        """Send one request, retrying transient failures within a bounded budget.
+
+        The **host-neutral half** of the transport (design D3): it knows about statuses, naps and
+        the token, and nothing about GraphQL or REST bodies. Both callers -- :meth:`_request` for
+        the attribution queries and :meth:`create_release` for release publication -- reuse it, so
+        a second transport cannot silently ship without resilience, which is exactly the defect
+        this capability exists to fix upstream (research README section 3.4).
+
+        Any status the loop will **not** retry is returned to the caller, including a failing one:
+        success is transport-specific (200 for GraphQL, 201 for a created release) and so is
+        failure (a 422 is a duplicate release, not an error). What this method raises is what the
+        caller cannot interpret anyway: a transport failure, or a transient status that outlived
+        the budget.
 
         The loop is deliberately explicit about where it stops: it never sleeps after the final
         attempt, and it stops early rather than exceeding the total backoff budget, so the number
         of naps is always one fewer than the number of attempts.
         """
-        headers = self._headers()
+        request_headers = {**self._headers(), **(headers or {})}
         slept = 0.0
         for attempt in range(1, MAX_ATTEMPTS + 1):
             last_attempt = attempt == MAX_ATTEMPTS
             try:
-                response = self._post(query, headers)
+                response = self._issue(method, url, json, request_headers)
             except httpx.TransportError as exc:
                 if last_attempt:
-                    raise MoltForgeError(
-                        f"Could not reach the GitHub API at {self.api_url}: {exc}"
-                    ) from exc
+                    raise MoltForgeError(f"Could not reach the GitHub API at {url}: {exc}") from exc
                 delay = backoff_delay(attempt)
             else:
-                if response.status_code == httpx.codes.OK:
-                    return self._read_data(response)
                 transient = is_transient_status(response.status_code) or (
                     response.status_code == httpx.codes.FORBIDDEN
                     and _is_rate_limited_forbidden(response)
                 )
-                if not transient or last_attempt:
+                if not transient:
+                    return response
+                if last_attempt:
                     raise self._http_error(response)
                 delay = backoff_delay(
                     attempt, retry_after=retry_after_seconds(response.headers.get("Retry-After"))
@@ -530,19 +695,33 @@ class GitHubForge:
             slept += delay
         # Unreachable: the final attempt either returns or raises. Kept as an assertion rather
         # than a fall-through, because a future edit to the loop that removes one of those exits
-        # would otherwise return `None` into a caller annotated to receive a mapping.
+        # would otherwise return `None` into a caller annotated to receive a response.
         raise MoltForgeError("The GitHub request loop ended without a result")
 
-    def _post(self, query: str, headers: Mapping[str, str]) -> httpx.Response:
-        """One POST of ``{"query": ...}``.
+    def _request(self, query: str) -> Mapping[str, Any]:
+        """POST ``query`` through :meth:`_send` and return its ``data`` block.
 
-        A client per request, closed by the context manager: there is no ``close()`` on the forge
-        for a caller to forget, and the cache means a release makes a handful of these rather than
-        one per changelog line. ``json=`` is what sets ``Content-Type: application/json`` -- and
-        upstream sends a *string* body, which ``fetch`` types as ``text/plain``.
+        The **GraphQL half** of the transport: this is where a 200 stops being success on its own
+        (design D6) and where anything that is not a 200 becomes an error. Everything about naps,
+        statuses and headers lives one level down.
+        """
+        response = self._send("POST", self.api_url, json={"query": query})
+        if response.status_code != httpx.codes.OK:
+            raise self._http_error(response)
+        return self._read_data(response)
+
+    def _issue(
+        self, method: str, url: str, json: Any, headers: Mapping[str, str]
+    ) -> httpx.Response:
+        """One request, with a client per request.
+
+        Closed by the context manager: there is no ``close()`` on the forge for a caller to
+        forget, and the cache means a release makes a handful of these rather than one per
+        changelog line. ``json=`` is what sets ``Content-Type: application/json`` -- and upstream
+        sends a *string* body on the GraphQL path, which ``fetch`` types as ``text/plain``.
         """
         with httpx.Client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
-            return client.post(self.api_url, json={"query": query}, headers=dict(headers))
+            return client.request(method, url, json=json, headers=dict(headers))
 
     @staticmethod
     def _read_data(response: httpx.Response) -> Mapping[str, Any]:

@@ -7,6 +7,7 @@ semantics rather than node-semver's. See each module's docstring for the reasoni
 """
 
 from molt.versioning.bump import BumpType, highest, inc, next_pre_number
+from molt.versioning.prerelease import is_prerelease
 from molt.versioning.ranges import (
     accepts_prereleases,
     caret,
@@ -22,6 +23,7 @@ __all__ = [
     "caret",
     "highest",
     "inc",
+    "is_prerelease",
     "is_unconstrained",
     "next_pre_number",
     "parse_range",

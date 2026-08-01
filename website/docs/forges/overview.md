@@ -23,10 +23,18 @@ GitHub ships first and is the most polished backend. But because the seam exists
 A forge backend answers a small, host-agnostic set of questions:
 
 - **Attribution.** Given a commit, which pull request introduced it, and who authored it? Given a pull request number, its author and merge commit? This is what lets [changelog templates](/guides/changelog-templates) render `Thanks @author!` and link back to the PR.
-- **Release publication.** Given a tag and a changelog body, create a release on the host.
-- **Pull request lifecycle.** Find the existing release PR for a branch and update it in place, or open a new one.
+- **Release publication.** Given an existing tag, a name and a changelog body, create a release on the host -- one per released package, with that package's changelog entry as the body. This is implemented today.
+- **Pull request lifecycle.** Find the existing release PR for a branch and update it in place, or open a new one. Not implemented yet.
 
 The engine, the changelog generators, and the CI loop call these; they never assume the host is GitHub.
+
+### Two details of release publication worth knowing
+
+**A release the host already carries is not a failure.** Creating a release for a tag that already has one reports "nothing created" instead of raising, so re-running a publish that half-failed completes the releases that are missing rather than failing on the ones that already went out.
+
+**The prerelease flag follows PEP 440, not npm semver.** `1.0.0rc1`, `1.0.0a1`, `1.0.0b2`, `1.0.0.dev1` and every `molt version --snapshot` version are published as prereleases; `1.0.0` and a post-release such as `1.0.0.post1` are not, and neither is a local version such as `1.0.0+local.build`. If you are migrating from changesets, this is a deliberate difference: it marks a release as a prerelease when the version string contains a hyphen, and no PEP 440 prerelease contains one.
+
+Note that molt does not yet *call* this itself. A backend can create a release today; the release loop that will drive it -- one release per package, after the tags are pushed -- is part of the [CI action](/guides/ci-github-action) still being built.
 
 ## Caching and backoff, done right
 

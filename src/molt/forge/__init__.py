@@ -20,6 +20,7 @@ from molt.forge.github import (
     ASSOCIATED_PULL_REQUESTS_LIMIT,
     DEFAULT_GRAPHQL_URL,
     DEFAULT_SERVER_URL,
+    GITHUB_API_VERSION,
     REQUEST_TIMEOUT_SECONDS,
     GitHubForge,
 )
@@ -31,6 +32,7 @@ from molt.forge.protocol import (
     Forge,
     PullRef,
     PullRequestInfo,
+    ReleaseInfo,
     validate_repo_name,
 )
 from molt.forge.retry import MAX_ATTEMPTS, MAX_BACKOFF_SECONDS, MAX_TOTAL_BACKOFF_SECONDS
@@ -39,6 +41,7 @@ __all__ = [
     "ASSOCIATED_PULL_REQUESTS_LIMIT",
     "DEFAULT_GRAPHQL_URL",
     "DEFAULT_SERVER_URL",
+    "GITHUB_API_VERSION",
     "MAX_ATTEMPTS",
     "MAX_BACKOFF_SECONDS",
     "MAX_TOTAL_BACKOFF_SECONDS",
@@ -51,5 +54,6 @@ __all__ = [
     "GitHubForge",
     "PullRef",
     "PullRequestInfo",
+    "ReleaseInfo",
     "validate_repo_name",
 ]

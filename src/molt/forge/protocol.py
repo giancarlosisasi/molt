@@ -53,6 +53,7 @@ __all__ = [
     "Forge",
     "PullRef",
     "PullRequestInfo",
+    "ReleaseInfo",
     "validate_repo_name",
 ]
 
@@ -167,6 +168,30 @@ class PullRequestInfo:
     commit: CommitRef | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class ReleaseInfo:
+    """A release the host now carries (``changesets/action`` v1.9.0 ``run.ts::createRelease``).
+
+    Upstream discards the API response entirely. molt returns it, because the caller that creates
+    one release per released package has to be able to report *which* releases it created --
+    especially when some of them resolved to ``None`` because the host already had them.
+
+    :attr:`tag` and :attr:`name` echo what the caller asked for, the same way
+    :attr:`CommitRef.sha` echoes the caller's sha. :attr:`url` and :attr:`id` come **off the
+    response** and are never concatenated from a base URL, which is the rule that makes a GitHub
+    Enterprise Server install work with no backend change (design D8).
+    """
+
+    #: The tag the release points at, as the caller spelled it.
+    tag: str
+    #: The release's human-facing title.
+    name: str
+    #: The release page on the host, as the API returned it.
+    url: str
+    #: The host's own identifier for the release, as the API returned it.
+    id: int
+
+
 @runtime_checkable
 class Forge(Protocol):
     """What molt asks of a code host.
@@ -197,4 +222,35 @@ class Forge(Protocol):
 
     def pull_request_info(self, pull: int, *, repo: str | None = None) -> PullRequestInfo | None:
         """Resolve a pull request to its author and merge commit, or ``None`` if it is absent."""
+        ...
+
+    def create_release(
+        self,
+        tag: str,
+        *,
+        name: str,
+        body: str,
+        prerelease: bool = False,
+        repo: str | None = None,
+    ) -> ReleaseInfo | None:
+        """Publish a release for an **existing** tag, or ``None`` if the host already has one.
+
+        Ports ``changesets/action`` v1.9.0 ``run.ts::createRelease``, which sends ``name``,
+        ``tag_name``, ``body`` and ``prerelease`` once per released package, after the tag is
+        pushed. ``website/docs/forges/overview.md`` ("What a forge backend provides") has promised
+        this member since the seam shipped.
+
+        Three parts of the shape are deliberate:
+
+        * **``prerelease`` is passed in, never derived.** A backend must not parse PEP 440 -- that
+          is :func:`molt.versioning.is_prerelease`'s job, and a second backend would otherwise
+          re-implement it (design D1/D4).
+        * **``name`` and ``body`` are keyword-only.** Upstream passes the tag as the name too, so a
+          positional pair of strings invites transposing them silently.
+        * **A duplicate resolves to ``None``, it does not raise** (design D2). Re-running a
+          publish that half-failed is a normal operation: the packages that succeeded already have
+          their releases, and failing the whole run on them strands the ones that did not. Same
+          idiom as :meth:`commit_info` returning ``None`` for a missing commit. Every *other*
+          rejection is raised.
+        """
         ...

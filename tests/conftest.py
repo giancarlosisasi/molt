@@ -12,6 +12,9 @@ matching module lands. They port the reference harness described in
 - ``seeded_ids``   -> §4 ``vi.mock("human-id")`` (deterministic changeset ids).
 - ``pypi_registry``-> §5.6 PyPI JSON registry mock with a stale-read knob (doc 07 §"stale").
 - ``forge_api``    -> §5.7 GitHub GraphQL mock capturing the query + auth header (doc 08).
+- ``forge_rest_api``-> the same idea for the one REST endpoint the forge uses: release creation
+  (``changesets/action`` v1.9.0 ``src/run.ts::createRelease``). GitHub's GraphQL schema has no
+  release-creation mutation, so that call cannot go through ``forge_api``'s ``/graphql`` matcher.
 
 Downstream test agents rely on the public fixture names verbatim; do not rename them.
 Optional third-party deps (``tomlkit``, ``respx``/``httpx``) are imported lazily inside the
@@ -29,7 +32,7 @@ import subprocess
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, ClassVar, Self
 
 import pytest
 
@@ -44,12 +47,14 @@ __all__ = [
     "FROZEN_DATETIME",
     "FROZEN_EPOCH_MS",
     "ForgeAPI",
+    "ForgeRestAPI",
     "FrozenClock",
     "GitRepo",
     "ProjectBuilder",
     "PyPIRegistry",
     "SeededIds",
     "forge_api",
+    "forge_rest_api",
     "frozen_clock",
     "git_repo",
     "pypi_registry",
@@ -527,3 +532,77 @@ def forge_api() -> Iterator[ForgeAPI]:
     respx, httpx = _require_httpx_stack()
     with respx.mock(assert_all_called=False) as router:
         yield ForgeAPI(router, httpx)
+
+
+# ======================================================================================
+# forge_rest_api -- respx mock of the forge's one REST endpoint: release creation
+# ======================================================================================
+
+
+class ForgeRestAPI:
+    """Mocks the release-creation endpoint (``POST .../repos/<owner>/<name>/releases``).
+
+    A sibling of :class:`ForgeAPI`, deliberately **beside** it rather than grafted onto it: that
+    class matches ``POST .+/graphql/?$`` and every existing forge row depends on that pattern, so
+    widening it would change what they intercept. Release creation is the one call that cannot be
+    GraphQL -- GitHub's schema has no release-creation mutation, which is why upstream reaches for
+    ``octokit.rest.repos.createRelease`` (``changesets/action`` v1.9.0 ``src/run.ts``).
+
+    Like :class:`ForgeAPI` the URL regex is host-agnostic, so a GitHub Enterprise Server base URL
+    is intercepted too. Unlike it, a row may program the **status** as well as the body: the
+    duplicate-release contract is a 422 carrying an ``already_exists`` error code, and a fixture
+    that could only answer 200 could not express it.
+    """
+
+    _RELEASES_URL_RE = r".+/repos/.+/releases/?$"
+
+    #: A plausible created-release document, so a row that does not care about the response body
+    #: still gets a well-formed 201. ``.invalid`` is reserved by RFC 2606.
+    _DEFAULT_RELEASE: ClassVar[dict[str, Any]] = {
+        "id": 1,
+        "html_url": "https://forge.invalid/owner/name/releases/tag/v1.0.0",
+        "tag_name": "v1.0.0",
+        "name": "v1.0.0",
+    }
+
+    def __init__(self, router: respx.MockRouter, httpx_mod: ModuleType) -> None:
+        self._router = router
+        self._httpx = httpx_mod
+        self.requests: list[httpx.Request] = []
+        self._status = 201
+        self._body: Any = dict(self._DEFAULT_RELEASE)
+        router.post(url__regex=self._RELEASES_URL_RE).mock(side_effect=self._handle)
+
+    def set_response(self, body: Any, *, status: int = 201) -> None:
+        """Program what the next request (and every one after it) is answered with."""
+        self._status = status
+        self._body = body
+
+    def _handle(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        return self._httpx.Response(self._status, json=self._body)
+
+    @property
+    def last_request(self) -> httpx.Request | None:
+        return self.requests[-1] if self.requests else None
+
+    @property
+    def last_payload(self) -> dict[str, Any] | None:
+        """The JSON body of the last request, parsed."""
+        request = self.last_request
+        if request is None:
+            return None
+        payload = json.loads(request.content)
+        return payload if isinstance(payload, dict) else None
+
+    def auth_header(self) -> str | None:
+        request = self.last_request
+        return None if request is None else request.headers.get("Authorization")
+
+
+@pytest.fixture
+def forge_rest_api() -> Iterator[ForgeRestAPI]:
+    """A respx-backed release-creation mock; see :class:`ForgeRestAPI`."""
+    respx, httpx = _require_httpx_stack()
+    with respx.mock(assert_all_called=False) as router:
+        yield ForgeRestAPI(router, httpx)
