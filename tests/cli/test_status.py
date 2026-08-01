@@ -738,7 +738,11 @@ def test_the_output_option_help_promises_only_json() -> None:
     group = typer.main.get_command(molt.cli.app)
     assert isinstance(group, typer.core.TyperGroup)
     command = group.commands["status"]
-    help_text = next(p for p in command.params if "--output" in p.opts).help or ""
+    # `.params` is a list of `Parameter`, and only the `Option` subclass declares `help` -- so the
+    # attribute is read with a default rather than asserted. An option that lost its help text
+    # reads as an empty string here, which fails the three assertions below anyway.
+    option = next(p for p in command.params if "--output" in p.opts)
+    help_text = getattr(option, "help", "") or ""
 
     assert "json" in help_text
     assert "file" not in help_text.lower()
