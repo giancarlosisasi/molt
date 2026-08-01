@@ -57,7 +57,7 @@ full dotted path from the repo root; `[tool.pyrefly] search-path` includes `"."`
 resolves them too, with no suppression needed:
 
 ```python
-from tests.engine.fake_state import FakeConfig, FakeFullState, default_config
+from tests.engine.fake_state import DepEntry, FakeFullState, package_dir
 ```
 
 ## Drops -- deliberately-not-ported behavior

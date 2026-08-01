@@ -8,19 +8,33 @@ GitHub first and the base branch last). See
 ``openspec/changes/implement-init-command/design.md`` for D1-D7 and
 ``tests/cli/test_init.py`` for the 18-row conformance suite this satisfies.
 
-Two deliberate simplifications, both explained in the module's ``## Open gaps`` section of
-``design.md`` rather than repeated here:
+What ``init`` writes
+--------------------
+**Every key ``Config`` defines, each at its default**, in :data:`MOLT_KEY_ORDER` -- owner ruling
+2026-07-31 (session 6), closing gap ``IC-3``. It used to write eight of fifteen (upstream's
+generator template minus ``$schema`` and ``access``), which hid two thirds of the tool from the one
+file a new user opens. A TOML table has no ``$schema`` affordance, so an editor cannot offer the
+options that are missing from it: the file *is* the discovery surface, and it costs fifteen lines.
 
-- The written configuration is upstream's *generator template* (``base_branch``, ``format``,
-  ``changelog``, ``commit``, ``ignore``, ``fixed``, ``linked``,
-  ``update_internal_dependencies`` -- upstream's eight, minus ``$schema`` and ``access``), not
-  every key ``Config`` defines. ``MOLT_KEY_ORDER`` covers the full 15-key model (cross-checked
-  against ``tests/config/test_parse.py``'s pinned set) so a future change is free to write more
-  of it without touching the ordering contract.
-- Ecosystem/workspace detection (``molt.ecosystem``) is always reported to the console, but its
-  result is not itself written into the config -- ``ecosystem = "auto"`` already re-detects it
-  on every later run, so persisting the detected name would be a redundant write, not a new
-  capability.
+The key set is derived from ``Config.model_fields``, not hand-listed, so a field added to the model
+later appears here with no edit. Two rules the model does not state:
+
+1. **Nested tables are written as inline tables** (``private_packages = { version = true }``), so
+   the section stays one ``key = value`` line per option and the fixed-order contract keeps meaning
+   what it says.
+2. **A nested member whose default is absent is omitted.** ``snapshot.prerelease_template``
+   defaults to ``None`` and TOML has no null, so ``snapshot`` is written as
+   ``{ use_calculated_version = false }``. Writing the member with any placeholder would change the
+   parsed configuration -- ``SnapshotOptions`` rejects the empty string outright. This is the one
+   way this template could produce a configuration molt then refuses to load, which is why
+   ``tests/cli/test_init.py`` pins it with a round-trip rather than with a key list.
+
+One deliberate simplification remains, explained in the module's ``## Open gaps`` section of
+``design.md`` rather than repeated here: ecosystem/workspace detection (``molt.ecosystem``) is
+always reported to the console, but its result is not itself written into the config. ``init``
+writes ``ecosystem = "auto"`` because that is the *default*, which is a different fact -- ``auto``
+re-detects on every later run, so persisting the detected name would be a redundant write, not a
+new capability (``IC-4``, ratified 2026-07-31).
 """
 
 from __future__ import annotations
@@ -78,16 +92,17 @@ _README_BODY = (
 )
 
 #: The full set of ``Config`` fields (``molt/config/models.py``), in the order they are written
-#: when present (design D2). The first eight positions mirror upstream's fixed generator order
-#: (``init/index.ts:59-70``) with ``$schema`` and ``access`` dropped -- and are, today, also the
-#: only keys ``run`` actually writes (see the module docstring). The remaining seven are appended
-#: in the order ``Config`` declares them, so a caller that later decides to write more of the
-#: model has a deterministic position to put each key in without renegotiating the ordering
-#: contract. Cross-checked programmatically against ``Config.model_fields``: both are this exact
-#: 15-name set. It was 17 between ``implement-version-command``, which added flat
-#: ``changelog_template`` / ``changelog_dates`` keys, and the 2026-07-30 ruling closing ``VC-4``,
-#: which folded both into the ``changelog`` table -- so the entry-template seam still has a
-#: position here, it is just ``changelog``'s.
+#: (design D2). The first eight positions mirror upstream's fixed generator order
+#: (``init/index.ts:59-70``) with ``$schema`` and ``access`` dropped; the remaining seven follow in
+#: the order ``Config`` declares them. **All fifteen are written**, at their defaults, since the
+#: 2026-07-31 ruling closing ``IC-3`` -- the first eight were the whole file before it.
+#: Cross-checked programmatically against ``Config.model_fields``: both are this exact 15-name set,
+#: and the key set ``run`` writes is derived from that model rather than from this tuple, so a new
+#: field appears in the written file whether or not somebody remembers to order it here. It was 17
+#: between ``implement-version-command``, which added flat ``changelog_template`` /
+#: ``changelog_dates`` keys, and the 2026-07-30 ruling closing ``VC-4``, which folded both into the
+#: ``changelog`` table -- so the entry-template seam still has a position here, it is just
+#: ``changelog``'s.
 MOLT_KEY_ORDER: tuple[str, ...] = (
     # Upstream's generator order (`init/index.ts:59-70`), minus `$schema` and `access`.
     "base_branch",
@@ -98,7 +113,7 @@ MOLT_KEY_ORDER: tuple[str, ...] = (
     "fixed",
     "linked",
     "update_internal_dependencies",
-    # In `Config` but not written by `run` today (see the module docstring).
+    # In `Config`, and written at their defaults since `IC-3`.
     "changed_file_patterns",
     "private_packages",
     "snapshot",
@@ -188,16 +203,11 @@ def run(
     base_branch, changelog, commit = _collect_answers(
         prompts, non_interactive=non_interactive, defaults=defaults
     )
-    values: dict[str, Any] = {
-        "base_branch": base_branch,
-        "format": defaults.format,
-        "changelog": changelog,
-        "commit": commit,
-        "ignore": list(defaults.ignore),
-        "fixed": [list(group) for group in defaults.fixed],
-        "linked": [list(group) for group in defaults.linked],
-        "update_internal_dependencies": defaults.update_internal_dependencies,
-    }
+    values = _default_values(defaults)
+    # The three the prompts answered. Everything else is the model's own default.
+    values["base_branch"] = base_branch
+    values["changelog"] = changelog
+    values["commit"] = commit
     _write_config(manifest_path, values)
     if readme_missing:
         _write_readme(changeset_dir, readme_path)
@@ -289,8 +299,57 @@ def _normalize_base_branch(answer: Any, fallback: str) -> str:
 
 
 # ======================================================================================
-# Writing the configuration (design D1, D2)
+# Writing the configuration (design D1, D2, D10)
 # ======================================================================================
+
+
+def _default_values(defaults: Config) -> dict[str, Any]:
+    """Every ``Config`` field at its default, in the shape ``tomlkit`` can render.
+
+    Derived from ``model_fields`` rather than hand-listed (owner ruling 2026-07-31, closing gap
+    ``IC-3``), so a field added to :class:`molt.config.Config` later reaches the written template
+    with no edit here -- only a position in :data:`MOLT_KEY_ORDER`, which is cross-checked against
+    the same model.
+    """
+    return {name: _toml_value(getattr(defaults, name)) for name in type(defaults).model_fields}
+
+
+def _toml_value(value: Any) -> Any:
+    """``value`` as something ``tomlkit.item`` accepts, recursively.
+
+    Three conversions, each forced by a shape TOML cannot spell:
+
+    * a **nested model** becomes a plain mapping, which ``tomlkit`` renders as an inline table --
+      one ``key = value`` line per option, which is what keeps the fixed-order contract meaningful;
+    * a member whose value is ``None`` is **dropped**, because TOML has no null. That is why
+      ``snapshot`` is written as ``{ use_calculated_version = false }`` and never with a
+      placeholder ``prerelease_template``: ``SnapshotOptions`` rejects the empty string, so a
+      placeholder would make ``init`` write a configuration molt then refuses to load;
+    * a tuple becomes a list, at every depth -- ``fixed`` and ``linked`` are tuples of tuples.
+
+    A **generator reference carrying no options** -- ``("molt.changelog.default", None)``, the
+    normalized shape of ``changelog`` and ``commit`` -- collapses back to the bare string it was
+    written from. The array spelling would have to carry the ``None`` TOML cannot express, and the
+    short form is what ``molt.config`` normalizes *to* this pair in the first place.
+    """
+    import tomlkit
+    from pydantic import BaseModel
+
+    if isinstance(value, BaseModel):
+        # `tomlkit.item` renders a plain mapping as a *standalone* `[table]`, which would break the
+        # one-line-per-option shape and put the remaining keys inside it. An inline table is built
+        # explicitly instead.
+        table = tomlkit.inline_table()
+        for name in type(value).model_fields:
+            member = getattr(value, name)
+            if member is not None:
+                table[name] = _toml_value(member)
+        return table
+    if isinstance(value, tuple | list):
+        if len(value) == 2 and isinstance(value[0], str) and value[1] is None:
+            return value[0]
+        return [_toml_value(item) for item in value]
+    return value
 
 
 def _write_config(manifest_path: Path, values: Mapping[str, Any]) -> None:

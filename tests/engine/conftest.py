@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import pytest
-from tests.engine.fake_state import FakeConfig
-from tests.engine.fake_state import default_config as fake_state_default_config
+
+from molt.config import Config
+from molt.config import default_config as real_default_config
 
 
 @pytest.fixture
-def default_config() -> FakeConfig:
-    """The ported changesets ``defaultConfig``, in molt's key names.
+def default_config() -> Config:
+    """The ported changesets ``defaultConfig`` -- molt's own :func:`molt.config.default_config`.
 
     Shape from ``packages/config/src/defaults.ts:7-18`` (the *written* defaults: ``baseBranch``,
     ``ignore``, ``fixed``, ``linked``, ``updateInternalDependencies``) plus the schema defaults
@@ -25,13 +26,21 @@ def default_config() -> FakeConfig:
     snapshot template unset and ``snapshot_use_calculated_version`` off, private packages
     versioned.
 
-    :class:`~tests.engine.fake_state.FakeConfig` is frozen, so a test derives a variant instead of
+    :class:`~molt.config.Config` is a frozen pydantic model, so a test derives a variant instead of
     mutating this one::
 
-        config = dataclasses.replace(default_config, ignore=("pkg-b",))
-        config = dataclasses.replace(default_config, fixed=(("pkg-a", "pkg-b"),))
+        config = default_config.model_copy(update={"ignore": ("pkg-b",)})
+        config = default_config.model_copy(update={"fixed": (("pkg-a", "pkg-b"),)})
 
-    It is a stand-in for the unbuilt ``molt.config.Config`` (build step 3); when that lands this
-    fixture should return ``molt.config.default_config()`` unchanged in shape.
+    **A nested option is derived by replacing its whole sub-model**, never by naming the flat view
+    (owner ruling 2026-07-31, closing gap ``RPE-7``). ``snapshot_prerelease_template`` and
+    ``snapshot_use_calculated_version`` are ``property`` objects -- data descriptors that shadow the
+    instance ``__dict__`` entries ``model_copy(update=)`` writes -- so updating one by name is a
+    silent no-op::
+
+        config = default_config.model_copy(update={"snapshot": SnapshotOptions(...)})
+
+    It used to be ``tests.engine.fake_state.FakeConfig``, a stand-in from before ``molt.config``
+    existed; the retirement is what ``CLAUDE.md`` had instructed since build step 3.
     """
-    return fake_state_default_config()
+    return real_default_config()

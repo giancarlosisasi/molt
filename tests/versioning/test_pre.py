@@ -37,8 +37,9 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 from packaging.version import Version
-from tests.engine.fake_state import FakeFullState, default_config
+from tests.engine.fake_state import FakeFullState
 
+from molt.config import default_config
 from molt.versioning import BumpType, inc, next_pre_number
 
 pytestmark = pytest.mark.unit

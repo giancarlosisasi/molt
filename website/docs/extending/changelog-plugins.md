@@ -57,6 +57,25 @@ class MyGenerator:
 
 `molt.changelog.ChangelogGenerator` is the protocol above, and it is real and importable -- but the two data positions, `changeset` / `changesets` and `dependencies`, are typed `Any`, not a `Changeset` or `DependencyRelease` class. molt has no such classes: it reads both **structurally** instead, so there is nothing to import for them. `Forge`, when supplied, is a real, importable protocol -- `from molt.forge import Forge` -- and `forge` is `None` whenever no forge is configured.
 
+**What a dependency element guarantees.** Each entry of `dependencies` has a `name` (a `str`) and a `new_version` (a parsed `packaging.version.Version`, not a string -- it renders the same in an f-string, so it is easy to assume wrongly). Nothing else about it is promised. That pair is written down as `molt.changelog.DependencyReleaseLike`, which you may import and annotate your own parameter with if you like:
+
+```python
+from collections.abc import Sequence
+
+from molt.changelog import DependencyReleaseLike
+
+
+def get_dependency_release_line(
+    self,
+    changesets: list,
+    dependencies: Sequence[DependencyReleaseLike],
+    options: dict | None,
+    forge: Forge | None,
+) -> str: ...
+```
+
+Annotating it is entirely optional and does not break the seam: the protocol keeps the position `Any` on purpose, because protocol method parameters are contravariant and pinning a type there would stop every generator that names its own element class from satisfying the contract.
+
 Both functions are **synchronous**. molt calls each directly, with no `await` and no inspection of whether it returns a coroutine, so a generator that needs the network (resolving commit authors, PR numbers) must resolve it synchronously -- exactly what the built-in `github` generator does, over a sync `httpx` client.
 
 Key points:

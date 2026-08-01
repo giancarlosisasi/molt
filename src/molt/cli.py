@@ -517,7 +517,7 @@ def status(
     # page lists only the long form, which is a docs gap rather than a behavior difference.
     output: Annotated[
         str | None,
-        typer.Option("--output", "-o", help="Write the plan here (or `json` for stdout)."),
+        typer.Option("--output", "-o", help="Print the plan to stdout as `json`, the only value."),
     ] = None,
     cwd: CwdOption = None,
     non_interactive: NonInteractiveOption = False,

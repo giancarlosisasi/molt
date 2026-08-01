@@ -409,19 +409,37 @@ def apply_release_plan(
 def _match_releases(
     plan: PlanLike, packages: PackagesLike
 ) -> list[tuple[ReleaseLike, PackageLike]]:
-    """Pair every release with its workspace member, or fail naming the one that is missing.
+    """Pair every release with its workspace member, or fail naming the one that is wrong.
 
-    Runs before anything is read or written (``index.ts:92-102``), so an unknown package name
-    aborts with a pristine tree. Names resolve under PEP 503: a changeset written against the PyPI
-    display name ``Foo_Bar`` has to find the member declaring ``foo-bar``, or it silently releases
-    nothing.
+    Runs before anything is read or written (``index.ts:92-102``), so both refusals abort with a
+    pristine tree. Names resolve under PEP 503: a changeset written against the PyPI display name
+    ``Foo_Bar`` has to find the member declaring ``foo-bar``, or it silently releases nothing.
+
+    The pass rejects **two** shapes:
+
+    * a release naming a package that does not exist -- upstream's own check;
+    * a plan naming the same package **twice** (owner ruling 2026-07-31, closing gap ``ARP-3``;
+      ``tests/apply/test_deliberately_not_ported.py`` records the recommendation this implements).
+      A duplicate used to let the second version edit silently win, which is exactly the class of
+      bug buffer-then-flush exists to catch: the tree ends up carrying one of two intended
+      versions, and re-running does not fix it. It is keyed on the **normalized** name, so
+      ``Foo_Bar`` and ``foo-bar`` in one plan are caught as the duplicate they are; the message
+      names the package once, because the reader's problem is the package and not the spelling.
     """
     members = {normalize_name(package.name): package for package in packages.packages}
     matched: list[tuple[ReleaseLike, PackageLike]] = []
+    seen: set[str] = set()
     for release in plan.releases:
-        package = members.get(normalize_name(release.name))
+        key = normalize_name(release.name)
+        package = members.get(key)
         if package is None:
             raise MoltError(f"Could not find matching package for release of: {release.name}")
+        if key in seen:
+            raise MoltError(
+                f"The release plan names {package.name} more than once. A package can only be "
+                f"released at one version per run; nothing was written."
+            )
+        seen.add(key)
         matched.append((release, package))
     return matched
 

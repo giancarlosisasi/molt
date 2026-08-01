@@ -42,7 +42,7 @@ from molt.action.body import (
     pull_request_entry,
 )
 from molt.action.mode import Mode, select_mode
-from molt.action.orchestrate import ActionResult, run_action
+from molt.action.orchestrate import ActionFailed, ActionResult, run_action
 from molt.action.run import (
     DEFAULT_COMMIT_MESSAGE,
     VERSION_BRANCH_PREFIX,
@@ -67,6 +67,7 @@ __all__ = [
     "DEFAULT_PR_TITLE",
     "MAX_BODY_CHARACTERS",
     "VERSION_BRANCH_PREFIX",
+    "ActionFailed",
     "ActionResult",
     "ChangedPackage",
     "ChangelogEntry",

@@ -47,6 +47,8 @@ A release whose version has molt's **snapshot shape** -- `0.0.0.dev` followed by
 Refusing to publish a snapshot release to PyPI: acme-core 0.0.0.dev20211213000730.
 ```
 
+The trigger is the **shape** of the version, not who wrote it: a hand-typed `0.0.0.dev` with a 13- or 14-digit counter is refused too, deliberately -- molt cannot tell it from one of its own, and a version that looks like a snapshot on the public index is a mistake either way.
+
 `publish-plan` is a separate invocation from `molt version`, so it has no memory of the `--snapshot` flag; the trigger is the version itself. The refusal fires **before molt reads the index and before it writes any output file**, so a refused run leaves nothing behind for a later stage to pick up.
 
 Molt refuses rather than quietly sending the snapshot somewhere else, because it cannot invent the URL of your private index. Name one and the guardrail clears:
@@ -71,7 +73,7 @@ With `--repository` or `--index-url` pointing anywhere other than pypi.org, molt
 | `--repository <name>` | string | `pypi` | Named repository/index to publish to (for example a snapshot index or `testpypi`). |
 | `--index-url <url>` | string | -- | Explicit index URL, as an alternative to `--repository`. |
 | `--from-pack-dir <dir>` | string | -- | Upload prebuilt artifacts and the `publish-plan.json` from a [`molt build`](/cli/pack) output directory instead of building now. |
-| `--git-tag` / `--no-git-tag` | flag | `--git-tag` | Create git tags for published packages. `--no-git-tag` skips tagging of published packages. See [molt git-tag](/cli/git-tag). |
+| `--git-tag` / `--no-git-tag` | flag | `--git-tag` | Create git tags for published packages. `--no-git-tag` skips tagging of published packages -- **and of tag-only (private) releases**, whose whole contribution to a run is their tag, so `--no-git-tag` makes those entries no-ops. See [molt git-tag](/cli/git-tag). |
 | `--output <file>` | string | -- | Write an NDJSON `git-tag` event stream to a file. Back-filled by `MOLT_OUTPUT`. |
 | `--dry-run` | flag | off | Print the publish plan; build and upload nothing. |
 | `--cwd <path>` | path | current directory | Directory to run in; root discovery starts here. |

@@ -80,6 +80,8 @@ Capabilities changesets lacks -- most cheap to build fresh, expensive to retrofi
 | Atomic, resumable `version` (buffer-then-flush) | Double-bumps on a retry after mid-run failure |
 | Correct changelog Markdown, [emitted directly](/guides/changelog-templates) | Needs a formatter pass to repair blank lines |
 | Windows-correct from day one | Windows CI added only in 2026-07 |
+| A package that pins **itself** is left alone | `version-package.ts` has no self-name check, so a faithful port would rewrite the pin. molt refuses to, because a package's own version is not one of its dependencies |
+| One failed host release does not cost the rest | `run.ts` stops at the first release that fails to create. molt creates every remaining release and then fails, naming each failure -- by then the packages are on the index, so the run's job is to tell you which releases are missing |
 
 ## What molt refuses
 

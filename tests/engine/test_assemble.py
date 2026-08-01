@@ -70,7 +70,7 @@ here rather than inherited and are flagged for the owner:
 The engine is expected to read the workspace structurally: ``packages.root_dir``,
 ``packages.packages[i].dir`` and
 ``.manifest.{name, version, dependencies, dev_dependencies, optional_dependencies}``, plus the
-config attributes on :class:`~tests.engine.fake_state.FakeConfig`.
+config attributes on :class:`~molt.config.Config`.
 """
 
 from __future__ import annotations
@@ -88,11 +88,11 @@ from tests.engine.fake_state import (
     DEFAULT_CHANGESET_ID,
     PATH_SOURCES,
     DepEntry,
-    FakeConfig,
     FakeFullState,
 )
-from tests.engine.fake_state import default_config as ported_default_config
 
+from molt.config import Config, SnapshotOptions
+from molt.config import default_config as ported_default_config
 from molt.versioning import BumpType, caret, highest, inc, parse_range, satisfies, tilde
 
 if TYPE_CHECKING:
@@ -171,7 +171,7 @@ TILDE_1 = _render_range("~", _ONE)
 EXACT_1 = _render_range("=", _ONE)
 
 
-def _plan(state: FakeFullState, config: FakeConfig, **kwargs: Any) -> ReleasePlan:
+def _plan(state: FakeFullState, config: Config, **kwargs: Any) -> ReleasePlan:
     """Run the engine over a builder's state."""
     return assemble_release_plan(state.changesets, state.packages, config, **kwargs)
 
@@ -218,9 +218,7 @@ def setup() -> FakeFullState:
 # ======================================================================================
 
 
-def test_assembles_a_plan_for_the_basic_setup(
-    setup: FakeFullState, default_config: FakeConfig
-) -> None:
+def test_assembles_a_plan_for_the_basic_setup(setup: FakeFullState, default_config: Config) -> None:
     """Row 1 (Port). ``index.test.ts:20-36``.
 
     The single-package baseline: one patch release carrying its changeset id.
@@ -243,7 +241,7 @@ def test_assembles_a_plan_for_the_basic_setup(
 
 
 def test_determine_dependents_runs_before_match_fixed_constraint(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Pass-order guard. ``index.ts:164-179`` -- ``determine_dependents`` runs FIRST each turn.
 
@@ -258,7 +256,7 @@ def test_determine_dependents_runs_before_match_fixed_constraint(
     """
     setup.update_dependency("pkg-b", "pkg-a", EXACT_1)
     setup.add_changeset(id="big-cats-delight", releases=[("pkg-c", BumpType.MAJOR)])
-    config = dataclasses.replace(default_config, fixed=(("pkg-c", "pkg-d"),))
+    config = default_config.model_copy(update={"fixed": (("pkg-c", "pkg-d"),)})
 
     plan = _plan(setup, config)
 
@@ -273,7 +271,7 @@ def test_determine_dependents_runs_before_match_fixed_constraint(
 
 def test_snapshot_release_uses_a_pep440_dev_segment(
     setup: FakeFullState,
-    default_config: FakeConfig,
+    default_config: Config,
     frozen_clock: FrozenClock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -301,7 +299,7 @@ def test_snapshot_release_uses_a_pep440_dev_segment(
 
 def test_snapshot_release_with_a_tag_keeps_the_tag_in_the_local_segment(
     setup: FakeFullState,
-    default_config: FakeConfig,
+    default_config: Config,
     frozen_clock: FrozenClock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -396,7 +394,7 @@ SNAPSHOT_TEMPLATE_CASES: list[tuple[str, str | None, str, str]] = [
 @pytest.mark.parametrize(("template", "tag", "expected", "why"), SNAPSHOT_TEMPLATE_CASES)
 def test_the_snapshot_prerelease_template_places_each_placeholder(
     setup: FakeFullState,
-    default_config: FakeConfig,
+    default_config: Config,
     frozen_clock: FrozenClock,
     monkeypatch: pytest.MonkeyPatch,
     template: str,
@@ -413,7 +411,9 @@ def test_the_snapshot_prerelease_template_places_each_placeholder(
     frozen_clock.freeze(monkeypatch)
     digits = frozen_clock.moment.strftime("%Y%m%d%H%M%S")
     milliseconds = str(int(frozen_clock.moment.timestamp() * 1000))
-    config = dataclasses.replace(default_config, snapshot_prerelease_template=template)
+    config = default_config.model_copy(
+        update={"snapshot": SnapshotOptions(prerelease_template=template)}
+    )
 
     plan = _plan(
         setup,
@@ -428,7 +428,7 @@ def test_the_snapshot_prerelease_template_places_each_placeholder(
 
 def test_a_numeric_snapshot_tag_stays_in_the_local_segment(
     setup: FakeFullState,
-    default_config: FakeConfig,
+    default_config: Config,
     frozen_clock: FrozenClock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -441,7 +441,9 @@ def test_a_numeric_snapshot_tag_stays_in_the_local_segment(
     """
     frozen_clock.freeze(monkeypatch)
     digits = frozen_clock.moment.strftime("%Y%m%d%H%M%S")
-    config = dataclasses.replace(default_config, snapshot_prerelease_template="{tag}")
+    config = default_config.model_copy(
+        update={"snapshot": SnapshotOptions(prerelease_template="{tag}")}
+    )
 
     plan = _plan(setup, config, snapshot=SnapshotParams(tag="123"))
 
@@ -450,7 +452,7 @@ def test_a_numeric_snapshot_tag_stays_in_the_local_segment(
 
 def test_every_snapshot_version_in_one_plan_shares_the_timestamp(
     setup: FakeFullState,
-    default_config: FakeConfig,
+    default_config: Config,
     frozen_clock: FrozenClock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -480,7 +482,7 @@ def test_every_snapshot_version_in_one_plan_shares_the_timestamp(
 
 
 def test_assembles_a_plan_with_multiple_packages_in_insertion_order(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Row 4 (Port). ``index.test.ts:68-94``.
 
@@ -505,7 +507,7 @@ def test_assembles_a_plan_with_multiple_packages_in_insertion_order(
 
 
 def test_two_changesets_for_one_package_merge_to_the_highest_bump(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Row 5 (Port). ``index.test.ts:96-113``; ``flatten-releases.ts:40-59``.
 
@@ -525,7 +527,7 @@ def test_two_changesets_for_one_package_merge_to_the_highest_bump(
 
 
 def test_none_never_lowers_another_release_type(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Row 6 (Port). ``index.test.ts:115-161``; research doc 01 section 3.1.
 
@@ -552,7 +554,7 @@ def test_none_never_lowers_another_release_type(
 
 
 def test_updates_multiple_dependents_of_a_single_package(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Row 7 (Port). ``index.test.ts:163-181``.
 
@@ -569,7 +571,7 @@ def test_updates_multiple_dependents_of_a_single_package(
 
 
 def test_updates_dependents_all_the_way_down_the_dependency_tree(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Row 8 (Port). ``index.test.ts:183-204``; ``determine-dependents.ts:45-49``.
 
@@ -602,7 +604,7 @@ def test_updates_dependents_all_the_way_down_the_dependency_tree(
     ],
 )
 def test_an_unconstrained_dependency_is_a_graph_edge_that_never_bumps(
-    setup: FakeFullState, default_config: FakeConfig, unconstrained: str, why: str
+    setup: FakeFullState, default_config: Config, unconstrained: str, why: str
 ) -> None:
     """Row 9 (Port). ``index.test.ts:206-223``; research doc 02 line 33.
 
@@ -622,7 +624,7 @@ def test_an_unconstrained_dependency_is_a_graph_edge_that_never_bumps(
 
 
 def test_raises_when_a_changeset_names_a_package_outside_the_workspace(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Row 10 (Port). ``index.test.ts:225-245``; ``index.ts:248-252``.
 
@@ -648,7 +650,7 @@ def test_raises_when_a_changeset_names_a_package_outside_the_workspace(
     ],
 )
 def test_a_path_or_direct_reference_dependency_is_not_a_version_constraint(
-    setup: FakeFullState, default_config: FakeConfig, kind: str, constraint: str, why: str
+    setup: FakeFullState, default_config: Config, kind: str, constraint: str, why: str
 ) -> None:
     """Rows 11 + 12 folded into one (Adapt). ``index.test.ts:247-287``.
 
@@ -685,7 +687,7 @@ def test_a_path_or_direct_reference_dependency_is_not_a_version_constraint(
 
 
 def test_ignored_packages_do_not_get_releases_from_their_own_changesets(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Row 13 (Port). ``index.test.ts:290-312``; ``flatten-releases.ts:34-38``.
 
@@ -693,7 +695,7 @@ def test_ignored_packages_do_not_get_releases_from_their_own_changesets(
     """
     setup.add_changeset(id="big-cats-delight", releases=[("pkg-a", BumpType.MAJOR)])
     setup.add_changeset(id="small-dogs-sad", releases=[("pkg-b", BumpType.MINOR)])
-    config = dataclasses.replace(default_config, ignore=("pkg-b",))
+    config = default_config.model_copy(update={"ignore": ("pkg-b",)})
 
     plan = _plan(setup, config)
 
@@ -702,7 +704,7 @@ def test_ignored_packages_do_not_get_releases_from_their_own_changesets(
 
 
 def test_an_ignored_dependent_is_still_materialised_as_a_none_release(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Row 14 (Port). ``index.test.ts:314-340``; ``determine-dependents.ts:67-73, 131-136``.
 
@@ -714,7 +716,7 @@ def test_an_ignored_dependent_is_still_materialised_as_a_none_release(
     setup.update_dependency("pkg-b", "pkg-a", EXACT_1)
     setup.add_changeset(id="big-cats-delight", releases=[("pkg-a", BumpType.MAJOR)])
     setup.add_changeset(id="small-dogs-sad", releases=[("pkg-b", BumpType.MINOR)])
-    config = dataclasses.replace(default_config, ignore=("pkg-b",))
+    config = default_config.model_copy(update={"ignore": ("pkg-b",)})
 
     plan = _plan(setup, config)
 
@@ -724,7 +726,7 @@ def test_an_ignored_dependent_is_still_materialised_as_a_none_release(
 
 
 def test_an_ignored_dev_dependent_is_still_materialised_as_a_none_release(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Row 16 (Port). ``index.test.ts:370-396``.
 
@@ -734,7 +736,7 @@ def test_an_ignored_dev_dependent_is_still_materialised_as_a_none_release(
     setup.update_dev_dependency("pkg-b", "pkg-a", EXACT_1)
     setup.add_changeset(id="big-cats-delight", releases=[("pkg-a", BumpType.MAJOR)])
     setup.add_changeset(id="small-dogs-sad", releases=[("pkg-b", BumpType.MINOR)])
-    config = dataclasses.replace(default_config, ignore=("pkg-b",))
+    config = default_config.model_copy(update={"ignore": ("pkg-b",)})
 
     plan = _plan(setup, config)
 
@@ -744,7 +746,7 @@ def test_an_ignored_dev_dependent_is_still_materialised_as_a_none_release(
 
 
 def test_raises_on_a_changeset_mixing_ignored_and_non_ignored_packages(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Row 17 (Port). ``index.test.ts:398-423``; ``index.ts:266-273``.
 
@@ -756,7 +758,7 @@ def test_raises_on_a_changeset_mixing_ignored_and_non_ignored_packages(
         id="big-cats-delight",
         releases=[("pkg-a", BumpType.MAJOR), ("pkg-b", BumpType.MINOR)],
     )
-    config = dataclasses.replace(default_config, ignore=("pkg-b",))
+    config = default_config.model_copy(update={"ignore": ("pkg-b",)})
 
     # TODO(molt.errors): narrow once the hierarchy lands (test-contract section 5).
     with pytest.raises(Exception, match="big-cats-delight") as excinfo:
@@ -772,7 +774,7 @@ def test_raises_on_a_changeset_mixing_ignored_and_non_ignored_packages(
 # ======================================================================================
 
 
-def test_fixed_packages_bump_together(setup: FakeFullState, default_config: FakeConfig) -> None:
+def test_fixed_packages_bump_together(setup: FakeFullState, default_config: Config) -> None:
     """Row 18 (Port). ``index.test.ts:427-446``; ``match-fixed-constraint.ts:32-69``.
 
     The group's highest bump wins for every member -- pkg-b has no changeset of its own and is
@@ -780,7 +782,7 @@ def test_fixed_packages_bump_together(setup: FakeFullState, default_config: Fake
     because both members were already releasing.
     """
     setup.add_changeset(id="just-some-umbrellas", releases=[("pkg-a", BumpType.MINOR)])
-    config = dataclasses.replace(default_config, fixed=(("pkg-a", "pkg-b"),))
+    config = default_config.model_copy(update={"fixed": (("pkg-a", "pkg-b"),)})
 
     plan = _plan(setup, config)
 
@@ -789,7 +791,7 @@ def test_fixed_packages_bump_together(setup: FakeFullState, default_config: Fake
 
 
 def test_fixed_group_aligns_on_an_unreleased_members_higher_version(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Row 19 (Port). ``index.test.ts:448-473``; ``match-fixed-constraint.ts:26-29``.
 
@@ -806,7 +808,7 @@ def test_fixed_group_aligns_on_an_unreleased_members_higher_version(
         releases=[("pkg-b", BumpType.MINOR), ("pkg-a", BumpType.PATCH)],
     )
     setup.update_package("pkg-c", "2.0.0")
-    config = dataclasses.replace(default_config, fixed=(("pkg-a", "pkg-b", "pkg-c"),))
+    config = default_config.model_copy(update={"fixed": (("pkg-a", "pkg-b", "pkg-c"),)})
 
     plan = _plan(setup, config)
 
@@ -816,7 +818,7 @@ def test_fixed_group_aligns_on_an_unreleased_members_higher_version(
 
 
 def test_chained_fixed_groups_converge_in_a_specific_order(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Row 20 (Port). ``index.test.ts:475-514`` (see its narration comment at ``:476-480``).
 
@@ -828,7 +830,7 @@ def test_chained_fixed_groups_converge_in_a_specific_order(
     setup.add_changeset(id="just-some-umbrellas", releases=[("pkg-b", BumpType.MAJOR)])
     setup.add_changeset(id="totally-average-verbiage", releases=[("pkg-d", BumpType.MINOR)])
     setup.update_dependency("pkg-c", "pkg-a", CARET_1)
-    config = dataclasses.replace(default_config, fixed=(("pkg-a", "pkg-b"), ("pkg-c", "pkg-d")))
+    config = default_config.model_copy(update={"fixed": (("pkg-a", "pkg-b"), ("pkg-c", "pkg-d"))})
 
     plan = _plan(setup, config)
 
@@ -842,7 +844,7 @@ def test_chained_fixed_groups_converge_in_a_specific_order(
 
 
 def test_chained_fixed_groups_order_changes_with_the_dependency_edge(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Row 21 (Port). ``index.test.ts:516-550``.
 
@@ -853,7 +855,7 @@ def test_chained_fixed_groups_order_changes_with_the_dependency_edge(
     setup.add_changeset(id="just-some-umbrellas", releases=[("pkg-a", BumpType.MAJOR)])
     setup.add_changeset(id="totally-average-verbiage", releases=[("pkg-d", BumpType.MINOR)])
     setup.update_dependency("pkg-c", "pkg-b", CARET_1)
-    config = dataclasses.replace(default_config, fixed=(("pkg-a", "pkg-b"), ("pkg-c", "pkg-d")))
+    config = default_config.model_copy(update={"fixed": (("pkg-a", "pkg-b"), ("pkg-c", "pkg-d"))})
 
     plan = _plan(setup, config)
 
@@ -867,14 +869,14 @@ def test_chained_fixed_groups_order_changes_with_the_dependency_edge(
 
 
 def test_fixed_config_alone_produces_no_releases(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Row 22 (Port). ``index.test.ts:552-567``; ``match-fixed-constraint.ts:23``.
 
     With no changesets there is nothing "releasing" in the group, so the pass short-circuits.
     A ``fixed`` group must never manufacture a release on its own.
     """
-    config = dataclasses.replace(default_config, fixed=(("pkg-a", "pkg-b"), ("pkg-c", "pkg-d")))
+    config = default_config.model_copy(update={"fixed": (("pkg-a", "pkg-b"), ("pkg-c", "pkg-d"))})
 
     plan = assemble_release_plan([], setup.packages, config)
 
@@ -882,7 +884,7 @@ def test_fixed_config_alone_produces_no_releases(
 
 
 def test_a_fixed_forced_bump_propagates_to_that_members_dependents(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Adapted from row 23, which is a **Drop** (peerDependencies).
 
@@ -894,7 +896,7 @@ def test_a_fixed_forced_bump_propagates_to_that_members_dependents(
     """
     setup.update_dependency("pkg-b", "pkg-c", EXACT_1)
     setup.add_changeset(id="some-id", releases=[("pkg-a", BumpType.MINOR)])
-    config = dataclasses.replace(default_config, fixed=(("pkg-a", "pkg-c"),))
+    config = default_config.model_copy(update={"fixed": (("pkg-a", "pkg-c"),)})
 
     plan = _plan(setup, config)
 
@@ -903,7 +905,7 @@ def test_a_fixed_forced_bump_propagates_to_that_members_dependents(
 
 
 def test_a_fixed_group_glob_expands_to_the_matching_packages(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Net-new, and a **deliberate divergence**: upstream bug #1 (research README section 3.4).
 
@@ -918,7 +920,7 @@ def test_a_fixed_group_glob_expands_to_the_matching_packages(
     the concrete member list. Here ``pkg-*`` covers all four members, so the seeded patch on
     pkg-a force-releases the whole workspace at 1.0.1.
     """
-    config = dataclasses.replace(default_config, fixed=(("pkg-*",),))
+    config = default_config.model_copy(update={"fixed": (("pkg-*",),)})
 
     plan = _plan(setup, config)
 
@@ -931,14 +933,14 @@ def test_a_fixed_group_glob_expands_to_the_matching_packages(
 # ======================================================================================
 
 
-def test_linked_packages_bump_together(setup: FakeFullState, default_config: FakeConfig) -> None:
+def test_linked_packages_bump_together(setup: FakeFullState, default_config: Config) -> None:
     """Row 24 (Port). ``index.test.ts:605-624``; ``apply-links.ts:43-52``.
 
     Both members are already releasing (pkg-a from the seeded patch, pkg-b from the new major), so
     ``apply_links`` raises the lower one to the group maximum.
     """
     setup.add_changeset(id="just-some-umbrellas", releases=[("pkg-b", BumpType.MAJOR)])
-    config = dataclasses.replace(default_config, linked=(("pkg-a", "pkg-b"),))
+    config = default_config.model_copy(update={"linked": (("pkg-a", "pkg-b"),)})
 
     plan = _plan(setup, config)
 
@@ -947,7 +949,7 @@ def test_linked_packages_bump_together(setup: FakeFullState, default_config: Fak
 
 
 def test_linked_group_does_not_force_release_a_non_releasing_member(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Row 25 (Port). ``index.test.ts:626-650``; ``apply-links.ts:27-34``.
 
@@ -964,7 +966,7 @@ def test_linked_group_does_not_force_release_a_non_releasing_member(
         releases=[("pkg-b", BumpType.MINOR), ("pkg-a", BumpType.PATCH)],
     )
     setup.update_package("pkg-c", "2.0.0")
-    config = dataclasses.replace(default_config, linked=(("pkg-a", "pkg-b", "pkg-c"),))
+    config = default_config.model_copy(update={"linked": (("pkg-a", "pkg-b", "pkg-c"),)})
 
     plan = _plan(setup, config)
 
@@ -974,7 +976,7 @@ def test_linked_group_does_not_force_release_a_non_releasing_member(
     assert "pkg-c" not in _versions(plan)
 
 
-def test_chained_linked_groups_converge(setup: FakeFullState, default_config: FakeConfig) -> None:
+def test_chained_linked_groups_converge(setup: FakeFullState, default_config: Config) -> None:
     """Row 26 (Port). ``index.test.ts:652-689`` (narration at ``:653-658``).
 
     The ``linked`` twin of row 20: pkg-a is raised by its group, which pushes it out of pkg-c's
@@ -984,7 +986,7 @@ def test_chained_linked_groups_converge(setup: FakeFullState, default_config: Fa
     setup.add_changeset(id="just-some-umbrellas", releases=[("pkg-b", BumpType.MAJOR)])
     setup.add_changeset(id="totally-average-verbiage", releases=[("pkg-d", BumpType.MINOR)])
     setup.update_dependency("pkg-c", "pkg-a", CARET_1)
-    config = dataclasses.replace(default_config, linked=(("pkg-a", "pkg-b"), ("pkg-c", "pkg-d")))
+    config = default_config.model_copy(update={"linked": (("pkg-a", "pkg-b"), ("pkg-c", "pkg-d"))})
 
     plan = _plan(setup, config)
 
@@ -998,10 +1000,10 @@ def test_chained_linked_groups_converge(setup: FakeFullState, default_config: Fa
 
 
 def test_linked_config_alone_produces_no_releases(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Row 27 (Port). ``index.test.ts:691-706``; ``apply-links.ts:34``."""
-    config = dataclasses.replace(default_config, linked=(("pkg-a", "pkg-b"), ("pkg-c", "pkg-d")))
+    config = default_config.model_copy(update={"linked": (("pkg-a", "pkg-b"), ("pkg-c", "pkg-d"))})
 
     plan = assemble_release_plan([], setup.packages, config)
 
@@ -1009,7 +1011,7 @@ def test_linked_config_alone_produces_no_releases(
 
 
 def test_a_linked_alignment_propagates_to_that_members_dependents(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Adapted from row 28, which is a **Drop** (peerDependencies).
 
@@ -1020,7 +1022,7 @@ def test_a_linked_alignment_propagates_to_that_members_dependents(
     """
     setup.update_dependency("pkg-b", "pkg-a", EXACT_1)
     setup.add_changeset(id="some-id", releases=[("pkg-c", BumpType.MINOR)])
-    config = dataclasses.replace(default_config, linked=(("pkg-a", "pkg-c"),))
+    config = default_config.model_copy(update={"linked": (("pkg-a", "pkg-c"),)})
 
     plan = _plan(setup, config)
 
@@ -1029,7 +1031,7 @@ def test_a_linked_alignment_propagates_to_that_members_dependents(
 
 
 def test_a_linked_group_glob_expands_to_the_matching_packages(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Net-new, and a **deliberate divergence**: upstream bug #1 (research README section 3.4).
 
@@ -1042,7 +1044,7 @@ def test_a_linked_group_glob_expands_to_the_matching_packages(
     """
     setup.add_changeset(id="just-some-umbrellas", releases=[("pkg-b", BumpType.MINOR)])
     setup.update_package("pkg-c", "2.0.0")
-    config = dataclasses.replace(default_config, linked=(("pkg-*",),))
+    config = default_config.model_copy(update={"linked": (("pkg-*",),)})
 
     plan = _plan(setup, config)
 
@@ -1051,7 +1053,7 @@ def test_a_linked_group_glob_expands_to_the_matching_packages(
 
 
 def test_a_fixed_group_over_an_internal_dependency_web_settles_on_one_version(
-    default_config: FakeConfig,
+    default_config: Config,
 ) -> None:
     """Row 29 (Adapt). ``index.test.ts:742-788`` (issues 963 and 1759).
 
@@ -1083,7 +1085,7 @@ def test_a_fixed_group_over_an_internal_dependency_web_settles_on_one_version(
     )
     state.add_changeset(releases=[("@ex/core", BumpType.MINOR)])
     group = ("@ex/core", "@ex/errors", "@ex/api", "some-peer", "@ex/components")
-    config = dataclasses.replace(default_config, fixed=(group,))
+    config = default_config.model_copy(update={"fixed": (group,)})
 
     plan = _plan(state, config)
 
@@ -1097,7 +1099,7 @@ def test_a_fixed_group_over_an_internal_dependency_web_settles_on_one_version(
 
 
 def test_pre_release_reports_the_current_bump_and_increments_the_counter(
-    default_config: FakeConfig,
+    default_config: Config,
 ) -> None:
     """Row 33 (Adapt). ``index.test.ts:862-902``; ``index.ts:27-35`` + ``increment.ts``.
 
@@ -1135,7 +1137,7 @@ def test_pre_release_reports_the_current_bump_and_increments_the_counter(
 
 
 def test_a_workspace_path_source_resolves_to_the_dependencys_exact_version(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Row 34 (Adapt). ``index.test.ts:905-923``; ``determine-dependents.ts:207-217``.
 
@@ -1156,7 +1158,7 @@ def test_a_workspace_path_source_resolves_to_the_dependencys_exact_version(
 
 
 def test_bump_workspace_sources_only_skips_plain_version_dependents(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Row 35 (Adapt). ``index.test.ts:926-950``.
 
@@ -1169,7 +1171,7 @@ def test_bump_workspace_sources_only_skips_plain_version_dependents(
     setup.update_dependency("pkg-b", "pkg-a", CARET_1)
     setup.update_dependency("pkg-c", "pkg-a", f"workspace:{CARET_1}")
     setup.add_changeset(id="big-cats-delight", releases=[("pkg-a", BumpType.MAJOR)])
-    config = dataclasses.replace(default_config, bump_workspace_sources_only=True)
+    config = default_config.model_copy(update={"bump_workspace_sources_only": True})
 
     plan = _plan(setup, config)
 
@@ -1179,7 +1181,7 @@ def test_bump_workspace_sources_only_skips_plain_version_dependents(
 
 
 def test_workspace_modifier_sources_resolve_against_the_current_version(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Row 36 (Adapt). ``index.test.ts:952-982``; ``determine-dependents.ts:203-206``.
 
@@ -1190,7 +1192,7 @@ def test_workspace_modifier_sources_resolve_against_the_current_version(
     setup.update_dependency("pkg-b", "pkg-a", "workspace:~")
     setup.update_dependency("pkg-c", "pkg-a", "workspace:^")
     setup.add_changeset(id="big-cats-delight", releases=[("pkg-a", BumpType.MAJOR)])
-    config = dataclasses.replace(default_config, bump_workspace_sources_only=True)
+    config = default_config.model_copy(update={"bump_workspace_sources_only": True})
 
     plan = _plan(setup, config)
 
@@ -1206,7 +1208,7 @@ def test_workspace_modifier_sources_resolve_against_the_current_version(
 
 
 def test_update_internal_dependents_always_bumps_transitive_dependents(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Row 37 (Port). ``index.test.ts:986-1010``; ``determine-dependents.ts:93-98``.
 
@@ -1215,7 +1217,7 @@ def test_update_internal_dependents_always_bumps_transitive_dependents(
     """
     setup.update_dependency("pkg-b", "pkg-a", CARET_1)
     setup.update_dependency("pkg-c", "pkg-b", CARET_1)
-    config = dataclasses.replace(default_config, update_internal_dependents="always")
+    config = default_config.model_copy(update={"update_internal_dependents": "always"})
 
     plan = _plan(setup, config)
 
@@ -1224,7 +1226,7 @@ def test_update_internal_dependents_always_bumps_transitive_dependents(
 
 
 def test_a_none_dependency_never_propagates_even_under_always(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Row 38 (Port). ``index.test.ts:1012-1037``; ``determine-dependents.ts:88-89``.
 
@@ -1234,7 +1236,7 @@ def test_a_none_dependency_never_propagates_even_under_always(
     """
     setup.update_dependency("pkg-b", "pkg-c", CARET_1)
     setup.add_changeset(id="stuff-and-nonsense", releases=[("pkg-c", BumpType.NONE)])
-    config = dataclasses.replace(default_config, update_internal_dependents="always")
+    config = default_config.model_copy(update={"update_internal_dependents": "always"})
 
     plan = _plan(setup, config)
 
@@ -1248,7 +1250,7 @@ def test_a_none_dependency_never_propagates_even_under_always(
 
 
 def test_a_prod_edge_bumps_a_dependent_that_a_dev_edge_alone_would_not(
-    default_config: FakeConfig,
+    default_config: Config,
 ) -> None:
     """Row 45 (Port). ``index.test.ts:1329-1358``.
 
@@ -1272,7 +1274,7 @@ def test_a_prod_edge_bumps_a_dependent_that_a_dev_edge_alone_would_not(
     assert str(_release(plan, "pkg-b").old_version) == "1.0.0"
 
 
-def test_a_none_changeset_yields_a_no_op_plan(default_config: FakeConfig) -> None:
+def test_a_none_changeset_yields_a_no_op_plan(default_config: Config) -> None:
     """Row 46 (Port). ``index.test.ts:1361-1382``.
 
     A ``none`` release exists (so the changelog can carry its summary) but does not move the
@@ -1294,7 +1296,7 @@ def test_a_none_changeset_yields_a_no_op_plan(default_config: FakeConfig) -> Non
 
 
 def test_a_dependent_bump_must_not_discard_an_existing_none_releases_changesets(
-    setup: FakeFullState, default_config: FakeConfig
+    setup: FakeFullState, default_config: Config
 ) -> None:
     """Net-new, and a **deliberate divergence**: upstream bug #4 (research README section 3.4).
 
@@ -1333,7 +1335,7 @@ def test_a_dependent_bump_must_not_discard_an_existing_none_releases_changesets(
     ],
 )
 def test_a_none_dependency_does_not_bump_a_workspace_source_dependent(
-    setup: FakeFullState, default_config: FakeConfig, constraint: str, why: str
+    setup: FakeFullState, default_config: Config, constraint: str, why: str
 ) -> None:
     """Rows 49 + 50 (Adapt). ``index.test.ts:1429-1476``.
 
@@ -1488,9 +1490,8 @@ def test_dependent_bumping_matrix(
     bump.
     """
     spec = _MATRIX_SUITES_BY_NAME[suite]
-    config = dataclasses.replace(
-        ported_default_config(),
-        update_internal_dependents="always" if spec.always else "out-of-range",
+    config = ported_default_config().model_copy(
+        update={"update_internal_dependents": "always" if spec.always else "out-of-range"},
     )
     state = _matrix_state(dep_kind, spec.render(range_kind, _ONE), bump)
 
@@ -1636,9 +1637,8 @@ def test_a_dependent_bumps_exactly_when_its_constraint_breaks(
         "dep": state.update_dependency,
     }[dep_kind]
     writer("pkg-a", "pkg-a-b", rendered)
-    config = dataclasses.replace(
-        ported_default_config(),
-        update_internal_dependents="always" if always else "out-of-range",
+    config = ported_default_config().model_copy(
+        update={"update_internal_dependents": "always" if always else "out-of-range"},
     )
 
     plan = _plan(state, config)

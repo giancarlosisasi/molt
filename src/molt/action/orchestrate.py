@@ -53,7 +53,7 @@ from molt.action.mode import Mode, mode_for, read_pending_changesets
 from molt.action.run import VERSION_BRANCH_PREFIX, run_publish, run_version
 from molt.action.utils import get_changelog_entry
 from molt.ecosystem import discover_workspace, find_workspace_root, is_private
-from molt.errors import MoltError
+from molt.errors import ExitError, MoltError
 from molt.publish import tag_name
 from molt.versioning import is_prerelease
 
@@ -66,6 +66,7 @@ if TYPE_CHECKING:
 __all__ = [
     "CHANGELOG_FILENAME",
     "DEFAULT_VERSION_SCRIPT",
+    "ActionFailed",
     "ActionResult",
     "run_action",
 ]
@@ -78,6 +79,14 @@ CHANGELOG_FILENAME = "CHANGELOG.md"
 #: Upstream's equivalent default is ``changeset version`` (``index.ts``). An argv list, never a
 #: string: :func:`molt.action.run_version` takes argv precisely so a script with arguments is
 #: expressible (build step 22 design D1).
+#:
+#: The bare spelling is ratified (owner ruling 2026-08-01, closing gap ``AP-16``). The composite
+#: installs through ``uvx --from molt-cli==<version>``, which puts the pinned environment's ``bin``
+#: on ``PATH`` for the child process, so ``molt`` here resolves to that pinned install rather than
+#: to whatever else the runner has -- ``uvx molt-cli molt version`` and ``python -m molt version``
+#: were the alternatives and buy nothing over it. A workflow that wants a different command now
+#: says so through the composite's ``version-command`` input (``CO-1``) instead of needing molt to
+#: have guessed right.
 DEFAULT_VERSION_SCRIPT: tuple[str, ...] = ("molt", "version")
 
 #: :attr:`molt.ecosystem.Workspace.backend` for a repository that declares no workspace -- the
@@ -111,6 +120,32 @@ class ActionResult:
     pull_request_number: int | None = None
 
 
+class ActionFailed(ExitError):
+    """The run failed, and this is what it observed before it failed.
+
+    An :class:`~molt.errors.ExitError` that carries the partial :class:`ActionResult`, so a run
+    that half-published still hands the list of packages that went out to the entry point, which
+    writes it to ``GITHUB_OUTPUT`` before reporting the failure (owner ruling 2026-08-01). Being an
+    ``ExitError`` is load-bearing twice over: every pinned row that asserts ``ExitError`` with a
+    code keeps passing unchanged, and :func:`molt.action.cli.main`'s funnel already maps it to that
+    code.
+
+    ``message`` is optional and rebinds ``args`` when supplied, because ``str()`` reads ``args[0]``.
+    Without one the exception keeps ``ExitError``'s own sentence, which is a pinned contract in
+    :mod:`molt.errors` -- restating it here is how the two come to disagree.
+    """
+
+    #: What the run had observed when it failed. Never ``None``: a failure with nothing observed
+    #: raises a plain ``MoltError`` instead, so nothing invents a value molt never read.
+    result: ActionResult
+
+    def __init__(self, code: int, *, result: ActionResult, message: str | None = None) -> None:
+        super().__init__(code)
+        if message is not None:
+            self.args = (message,)
+        self.result = result
+
+
 def run_action(
     *,
     cwd: Path | str,
@@ -136,12 +171,65 @@ def run_action(
 
     ``forge`` and ``git`` are seams. They default to a real :class:`~molt.forge.GitHubForge` and
     :class:`molt.git.Git`, resolved lazily inside the call.
+
+    **Every failure that exits with a child's status leaves as an** :class:`ActionFailed`, carrying
+    whatever this run had observed (owner ruling 2026-08-01, design D13). That is what lets the
+    entry point write the workflow outputs for a run that failed.
     """
     root = Path(cwd)
     changesets = read_pending_changesets(root)
     has_changesets = bool(changesets)
     mode = mode_for(changesets, publish=publish is not None)
 
+    try:
+        return _dispatch(
+            root,
+            mode=mode,
+            publish=publish,
+            has_changesets=has_changesets,
+            version_script=version_script,
+            title=title,
+            commit_message=commit_message,
+            base_branch=base_branch,
+            create_releases=create_releases,
+            forge=forge,
+            git=git,
+        )
+    # The clause order is the whole correctness here, and it is the same subclass trap
+    # `molt.commands.version`'s funnel documents one module over: `ActionFailed` **is** an
+    # `ExitError`, so without this first clause the publish phase's partial result would be caught
+    # by the second clause and replaced with an empty one -- silently reporting "nothing was
+    # published" about a run that published three packages.
+    except ActionFailed:
+        raise
+    # A version script that exits non-zero raises a plain `ExitError` from `run_version`, which
+    # knows nothing about `ActionResult`. `has_changesets` was computed before the dispatch and is
+    # a true, useful fact, so it travels rather than being thrown away.
+    except ExitError as error:
+        raise ActionFailed(
+            error.code, result=ActionResult(has_changesets=has_changesets)
+        ) from error
+
+
+def _dispatch(
+    root: Path,
+    *,
+    mode: Mode,
+    publish: Sequence[str] | None,
+    has_changesets: bool,
+    version_script: Sequence[str] | None,
+    title: str | None,
+    commit_message: str | None,
+    base_branch: str | None,
+    create_releases: bool,
+    forge: Any,
+    git: Any,
+) -> ActionResult:
+    """Run the phase ``mode`` selected, or nothing at all.
+
+    Split out of :func:`run_action` so the failure funnel there wraps one expression rather than
+    three returns; the selection rules themselves are unchanged.
+    """
     if mode is Mode.VERSION:
         return _version_phase(
             root,
@@ -267,14 +355,25 @@ def _publish_phase(
     forge: Any,
     git: Any,
 ) -> ActionResult:
-    """Publish, then create one host release per published package.
+    """Publish, create one host release per published package, and only then fail.
 
-    :func:`~molt.action.run_publish` raises on a non-zero exit from the publish command, which
-    fails the run -- reporting a publish that half-failed as a success is the silent-CI-failure
-    mode this whole tool exists to avoid (research README section 3.4). It raises **before** it
-    pushes tags or reads the command's output, so molt cannot enumerate what a failing publish
-    managed to upload; that divergence from upstream is recorded rather than papered over
-    (``openspec/GAPS.md`` ``AP-14``).
+    The order is the whole of this function's correctness, and it is three rulings deep:
+
+    1. :func:`~molt.action.run_publish` **carries** a non-zero status rather than raising it
+       (owner ruling 2026-07-31, closing gap ``AP-14``), so a publish that uploaded three packages
+       out of five still pushed its tags and still reported the three.
+    2. Every host release is created, **including after one of them fails** (owner ruling
+       2026-08-01, closing gap ``AP-7``). By the time the publish command has exited, the packages
+       it announced are on the index; a release is a pointer to something already public, so
+       withholding it because a *later* package failed leaves a published version with no notes
+       and no host record -- the state that is hardest to repair by hand.
+    3. **Then** the run fails, naming every release that could not be created and carrying the
+       partial result out on the exception so the entry point can still write the outputs
+       (owner ruling 2026-08-01, design D13).
+
+    Only :class:`~molt.errors.MoltError` is caught per package -- see the loop's own comment. When
+    the publish command itself also failed, **its** status wins: a child's status is propagated
+    verbatim and CI branches on it.
 
     ``create_releases`` is upstream's ``createGithubReleases`` input and defaults to on. Switched
     off, the publish still happens and is still reported in full -- the switch is about the host,
@@ -285,16 +384,53 @@ def _publish_phase(
     seam = Git(root) if git is None else git
     result = run_publish(command=list(command), cwd=root, git=seam)
 
+    failures: list[tuple[str, str]] = []
     if create_releases and result.published_packages:
         workspace = discover_workspace(find_workspace_root(root))
         forge_seam = _resolve_forge(forge)
         for package in result.published_packages:
-            _create_release(package, workspace=workspace, forge=forge_seam)
+            try:
+                _create_release(package, workspace=workspace, forge=forge_seam)
+            # `MoltError`, deliberately, and never `Exception`: every failure molt *models* is a
+            # `MoltError` -- the missing-changelog-section refusal `_create_release` raises itself,
+            # and every forge failure including an exhausted retry budget. A `KeyError` or an
+            # `OSError` out of this loop is a bug in molt, and folding one into a summary line
+            # would hide it behind a message that reads like a host problem.
+            except MoltError as error:
+                failures.append((package.name, str(error)))
 
-    return ActionResult(
+    outcome = ActionResult(
         published=result.published,
         published_packages=result.published_packages,
         has_changesets=False,
+    )
+    if failures:
+        raise ActionFailed(
+            result.exit_status or 1, result=outcome, message=_release_failure_summary(failures)
+        )
+    if result.exit_status:
+        raise ActionFailed(result.exit_status, result=outcome)
+    return outcome
+
+
+def _release_failure_summary(failures: Sequence[tuple[str, str]]) -> str:
+    """Every host release that could not be created, with its own reason, one per line.
+
+    The message is the whole report because there is nowhere else to put it:
+    :func:`run_action` has no console seam, so the failure sentence is the only channel a human
+    reading the workflow log gets. Each reason is embedded **verbatim** -- a caller that truncated
+    or paraphrased one would take the actionable half out of the only place it appears.
+
+    It closes with the two facts an operator needs and cannot infer: the packages are already on
+    the index, and re-running is safe because a duplicate release resolves to nothing
+    (forge design D2, ``openspec/GAPS.md`` ``FR-4``).
+    """
+    lines = [f"  - {name}: {reason}" for name, reason in failures]
+    return (
+        "The packages were published, but molt could not create every host release:\n"
+        + "\n".join(lines)
+        + "\nThose packages are on the index already. Create the missing releases by hand, or "
+        "re-run this workflow -- a release that already exists is left alone."
     )
 
 

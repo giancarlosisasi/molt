@@ -44,7 +44,7 @@ Deliberate divergences from upstream
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from packaging.requirements import InvalidRequirement, Requirement
 
@@ -62,6 +62,7 @@ __all__ = [
     "ChangelogSections",
     "ChangesetLike",
     "ChangesetReleaseLike",
+    "DependencyReleaseLike",
     "ReleaseLike",
     "collect_changelog_sections",
     "generate_markdown_for_version_type",
@@ -140,6 +141,37 @@ class ReleaseLike(Protocol):
     def changesets(self) -> Sequence[str]: ...
 
 
+@runtime_checkable
+class DependencyReleaseLike(Protocol):
+    """The **minimum** a generator may read off an element of ``dependencies_updated``.
+
+    Owner ruling 2026-07-31 (session 6), closing gap ``CE-5``: the second argument of
+    :meth:`ChangelogGenerator.get_dependency_release_line` had no declared shape at all, so
+    ``new_version`` was a :class:`~packaging.version.Version` from the real assembler and a plain
+    ``str`` from a test double, and nothing noticed -- the two render identically through an
+    f-string.
+
+    Two members and no more. :class:`ReleaseLike` satisfies this structurally, which is why the
+    assembler is free to keep passing the richer objects it already has; what a generator may
+    **rely** on is this pair.
+
+    It is deliberately not written into ``get_dependency_release_line``'s signature -- protocol
+    method parameters are contravariant, so naming it there would break every third-party generator
+    that annotates its own element class. Annotating against it is optional and does not break the
+    seam (design D9).
+
+    ``@runtime_checkable`` so a generator (and the conformance suite) can assert the shape it was
+    handed. Like every runtime-checkable protocol it checks member *presence*, not member types --
+    the ``Version`` half is a static claim, and ``tests/apply/test_changelog_entry.py`` asserts it
+    separately.
+    """
+
+    @property
+    def name(self) -> str: ...
+    @property
+    def new_version(self) -> Version: ...
+
+
 class ChangelogGenerator(Protocol):
     """The changelog generator seam -- four parameters, always supplied (design D4).
 
@@ -176,7 +208,17 @@ class ChangelogGenerator(Protocol):
         dependencies_updated: Any,
         options: Mapping[str, object] | None,
         forge: object | None,
-    ) -> str: ...
+    ) -> str:
+        """One "Updated dependencies" line, or the empty string.
+
+        ``dependencies_updated`` is typed :data:`~typing.Any` for the contravariance reason the
+        class docstring gives for the changeset position, and for no other reason. What its
+        elements actually guarantee is written down as :class:`DependencyReleaseLike` -- ``name``
+        and a parsed ``new_version``, nothing else (owner ruling 2026-07-31, gap ``CE-5``) -- and a
+        generator that prefers to annotate its parameter with that protocol still satisfies this
+        one, because ``Any`` is compatible in both directions.
+        """
+        ...
 
 
 # ======================================================================================
@@ -350,7 +392,13 @@ def collect_changelog_sections(
         update_internal_dependencies=update_internal_dependencies,
     )
     relevant = _relevant_changesets(changesets, updated)
-    dependency_line = generator.get_dependency_release_line(relevant, updated, options, forge)
+    # Narrowed at the call site rather than in the protocol's signature (design D9, gap `CE-5`).
+    # `ReleaseLike` satisfies `DependencyReleaseLike` structurally, so nothing changes at runtime
+    # -- but a later change that has a generator read `.type` or `.changesets` off a dependency
+    # element now fails pyrefly here, instead of working for the two built-ins and breaking every
+    # third-party plugin.
+    elements: Sequence[DependencyReleaseLike] = updated
+    dependency_line = generator.get_dependency_release_line(relevant, elements, options, forge)
 
     return ChangelogSections(
         major=tuple(_with_text(lines[BumpType.MAJOR])),
@@ -489,6 +537,16 @@ def _dependencies_updated(
     leak a line -- and so a package can be bumped through an optional edge without its changelog
     naming the dependency, which is the changelog rule only and does not contradict the engine's
     decision that extras propagate like runtime dependencies.
+
+    Two rules ratified as shipped on 2026-07-31 (session 6), each previously unpinned:
+
+    * **Order is manifest order** (``CE-3``): the loop walks ``deps`` as the manifest declares
+      them, never the release plan's order. A manifest is a document its author arranged, and a
+      changelog that reordered it would read as though molt knew better.
+    * **There is no self-dependency guard** (``CE-4``): a package that declares itself in ``deps``
+      appears in its own "Updated dependencies" line, exactly as upstream would. A guard was
+      considered and declined -- it would hide a manifest mistake behind a changelog that looks
+      right.
     """
     by_name = {normalize_name(candidate.name): candidate for candidate in releases}
     updated: list[ReleaseLike] = []

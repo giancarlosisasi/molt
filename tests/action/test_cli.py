@@ -41,7 +41,7 @@ import pytest
 pytest.importorskip("molt.action.cli", reason="molt.action.cli is this suite's target")
 
 from molt.action.cli import OUTPUT_NAMES, main, output_payload, write_github_output
-from molt.action.orchestrate import ActionResult
+from molt.action.orchestrate import ActionFailed, ActionResult
 from molt.action.run import PublishedPackage
 from molt.errors import ExitError, MoltError
 
@@ -162,6 +162,14 @@ OPTION_ROWS = [
         "publish",
         ("molt", "publish", "--filter", "pkg-a"),
         id="publish",
+    ),
+    # The quoted argument is the point: it proves the split is `shlex`, not `str.split`, the same
+    # rule `--publish` above inherits (`CO-16`).
+    pytest.param(
+        ["--version-command", 'molt version --snapshot "canary build"'],
+        "version_script",
+        ("molt", "version", "--snapshot", "canary build"),
+        id="version-command",
     ),
     pytest.param(["--title", "Release train"], "title", "Release train", id="title"),
     pytest.param(
@@ -398,3 +406,50 @@ def test_a_failing_run_reports_molts_exit_code(
     captured = capsys.readouterr()
     assert fragment in captured.err
     assert "Traceback" not in captured.err, "an expected failure is a sentence, not a stack"
+
+
+# ======================================================================================
+# 6. A failing run still writes its outputs (owner ruling 2026-08-01)
+# ======================================================================================
+
+
+@pytest.mark.usefixtures("clean_environment")
+def test_a_failing_run_still_writes_its_outputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A half-published release hands the list of packages that went out to the next step.
+
+    That is the run where reading ``published_packages`` matters most, and it is exactly the run
+    that used to report nothing: the funnel returned the exit code before ``report()`` ever ran, so
+    a workflow step guarded with ``if: always()`` read an empty file. ``ActionFailed`` carries the
+    partial result out of the loop and the same one writer puts it on disk before the failure is
+    reported.
+    """
+    output = tmp_path / "outputs.txt"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    failure = ActionFailed(3, result=published(("pkg-a", "1.2.0")))
+    double(monkeypatch, Recorder(error=failure))
+
+    assert main([]) == 3, "the child's status is still what the step exits with"
+
+    values = read_github_output(output)
+    assert values["published"] == "true"
+    assert json.loads(values["published_packages"]) == [{"name": "pkg-a", "version": "1.2.0"}]
+
+
+@pytest.mark.usefixtures("clean_environment")
+def test_a_failure_that_observed_nothing_writes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A plain ``MoltError`` writes no outputs, deliberately.
+
+    There is no observed result to write, and synthesising one would report
+    ``has_changesets = false`` about a repository molt never finished reading. An output file must
+    not carry a value molt did not observe, so this hole is pinned rather than papered over.
+    """
+    output = tmp_path / "outputs.txt"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    double(monkeypatch, Recorder(error=MoltError("the release branch is protected")))
+
+    assert main([]) == 1
+    assert not output.exists()

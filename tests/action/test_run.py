@@ -70,6 +70,7 @@ import pytest
 pytest.importorskip("molt.action", reason="build step 9 - molt.action is a TDD target")
 
 from molt.action import run_publish, run_version
+from molt.errors import ExitError
 
 if TYPE_CHECKING:
     from tests.conftest import GitRepo
@@ -415,3 +416,66 @@ def test_publish_publishes_a_multi_package_repo(tmp_path: Path, git_repo: GitRep
     ]
     tags = origin.run("tag").stdout.strip().splitlines()
     assert tags == ["pkg-a@1.0.0", "pkg-b@1.0.0"]
+
+
+# ======================================================================================
+# Row 6 (Port) -- a failing publish still reports what went out.
+# `changesets/action` v1.9.0 `src/index.ts:137-147`; owner ruling 2026-07-31 (gap `AP-14`).
+# ======================================================================================
+
+#: Announces one package and then exits 3. The tag is created first, exactly as a real publish that
+#: uploaded one member and then failed on the next would leave the repository.
+STUB_PUBLISH_PARTIAL = """
+import subprocess
+import sys
+
+subprocess.run(["git", "tag", "-a", "pkg-a@1.0.0", "-m", "pkg-a@1.0.0"], check=True)
+print("New tag: pkg-a@1.0.0")
+sys.exit(3)
+"""
+
+
+def test_publish_reports_what_a_failing_command_published(
+    tmp_path: Path, git_repo: GitRepo
+) -> None:
+    """``run_publish`` never raises on a status: it carries it (owner ruling 2026-07-31).
+
+    The unit-level pin for the split of the old ``_run_script``. Before the ruling the raise
+    happened before the tag push and before the output scrape, so a publish that uploaded three
+    packages out of five was unobservable -- molt reported nothing and created no release for the
+    three that were already public. Failing the run is the **caller's** job now, after it has
+    reported what did go out.
+    """
+    origin = git_repo
+    seed_workspace(
+        origin,
+        {"pkg-a": member_manifest("pkg-a", "1.0.0"), "pkg-b": member_manifest("pkg-b", "1.0.0")},
+    )
+    clone = origin.shallow_clone(tmp_path / "clone")
+    origin.run("checkout", "-b", "some-other-branch")
+
+    result = run_publish(command=stub_script(tmp_path, STUB_PUBLISH_PARTIAL), cwd=clone.root)
+
+    assert result.exit_status == 3, "the command's own status travels on the result"
+    assert result.published is True
+    assert [(p.name, p.version) for p in result.published_packages] == [("pkg-a", "1.0.0")]
+    tags = origin.run("tag").stdout.strip().splitlines()
+    assert tags == ["pkg-a@1.0.0"], "the tags the failing command did create were still pushed"
+
+
+def test_version_fails_when_the_script_exits_non_zero(tmp_path: Path, git_repo: GitRepo) -> None:
+    """``run_version`` still refuses a failing version script (owner ruling 2026-07-31).
+
+    The regression guard for ``_require_success``: the two callers of the script runner disagree
+    about what a non-zero status means, and only ``run_publish``'s half changed. A version script
+    that failed halfway leaves a partly-rewritten tree, and committing that is research README
+    section 3.4's silent CI failure.
+    """
+    origin = git_repo
+    seed_workspace(origin, {"pkg-a": member_manifest("pkg-a", "1.0.0")})
+    clone = origin.shallow_clone(tmp_path / "clone")
+
+    with pytest.raises(ExitError) as excinfo:
+        run_version(cwd=clone.root, script=stub_script(tmp_path, "import sys\nsys.exit(7)\n"))
+
+    assert excinfo.value.code == 7

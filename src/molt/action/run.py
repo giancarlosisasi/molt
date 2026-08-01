@@ -122,6 +122,10 @@ class RunPublishResult:
 
     published: bool
     published_packages: tuple[PublishedPackage, ...] = ()
+    #: The publish command's own status. Non-zero means the caller must fail the run **after**
+    #: reporting what did go out (owner ruling 2026-07-31, closing gap ``AP-14``). It defaults to
+    #: ``0`` so every construction site that predates the ruling still reads as a clean publish.
+    exit_status: int = 0
 
 
 def run_version(
@@ -167,7 +171,7 @@ def run_version(
 
     workspace_root = find_workspace_root(root)
     before = _versions_by_directory(discover_workspace(workspace_root))
-    _run_script(script, cwd=root)
+    _require_success(_run_script(script, cwd=root))
     after = discover_workspace(workspace_root)
 
     changed = tuple(
@@ -196,6 +200,14 @@ def run_publish(
     them, and this loop only pushes what it finds, so a script that failed halfway leaves the tags
     it did create pushed and the rest absent -- which is the honest record of a partial publish.
 
+    **A non-zero status is carried, not raised** (owner ruling 2026-07-31, closing gap ``AP-14``;
+    upstream's ``src/index.ts:137-147`` reports the same partial publish). The tags are pushed, the
+    output is scraped and the result is returned whatever the command's status was; that status
+    travels on :attr:`RunPublishResult.exit_status` and it is the **caller** that fails the run,
+    after it has created a host release for every package that did go out. Raising here would make
+    the partial publish unobservable, which is exactly the information a half-failed release loses
+    for good.
+
     Which packages went out is scraped from the script's stdout, not from the tag list, because
     only the script knows which uploads the index actually accepted. A monorepo announces
     ``New tag: <name>@<version>`` (``run.ts:47``) and a single-package repository announces
@@ -207,16 +219,20 @@ def run_publish(
     root = Path(cwd)
     seam = Git(root) if git is None else git
 
-    stdout = _run_script(command, cwd=root)
+    completed = _run_script(command, cwd=root)
     seam.push_tags()
 
     workspace = discover_workspace(find_workspace_root(root))
     released = (
-        _single_package_releases(stdout, workspace)
+        _single_package_releases(completed.stdout, workspace)
         if workspace.backend == _SINGLE_BACKEND
-        else _monorepo_releases(stdout, workspace)
+        else _monorepo_releases(completed.stdout, workspace)
     )
-    return RunPublishResult(published=bool(released), published_packages=released)
+    return RunPublishResult(
+        published=bool(released),
+        published_packages=released,
+        exit_status=completed.returncode,
+    )
 
 
 # ======================================================================================
@@ -224,21 +240,28 @@ def run_publish(
 # ======================================================================================
 
 
-def _run_script(argv: Sequence[str], *, cwd: Path) -> str:
-    """Run ``argv`` in ``cwd`` and return its stdout, raising on a non-zero exit.
+def _run_script(argv: Sequence[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+    """Run ``argv`` in ``cwd`` and return the completed process. **Never raises on a status.**
 
     ``argv`` is a list, never a string, and it is never handed to a shell (design D1). Upstream
     splits a command string on whitespace, which loses every quoted argument and makes
-    ``--snapshot canary`` unexpressible.
+    ``--snapshot canary`` unexpressible. An empty ``argv`` is still a :class:`~molt.errors
+    .MoltError`: that is a caller mistake, not a child's failure.
 
     Only stdout is captured -- :func:`run_publish` scrapes it. **stderr is inherited on purpose**,
     so the script's own diagnostics reach the workflow log as it runs instead of being swallowed
-    into an exception message nobody sees when the job is cancelled. That is also why the raised
-    :class:`~molt.errors.ExitError` carries only the status: the operator already has the output.
+    into an exception message nobody sees when the job is cancelled. That is also why
+    :func:`_require_success`'s :class:`~molt.errors.ExitError` carries only the status: the
+    operator already has the output.
+
+    Deciding what a non-zero status *means* is the caller's, because the two callers disagree
+    (owner ruling 2026-07-31, closing gap ``AP-14``). :func:`run_version` fails immediately through
+    :func:`_require_success`; :func:`run_publish` carries the status and reports what went out
+    first.
     """
     if not argv:
         raise MoltError("The script to run must name at least one argument")
-    completed = subprocess.run(
+    return subprocess.run(
         list(argv),
         cwd=cwd,
         stdout=subprocess.PIPE,
@@ -247,6 +270,15 @@ def _run_script(argv: Sequence[str], *, cwd: Path) -> str:
         errors="replace",
         check=False,
     )
+
+
+def _require_success(completed: subprocess.CompletedProcess[str]) -> str:
+    """``completed``'s stdout, or :class:`~molt.errors.ExitError` carrying its status.
+
+    The half of the old ``_run_script`` that :func:`run_version` still wants: research README
+    section 3.4's "silent CI failure" is the failure mode a version script that exits non-zero
+    would otherwise become.
+    """
     if completed.returncode != 0:
         raise ExitError(completed.returncode)
     return completed.stdout

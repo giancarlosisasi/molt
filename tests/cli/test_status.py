@@ -51,7 +51,7 @@ pytest.importorskip("molt.commands.status", reason="build step 6 - `molt status`
 pytest.importorskip("molt.errors", reason="build step 6 - molt.errors lands with the cli shell")
 
 from molt.commands.status import run
-from molt.errors import ExitError
+from molt.errors import ExitError, MoltError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -714,3 +714,52 @@ def test_molt_output_env_backfills_the_output_flag(
     # only claim under test is that the env var reached the flag.
     raw = strip_ansi(result.stdout)
     assert scrub_ids(json.loads(raw[raw.index("{") :])) == EXPECTED_PLAN
+
+
+# --------------------------------------------------------------------------------------
+# SC-3 - `--output` accepts only `json` (owner ruling 2026-07-31, session 6)
+# --------------------------------------------------------------------------------------
+
+
+def test_the_output_option_help_promises_only_json() -> None:
+    """``SC-3``, ruled 2026-07-31 -- the help text stopped promising a file path.
+
+    ``molt status --output plan.json`` is refused, but the registered help read "Write the plan
+    here (or `json` for stdout)", which describes a filename molt does not accept. Help text is the
+    surface a user reads before they type the command, so a wrong one costs a failed run.
+    """
+    import typer
+
+    import molt.cli
+
+    # `get_command` is annotated as returning a plain `click.Command`; a Typer app with several
+    # commands always yields a `TyperGroup`, which is what carries `.commands`. Narrowed with an
+    # `isinstance` rather than suppressed, so a genuinely command-less app fails here loudly.
+    group = typer.main.get_command(molt.cli.app)
+    assert isinstance(group, typer.core.TyperGroup)
+    command = group.commands["status"]
+    help_text = next(p for p in command.params if "--output" in p.opts).help or ""
+
+    assert "json" in help_text
+    assert "file" not in help_text.lower()
+    assert "here" not in help_text.lower()
+
+
+def test_a_non_json_output_value_is_refused(git_repo: GitRepo, console: RecordingConsole) -> None:
+    """A filename is refused, and no file is created (``SC-3``).
+
+    ``status`` writing to disk is exactly the promise the command makes it does not make: the
+    redirection belongs to the shell, where the user can see it. Upstream's ``--output <file>``
+    did write the plan to disk, so the refusal is the divergence, and it is now ratified rather
+    than merely shipped.
+    """
+    scaffold(git_repo, [Pkg("pkg-a")])
+    branch_off(git_repo)
+    write_changeset(git_repo.root, "tidy-eels-return", {"pkg-a": "minor"})
+    commit_all(git_repo, "feat: changeset only")
+
+    with pytest.raises(MoltError) as excinfo:
+        run(cwd=git_repo.root, since="main", output="plan.json", console=console)
+
+    assert "json" in str(excinfo.value)
+    assert not (git_repo.root / "plan.json").exists()

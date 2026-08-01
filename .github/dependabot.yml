@@ -1,0 +1,8 @@
+# Keeps the SHA-pinned `astral-sh/setup-uv` step in the root `action.yml` current.
+# A pin nobody refreshes is a stale pin (openspec/GAPS.md CO-4).
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

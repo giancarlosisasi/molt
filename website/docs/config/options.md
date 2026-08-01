@@ -6,6 +6,8 @@ title: Options reference
 
 Every molt configuration option, grouped by what it controls, with its type, default, and one-line meaning.
 
+[`molt init`](/cli/init) writes **all** of these into your `pyproject.toml`, each at the default shown here, so the file you open after setup is the full list rather than a subset. A TOML table has no `$schema` line for an editor to follow, which makes the written file the discovery surface. Delete any line you do not need -- a missing key is read as its default.
+
 Options are shown by their canonical `snake_case` name. Every option also accepts the changesets-compatible `camelCase` spelling as an alias; see [The config file](/config/config-file#key-names-snake_case-and-camelcase-both-work). Examples below use `[tool.molt]` TOML, but each has an exact `.molt/config.json` equivalent.
 
 ## Change detection

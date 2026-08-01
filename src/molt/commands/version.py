@@ -40,6 +40,16 @@ And two things this command deliberately does not do: it **never prompts** (it i
 unattended, so a prompt is a six-hour build), and it **never tags** -- that is ``molt git-tag``,
 which is what makes "version in one job, tag in another" work at all.
 
+One error funnel
+----------------
+``molt version`` raises :class:`~molt.errors.ExitError` and nothing else (owner ruling 2026-07-31,
+closing gap ``VC-7``). Every :class:`~molt.errors.MoltError` raised anywhere inside :func:`run` --
+plan time, apply time, the lockfile step, the commit -- leaves through :func:`_error_funnel` as one
+clean sentence on the console plus exit 1. The original exception is on ``__cause__`` for a library
+caller that needs the class. This is the *version command's* funnel only: :func:`molt.cli.main` and
+:func:`molt.action.cli.main` still have their own, and the shared ``exit_code_for`` extraction that
+would unify all three is deliberately still open (``openspec/GAPS.md`` ``CO-5``).
+
 Prerelease is stateless
 -----------------------
 ``--pre {a,b,rc,dev}`` is an invocation flag, not a mode: the counter is derived from the version
@@ -52,10 +62,11 @@ not be ported.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
     from datetime import datetime
     from pathlib import Path
 
@@ -135,55 +146,93 @@ def run(
 
         console = console_
 
-    root = find_workspace_root(Path(cwd) if cwd is not None else Path.cwd())
-    config = _resolve_config(root, console=console)
-    workspace = discover_workspace(root, config.ecosystem)
+    with _error_funnel(console):
+        root = find_workspace_root(Path(cwd) if cwd is not None else Path.cwd())
+        config = _resolve_config(root, console=console)
+        workspace = discover_workspace(root, config.ecosystem)
 
-    failures = _validate(workspace, config, ignore=ignore, snapshot=snapshot, pre=pre)
-    if failures:
-        # One block, one call (design D2). Reporting per failure is what turns a misconfiguration
-        # into a series of round trips.
-        console.error("\n".join(failures))
-        raise ExitError(1)
+        failures = _validate(workspace, config, ignore=ignore, snapshot=snapshot, pre=pre)
+        if failures:
+            # One block, one call (design D2). Reporting per failure is what turns a
+            # misconfiguration into a series of round trips.
+            console.error("\n".join(failures))
+            raise ExitError(1)
 
-    # A missing `.changeset/` is an empty buffer, not a precondition failure: `version` is the
-    # command CI runs on every merge, and "there is nothing to release" is the same answer whether
-    # the folder is absent or empty. `molt add`, which is about to *write* one, refuses instead.
-    changesets = read_changesets(root) if (root / CHANGESET_DIR).is_dir() else []
-    if not changesets:
-        console.warn(_NO_CHANGESETS)
-        raise ExitError(1)
+        # A missing `.changeset/` is an empty buffer, not a precondition failure: `version` is the
+        # command CI runs on every merge, and "there is nothing to release" is the same answer
+        # whether the folder is absent or empty. `molt add`, which is about to *write* one,
+        # refuses instead.
+        changesets = read_changesets(root) if (root / CHANGESET_DIR).is_dir() else []
+        if not changesets:
+            console.warn(_NO_CHANGESETS)
+            raise ExitError(1)
 
-    unversionable = _unversionable_releases(changesets, workspace)
-    if unversionable:
-        console.error("\n".join(unversionable))
-        raise ExitError(1)
+        unversionable = _unversionable_releases(changesets, workspace)
+        if unversionable:
+            console.error("\n".join(unversionable))
+            raise ExitError(1)
 
-    effective = config if ignore is None else config.model_copy(update={"ignore": tuple(ignore)})
-    plan, view = _assemble(
-        changesets,
-        workspace,
-        effective,
-        snapshot=snapshot,
-        pre=pre,
-        git=git,
-        root=root,
-        console=console,
-    )
-    if snapshot is not None:
-        _warn_if_not_uploadable(view, console=console)
+        effective = (
+            config if ignore is None else config.model_copy(update={"ignore": tuple(ignore)})
+        )
+        plan, view = _assemble(
+            changesets,
+            workspace,
+            effective,
+            snapshot=snapshot,
+            pre=pre,
+            git=git,
+            root=root,
+        )
+        if snapshot is not None:
+            _warn_if_not_uploadable(view, console=console)
 
-    # Design D9: one report, printed from the same plan either way. A dry run is "everything up to
-    # the flush", so the transitions a preview shows are by construction the transitions a real run
-    # writes -- a separately rendered preview is how the two drift.
-    console.info(_transitions(view, dry_run=dry_run))
-    if dry_run:
+        # Design D9: one report, printed from the same plan either way. A dry run is "everything up
+        # to the flush", so the transitions a preview shows are by construction the transitions a
+        # real run writes -- a separately rendered preview is how the two drift.
+        console.info(_transitions(view, dry_run=dry_run))
+        if dry_run:
+            return view
+
+        touched = _apply(
+            plan, workspace, effective, root=root, snapshot=snapshot, pre=pre, forge=forge
+        )
+        _refresh_lockfile(root, console=console)
+        _commit(effective, view, touched, root=root, git=git, console=console, snapshot=snapshot)
         return view
 
-    touched = _apply(plan, workspace, effective, root=root, snapshot=snapshot, pre=pre, forge=forge)
-    _refresh_lockfile(root, console=console)
-    _commit(effective, view, touched, root=root, git=git, console=console, snapshot=snapshot)
-    return view
+
+@contextmanager
+def _error_funnel(console: Any) -> Iterator[None]:
+    """Turn every :class:`~molt.errors.MoltError` into one console sentence plus ``ExitError(1)``.
+
+    Owner ruling 2026-07-31, closing gap ``VC-7``. Before it, a plan-time failure was caught by the
+    command and an apply-time one escaped to :func:`molt.cli.main`'s friendly branch: identical
+    output, two exception classes for one class of user error, and a library caller had to know
+    which step failed to know what to catch.
+
+    **The clause order is the whole correctness.** :class:`~molt.errors.ExitError` is a *subclass*
+    of :class:`~molt.errors.MoltError`, so without the first clause every deliberate ``ExitError``
+    raised inside :func:`run` would be caught, re-printed as "The process exited with code: 1" and
+    re-wrapped -- double-printing every validation message and breaking the exit-code matrix.
+
+    Wrapping the whole body rather than one step is also deliberate. A funnel that covers "most" of
+    the run is the same defect one function later: ``_refresh_lockfile``, ``_commit`` and
+    ``read_changesets`` can all raise, and enumerating them is exactly the maintenance burden the
+    funnel exists to remove.
+
+    This is the version command's funnel only -- ``molt.cli.main`` and ``molt.action.cli.main``
+    still have their own, and the shared ``exit_code_for`` extraction stays open (``CO-5``).
+    """
+    from molt.errors import ExitError, MoltError
+
+    try:
+        yield
+    except ExitError:
+        raise
+    except MoltError as error:
+        console.error(str(error))
+        raise ExitError(1) from error
 
 
 # ======================================================================================
@@ -356,15 +405,14 @@ def _assemble(
     pre: str | None,
     git: Any,
     root: Path,
-    console: Any,
 ) -> tuple[Any, PlanView]:
     """Compute the release plan, and its reportable view.
 
     A plan molt refuses to compute -- an incoherent snapshot template, a changeset naming a package
     that is not in the workspace, a mixed changeset -- arrives as a :class:`~molt.errors.MoltError`
-    and becomes exit 1 with the message on the console. Upstream lets those escape to its top-level
-    funnel; converting here is what keeps the sentence in front of the user without a traceback
-    (``tests/cli/test_version.py`` seam 4).
+    and leaves through :func:`_error_funnel` as exit 1 with the message on the console. This
+    function had a ``try`` of its own until owner ruling 2026-07-31 (``VC-7``) unified the two
+    paths; the outer funnel subsumes it, and one place is what stops the two from drifting.
     """
     from molt.engine import (
         UNVERSIONED_PLACEHOLDER,
@@ -373,21 +421,16 @@ def _assemble(
         to_engine_config,
         to_engine_packages,
     )
-    from molt.errors import ExitError, MoltError
 
-    try:
-        plan = assemble_release_plan(
-            changesets,
-            # Every versionless member is already in the effective `ignore`, so the placeholder is
-            # never a version molt plans from -- see `to_engine_packages`.
-            to_engine_packages(workspace, placeholder_version=UNVERSIONED_PLACEHOLDER),
-            to_engine_config(config, workspace),
-            pre=_pre_phase(pre),
-            snapshot=_snapshot_params(snapshot, config, git=git, root=root),
-        )
-    except MoltError as error:
-        console.error(str(error))
-        raise ExitError(1) from error
+    plan = assemble_release_plan(
+        changesets,
+        # Every versionless member is already in the effective `ignore`, so the placeholder is
+        # never a version molt plans from -- see `to_engine_packages`.
+        to_engine_packages(workspace, placeholder_version=UNVERSIONED_PLACEHOLDER),
+        to_engine_config(config, workspace),
+        pre=_pre_phase(pre),
+        snapshot=_snapshot_params(snapshot, config, git=git, root=root),
+    )
     return plan, plan_view(plan)
 
 
@@ -577,34 +620,32 @@ def _refresh_lockfile(root: Path, *, console: Any) -> None:
     already on disk and correct, and the in-place patch keeps the lockfile's versions honest, so
     aborting here would trade a stale metadata table for a half-reported release.
 
-    One case needs a stronger move. ``uv lock`` **refuses to run at all** when the file in its way
-    is not a lockfile it can parse ("TOML parse error ... missing field `version`"), which would
-    leave a corrupt or truncated ``uv.lock`` corrupt forever. A lockfile is a generated artifact,
-    not authored content, so molt moves it aside, regenerates, and says so. The original bytes are
-    held in memory and put back verbatim if the resolve then fails, so the destructive half only
-    survives a success.
+    One case is left **alone**. ``uv lock`` refuses to run at all when the file in its way is not a
+    lockfile it can parse ("TOML parse error ... missing field `version`"). molt used to move that
+    file aside and regenerate it; owner ruling 2026-07-31 (closing gap ``VC-6``) says it must not.
+    Removing a file molt did not write is not a release command's decision to make, and an
+    unreadable ``uv.lock`` is as likely to be a half-finished merge as it is corruption -- in which
+    case the bytes molt deleted were the ones the user needed. So the refresh is skipped, a warning
+    names the file and says what to do, and the release itself still succeeds; that is the same
+    best-effort contract the failed-resolve branch above already has (``VC-2``).
     """
     lockfile = root / _LOCKFILE
     if not lockfile.is_file():
         return
-    original = lockfile.read_bytes()
-    replaced = not _is_lockfile(original)
-    if replaced:
+    if not _is_lockfile(lockfile.read_bytes()):
         console.warn(
-            f"{_LOCKFILE} is not a readable uv lockfile, so it is being regenerated from the "
-            "released manifests."
+            f"{_LOCKFILE} is not a readable uv lockfile, so it was left untouched and not "
+            "refreshed. The released versions are written into the manifests; run `uv lock` "
+            "yourself once the file is readable again."
         )
-        lockfile.unlink()
+        return
     completed = _uv_lock(root, console=console)
-    if completed is None or completed.returncode != 0:
-        if replaced:
-            lockfile.write_bytes(original)
-        if completed is not None:
-            console.warn(
-                f"Could not refresh {_LOCKFILE} (`uv lock` exited {completed.returncode}). The "
-                "released versions were still written into it; run `uv lock` yourself before "
-                f"committing.\n{completed.stderr.strip()}"
-            )
+    if completed is not None and completed.returncode != 0:
+        console.warn(
+            f"Could not refresh {_LOCKFILE} (`uv lock` exited {completed.returncode}). The "
+            "released versions were still written into it; run `uv lock` yourself before "
+            f"committing.\n{completed.stderr.strip()}"
+        )
 
 
 def _uv_lock(root: Path, *, console: Any) -> Any:
@@ -629,7 +670,7 @@ def _is_lockfile(data: bytes) -> bool:
     """Whether ``data`` is a uv lockfile at all -- TOML carrying a top-level ``version``.
 
     Deliberately the weakest possible check. Anything stronger would be molt second-guessing uv's
-    own format, and the only decision resting on it is "may this file be regenerated".
+    own format, and the only decision resting on it is "may this file be refreshed".
     """
     import tomllib
 

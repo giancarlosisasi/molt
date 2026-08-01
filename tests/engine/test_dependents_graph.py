@@ -67,7 +67,6 @@ collection for the whole file.
 
 from __future__ import annotations
 
-import dataclasses
 from collections.abc import Mapping
 from typing import Any
 
@@ -78,10 +77,10 @@ from tests.engine.fake_state import (
     BARE_PATH_SOURCES,
     PATH_SOURCES,
     DepEntry,
-    FakeConfig,
     FakeFullState,
 )
 
+from molt.config import Config
 from molt.versioning import caret, tilde
 
 engine = pytest.importorskip(
@@ -115,7 +114,7 @@ def two_package_workspace() -> FakeFullState:
 
 
 def build_graph(
-    state: FakeFullState, config: FakeConfig, **options: Any
+    state: FakeFullState, config: Config, **options: Any
 ) -> tuple[Mapping[str, list[str]], bool, list[Any]]:
     """Call the TDD target and name the triple (test contract section 5).
 
@@ -144,7 +143,7 @@ def error_text(errors: list[Any]) -> str:
 
 @pytest.mark.parametrize("source", BARE_PATH_SOURCES)
 def test_a_path_source_in_a_dev_group_is_dropped_from_the_graph(
-    source: str, default_config: FakeConfig
+    source: str, default_config: Config
 ) -> None:
     """A dev-group path source is dropped before validation: no edge, still valid.
 
@@ -166,7 +165,7 @@ def test_a_path_source_in_a_dev_group_is_dropped_from_the_graph(
 
 @pytest.mark.parametrize("source", PATH_SOURCES)
 def test_a_path_source_in_a_runtime_dependency_is_invalid(
-    source: str, default_config: FakeConfig
+    source: str, default_config: Config
 ) -> None:
     """The same source in a runtime dependency is an error, not a silent skip.
 
@@ -203,7 +202,7 @@ NOT_A_CONSTRAINT = [
 
 @pytest.mark.parametrize(("version_range", "why"), NOT_A_CONSTRAINT)
 def test_an_unparseable_range_is_skipped_without_an_error(
-    version_range: str, why: str, default_config: FakeConfig
+    version_range: str, why: str, default_config: Config
 ) -> None:
     """No edge and no error: the author meant something, molt just cannot act on it.
 
@@ -223,7 +222,7 @@ def test_an_unparseable_range_is_skipped_without_an_error(
     assert errors == []
 
 
-def test_a_bare_requirement_is_an_edge(default_config: FakeConfig) -> None:
+def test_a_bare_requirement_is_an_edge(default_config: Config) -> None:
     """The PEP 440 analogue of npm `*`: an unconstrained requirement is a real edge.
 
     Plain `*` **is** a valid range upstream, so the edge exists; it simply never bumps, because
@@ -249,7 +248,7 @@ def test_a_bare_requirement_is_an_edge(default_config: FakeConfig) -> None:
 
 
 def test_a_constraint_that_rejects_the_current_version_is_invalid(
-    default_config: FakeConfig,
+    default_config: Config,
 ) -> None:
     """The core rule: `satisfies(dep.version, dependent's range)` decides validity.
 
@@ -272,7 +271,7 @@ def test_a_constraint_that_rejects_the_current_version_is_invalid(
 
 
 def test_bump_workspace_sources_only_turns_the_mismatch_into_a_silent_skip(
-    default_config: FakeConfig,
+    default_config: Config,
 ) -> None:
     """With the flag on, a non-workspace dependency is not molt's business at all.
 
@@ -281,7 +280,7 @@ def test_bump_workspace_sources_only_turns_the_mismatch_into_a_silent_skip(
     research test-suite doc 01 (get-dependency-graph, row 5); get-dependency-graph.ts:130-132;
     get-dependency-graph.test.ts:180-220.
     """
-    config = dataclasses.replace(default_config, bump_workspace_sources_only=True)
+    config = default_config.model_copy(update={"bump_workspace_sources_only": True})
     state = two_package_workspace().update_dependency("pkg-b", "pkg-a", "==0.9.0")
 
     graph, valid, errors = build_graph(state, config)
@@ -291,7 +290,7 @@ def test_bump_workspace_sources_only_turns_the_mismatch_into_a_silent_skip(
     assert errors == []
 
 
-def test_bump_workspace_sources_only_keeps_workspace_edges(default_config: FakeConfig) -> None:
+def test_bump_workspace_sources_only_keeps_workspace_edges(default_config: Config) -> None:
     """The flag skips *non*-workspace deps only -- workspace sources still produce edges.
 
     Without this the previous row would pass for the wrong reason (a flag that disabled the graph
@@ -300,7 +299,7 @@ def test_bump_workspace_sources_only_keeps_workspace_edges(default_config: FakeC
     research doc 01 section 5.2 (the `bumpVersionsWithWorkspaceProtocolOnly` row of the branch
     table); get-dependency-graph.ts:107-132.
     """
-    config = dataclasses.replace(default_config, bump_workspace_sources_only=True)
+    config = default_config.model_copy(update={"bump_workspace_sources_only": True})
     state = two_package_workspace().update_dependency("pkg-b", "pkg-a", "workspace:*")
 
     graph, valid, errors = build_graph(state, config)
@@ -324,7 +323,7 @@ WORKSPACE_MARKERS = [
 
 @pytest.mark.parametrize(("version_range", "why"), WORKSPACE_MARKERS)
 def test_workspace_markers_are_edges_without_validation(
-    version_range: str, why: str, default_config: FakeConfig
+    version_range: str, why: str, default_config: Config
 ) -> None:
     """A bare workspace marker short-circuits to an edge; there is nothing to validate.
 
@@ -343,7 +342,7 @@ def test_workspace_markers_are_edges_without_validation(
     assert errors == []
 
 
-def test_a_workspace_path_source_is_an_edge(default_config: FakeConfig) -> None:
+def test_a_workspace_path_source_is_an_edge(default_config: Config) -> None:
     """A workspace path source pointing at the dependency's own directory is a local edge.
 
     `pkg-a` sits at `/packages/pkg-a` and the workspace root is `/`, so its posix relpath is
@@ -363,7 +362,7 @@ def test_a_workspace_path_source_is_an_edge(default_config: FakeConfig) -> None:
 
 
 def test_a_mismatched_workspace_path_source_is_invalid_with_no_edge(
-    default_config: FakeConfig,
+    default_config: Config,
 ) -> None:
     """A workspace path that points somewhere else is an error and produces no edge.
 
@@ -397,7 +396,7 @@ def test_a_workspace_source_with_a_specifier_is_validated(
     edge: bool,
     valid_expected: bool,
     why: str,
-    default_config: FakeConfig,
+    default_config: Config,
 ) -> None:
     """`workspace:<specifier>` falls through to normal validation after the prefix is stripped.
 
@@ -422,7 +421,7 @@ def test_a_workspace_source_with_a_specifier_is_validated(
 # --------------------------------------------------------------------------------------
 
 
-def test_a_healthy_workspace_is_valid_with_no_errors(default_config: FakeConfig) -> None:
+def test_a_healthy_workspace_is_valid_with_no_errors(default_config: Config) -> None:
     """The happy path, stated once so the failure rows above cannot pass vacuously."""
     state = two_package_workspace().update_dependency("pkg-b", "pkg-a", "==1.0.0")
 
@@ -433,7 +432,7 @@ def test_a_healthy_workspace_is_valid_with_no_errors(default_config: FakeConfig)
     assert errors == []
 
 
-def test_graph_keys_are_insertion_ordered_with_the_root_first(default_config: FakeConfig) -> None:
+def test_graph_keys_are_insertion_ordered_with_the_root_first(default_config: Config) -> None:
     """Insertion order is observable, here and in the release plan.
 
     Every package gets a key even with zero dependents, the root package is keyed first, and the
@@ -451,7 +450,7 @@ def test_graph_keys_are_insertion_ordered_with_the_root_first(default_config: Fa
     assert errors == []
 
 
-def test_the_root_package_is_never_a_dependent(default_config: FakeConfig) -> None:
+def test_the_root_package_is_never_a_dependent(default_config: Config) -> None:
     """Only workspace packages are scanned as dependents; a root-level range never bumps anything.
 
     `apply-release-plan` still rewrites the root manifest separately
@@ -470,7 +469,7 @@ def test_the_root_package_is_never_a_dependent(default_config: FakeConfig) -> No
     assert errors == []
 
 
-def test_external_dependencies_produce_no_edge_and_no_error(default_config: FakeConfig) -> None:
+def test_external_dependencies_produce_no_edge_and_no_error(default_config: Config) -> None:
     """A dependency that is not a workspace package is skipped before any validation."""
     state = two_package_workspace().update_dependency("pkg-b", "requests", ">=2.0,<3.0")
 
@@ -487,7 +486,7 @@ def test_external_dependencies_produce_no_edge_and_no_error(default_config: Fake
 # --------------------------------------------------------------------------------------
 
 
-def test_a_dev_group_edge_is_still_in_the_graph(default_config: FakeConfig) -> None:
+def test_a_dev_group_edge_is_still_in_the_graph(default_config: Config) -> None:
     """Dev edges must exist even though they never bump.
 
     They are in the graph so `apply` can rewrite their ranges; the "never bumps" half is a
@@ -505,7 +504,7 @@ def test_a_dev_group_edge_is_still_in_the_graph(default_config: FakeConfig) -> N
     assert errors == []
 
 
-def test_ignore_dev_drops_every_dev_group_edge(default_config: FakeConfig) -> None:
+def test_ignore_dev_drops_every_dev_group_edge(default_config: Config) -> None:
     """The second graph mode: `ignore_dev=True` skips dev entries before any other check.
 
     This is the branch at `get-dependency-graph.ts:26-27` (`ignoreDevDependencies ||`) and it is
@@ -528,7 +527,7 @@ def test_ignore_dev_drops_every_dev_group_edge(default_config: FakeConfig) -> No
     assert errors == []
 
 
-def test_ignore_dev_leaves_runtime_edges_alone(default_config: FakeConfig) -> None:
+def test_ignore_dev_leaves_runtime_edges_alone(default_config: Config) -> None:
     """Guard the flag's blast radius: it must not disable the graph wholesale.
 
     research doc 01 section 5.3; get-dependency-graph.ts:19-36.
@@ -543,7 +542,7 @@ def test_ignore_dev_leaves_runtime_edges_alone(default_config: FakeConfig) -> No
 
 
 def test_the_dev_group_range_wins_when_a_dependency_is_declared_twice(
-    default_config: FakeConfig,
+    default_config: Config,
 ) -> None:
     """Faithfulness pin: the graph flattens the dep sections, last section wins.
 

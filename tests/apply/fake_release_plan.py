@@ -59,9 +59,7 @@ import tomllib
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Final
-
-from tests.engine.fake_state import FakeConfig
+from typing import Any, Final, Literal
 
 from molt.versioning import BumpType
 
@@ -154,13 +152,28 @@ class FakePlan:
 
 
 @dataclass(frozen=True)
-class FakeApplyConfig(FakeConfig):
-    """``FakeConfig`` (the engine's ported ``defaultConfig``) plus the keys ``apply`` reads.
+class FakeApplyConfig:
+    """The ported ``defaultConfig`` plus the three keys ``apply`` reads.
 
-    Extends ``tests.engine.fake_state.FakeConfig`` rather than restating it, so the two suites
-    cannot drift on a config key name. The three added fields are the ones ``applyReleasePlan``
-    consumes and the engine does not (``index.ts:241``, ``:190-193``, and the CLI's ``commit``
-    handling at ``cli/src/commands/version/index.ts:127-143``):
+    It used to extend ``tests.engine.fake_state.FakeConfig``; that stand-in was retired when the
+    engine suite moved onto the real :class:`molt.config.Config` (owner ruling 2026-07-31, closing
+    gap ``RPE-7``), so the eleven inherited fields are restated here under the same names, types
+    and defaults. This stays a **dataclass** on purpose: ``tests/apply`` drives
+    ``apply_release_plan`` structurally through ``molt.apply.apply.ApplyConfigLike``, and a
+    structural double is what proves the seam is structural.
+
+    Reference shape (research doc 01 section 1 "Default config"). It is split across two upstream
+    files, and only five of the eleven ported fields come from the written defaults:
+    ``packages/config/src/defaults.ts:7-18`` (``baseBranch``, ``ignore``, ``fixed``, ``linked``,
+    ``updateInternalDependencies``) plus the schema defaults applied by ``normalizeWrittenConfig``
+    in ``packages/config/src/config.ts`` -- ``changedFilePatterns`` ``:57-60``,
+    ``privatePackages`` ``:95-105``, ``bumpVersionsWithWorkspaceProtocolOnly`` ``:106-110``,
+    ``snapshot.useCalculatedVersion`` / ``snapshot.prereleaseTemplate`` ``:111-131``, and
+    ``___experimentalUnsafeOptions.updateInternalDependents`` ``:148-156``.
+
+    The three added fields are the ones ``applyReleasePlan`` consumes and the engine does not
+    (``index.ts:241``, ``:190-193``, and the CLI's ``commit`` handling at
+    ``cli/src/commands/version/index.ts:127-143``):
 
     - ``changelog`` -- ``False`` disables changelog generation entirely; a bare string names a
       generator entry point; a ``(name, options)`` pair passes options through verbatim
@@ -172,9 +185,21 @@ class FakeApplyConfig(FakeConfig):
       item 13; ``website/docs/config/options.md`` "Changelog and commit"; harness progress log,
       Session 2 decision 1).
 
-    ``private_packages_version`` is inherited from ``FakeConfig`` and is the flat spelling of the
-    docs' ``private_packages = { version = ... }``.
+    ``private_packages_version`` is the flat spelling of the docs'
+    ``private_packages = { version = ... }``.
     """
+
+    ignore: tuple[str, ...] = ()
+    fixed: tuple[tuple[str, ...], ...] = ()
+    linked: tuple[tuple[str, ...], ...] = ()
+    bump_workspace_sources_only: bool = False
+    update_internal_dependents: Literal["out-of-range", "always"] = "out-of-range"
+    update_internal_dependencies: Literal["patch", "minor"] = "patch"
+    snapshot_use_calculated_version: bool = False
+    snapshot_prerelease_template: str | None = None
+    base_branch: str = "main"
+    changed_file_patterns: tuple[str, ...] = ("**",)
+    private_packages_version: bool = True
 
     changelog: bool | str | tuple[str, Mapping[str, Any] | None] = False
     commit: bool | str | tuple[str, Mapping[str, Any] | None] = False

@@ -26,6 +26,18 @@ the moment a value contains a newline -- the workflow reads a truncated value ra
 -- so :func:`write_github_output` writes ``name<<DELIMITER`` / value / ``DELIMITER`` for every
 value, with a random delimiter per run, and refuses if a value contains it.
 
+**Outputs are written for every run that observed a result -- success or failure -- and before the
+failure is reported** (owner ruling 2026-08-01). A release that half-published is precisely the run
+where a following ``if: always()`` step most needs to read ``published_packages``, so
+:class:`molt.action.ActionFailed` carries the partial result out of the loop and
+:func:`run_release_loop` hands it to the same :func:`report` the success path uses -- one writer,
+so the delimiter form, the ``None``-drops and the stdout fallback cannot diverge between the two.
+
+What that deliberately does **not** cover: a run that fails with a plain
+:class:`~molt.errors.MoltError` writes nothing. There is no observed result to write, and
+synthesising one would report ``has_changesets = false`` about a repository molt never finished
+reading -- an output file must not carry a value molt did not observe.
+
 The exit-code funnel below is a deliberate **narrow second copy** of :func:`molt.cli.main`'s: an
 ``ExitError`` keeps its code, a ``MoltError`` is its message plus 1, ``KeyboardInterrupt`` is 0,
 anything else is 1 with a traceback (research doc 03 section 11.6). The original is welded to the
@@ -84,6 +96,12 @@ ACTION_INPUTS: Final[dict[str, str | None]] = {
     # process this table describes is a *different* molt than the one that read the input.
     "molt-version": None,
     "publish": "publish",
+    # The version half of `publish`, added by owner ruling 2026-07-31 closing gap `CO-1`, which
+    # reversed the earlier "not in v1" exclusion. Spelled `version-command` rather than upstream's
+    # `version` because `molt-version` already exists and names a *distribution* pin: two inputs
+    # differing by a prefix, one a CLI version and one a shell command, is a copy-paste waiting to
+    # go wrong.
+    "version-command": "version-command",
     "title": "title",
     # Upstream's spelling is `commit`; the option is `--commit-message` because a bare `--commit`
     # on a command line reads as a switch ("commit? yes") rather than as the message itself.
@@ -300,6 +318,15 @@ def run_release_loop(
         str | None,
         typer.Option("--publish", help="The publish command to run in the publish phase."),
     ] = None,
+    # Split through the same `_argv` helper `--publish` uses, so POSIX rules apply to both and
+    # `CO-16` (POSIX splitting on every platform, Windows shells included) covers the pair rather
+    # than growing a second answer to one question.
+    version_command: Annotated[
+        str | None,
+        typer.Option(
+            "--version-command", help="The command to run in the version phase. Defaults to molt."
+        ),
+    ] = None,
     title: Annotated[
         str | None, typer.Option("--title", help="Title of the release pull request.")
     ] = None,
@@ -330,14 +357,22 @@ def run_release_loop(
     _token()
     releases = parse_boolean_input(create_releases, option="--create-releases")
 
-    result = orchestrate.run_action(
-        cwd=Path.cwd() if cwd is None else cwd,
-        publish=_argv(publish),
-        title=_text(title),
-        commit_message=_text(commit_message),
-        base_branch=_text(base_branch),
-        create_releases=True if releases is None else releases,
-    )
+    try:
+        result = orchestrate.run_action(
+            cwd=Path.cwd() if cwd is None else cwd,
+            publish=_argv(publish),
+            version_script=_argv(version_command),
+            title=_text(title),
+            commit_message=_text(commit_message),
+            base_branch=_text(base_branch),
+            create_releases=True if releases is None else releases,
+        )
+    # The outputs are written for a failing run too, through the *same* `report` (owner ruling
+    # 2026-08-01). This does not belong in `main()`'s funnel: that funnel maps exceptions to exit
+    # codes and knows nothing about results.
+    except orchestrate.ActionFailed as failure:
+        report(failure.result)
+        raise
     report(result)
 
 

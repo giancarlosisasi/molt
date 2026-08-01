@@ -202,8 +202,9 @@ class PackagesLike(Protocol):
 class GraphConfig(Protocol):
     """The only configuration key graph construction reads.
 
-    Typed structurally on purpose: both :class:`molt.config.Config` and the engine suite's
-    ``FakeConfig`` satisfy it, so the graph does not depend on which one a caller holds.
+    Typed structurally on purpose: :class:`molt.config.Config`, the engine's own
+    ``molt.engine.adapters.EngineConfig`` and the apply suite's ``FakeApplyConfig`` double all
+    satisfy it, so the graph does not depend on which one a caller holds.
     """
 
     @property

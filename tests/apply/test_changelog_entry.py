@@ -1216,3 +1216,107 @@ def test_regex_metacharacters_survive_the_section_renderer_too(summary: str, why
     assert generate_markdown_for_version_type(PATCH, [f"- {summary}"]) == (
         f"### Patch Changes\n\n- {summary}"
     ), why
+
+
+# ======================================================================================
+# The dependency element's contract, its order, and the absence of a self-guard.
+# Owner rulings 2026-07-31 (session 6), closing gaps `CE-5`, `CE-3` and `CE-4`.
+# ======================================================================================
+
+
+@dataclasses.dataclass
+class CapturingGenerator:
+    """Keeps the ``dependencies_updated`` sequence the assembler handed it, unchanged."""
+
+    captured: list[Sequence[object]] = dataclasses.field(default_factory=list)
+
+    def get_release_line(
+        self,
+        changeset: Changeset,
+        bump: BumpType,
+        options: Mapping[str, object] | None = None,
+        forge: object | None = None,
+    ) -> str:
+        return f"- {changeset.summary}"
+
+    def get_dependency_release_line(
+        self,
+        changesets: Sequence[Changeset],
+        dependencies_updated: Sequence[object],
+        options: Mapping[str, object] | None = None,
+        forge: object | None = None,
+    ) -> str:
+        self.captured.append(dependencies_updated)
+        return "- Updated dependencies" if dependencies_updated else ""
+
+
+def test_the_dependency_element_carries_a_parsed_version() -> None:
+    """``CE-5``, ruled 2026-07-31 -- ``new_version`` is a ``Version``, and the shape is declared.
+
+    The second argument of ``get_dependency_release_line`` had no declared shape at all, so a
+    generator could not tell whether ``new_version`` was a parsed version or a string -- and the
+    two render identically through an f-string, which is why nothing ever noticed that
+    ``tests/changelog/test_changelog.py``'s own double had it as ``str``. The contract is now
+    :class:`molt.changelog.DependencyReleaseLike`, and this row is what holds the assembler to it.
+    """
+    from molt.changelog import DependencyReleaseLike
+
+    dependency = Release("pkg-b", MINOR, v("1.0.0"), v("1.1.0"), ("cs-a",))
+    release = Release("pkg-a", PATCH, v("1.0.0"), v("1.0.1"), ("cs-a",))
+    changesets = [Changeset("cs-a", "a summary", (ChangesetRelease("pkg-b", MINOR),))]
+    generator = CapturingGenerator()
+
+    get_changelog_entry(
+        release, [release, dependency], changesets, generator, deps=["pkg-b>=1.0.0,<1.1.0"]
+    )
+
+    assert generator.captured, "the assembler must ask the generator for a dependency line"
+    for captured in generator.captured:
+        for element in captured:
+            assert isinstance(element, DependencyReleaseLike)
+            assert isinstance(element.new_version, Version)
+
+
+def test_dependency_lines_follow_manifest_order() -> None:
+    """``CE-3``, ratified as shipped 2026-07-31 -- the order is the manifest's, not the plan's.
+
+    Nothing pinned it before, so either reading was available to a later change. The manifest here
+    declares ``pkg-c`` first and the release sequence lists ``pkg-b`` first; the entry names
+    ``pkg-c`` first. Under plan order it would name ``pkg-b`` first.
+
+    A manifest is a document its author arranged. A changelog that silently reordered it would be
+    molt asserting it knows better, over a list the reader can compare line for line.
+    """
+    release = Release("pkg-a", PATCH, v("1.0.0"), v("1.0.1"), ("cs-a",))
+    pkg_b = Release("pkg-b", MINOR, v("1.0.0"), v("1.1.0"), ("cs-a",))
+    pkg_c = Release("pkg-c", MINOR, v("1.0.0"), v("1.1.0"), ("cs-a",))
+    changesets = [Changeset("cs-a", "a summary", (ChangesetRelease("pkg-a", PATCH),))]
+
+    entry = get_changelog_entry(
+        release,
+        [release, pkg_b, pkg_c],
+        changesets,
+        GIT,
+        deps=["pkg-c>=1.0.0,<1.1.0", "pkg-b>=1.0.0,<1.1.0"],
+    )
+
+    assert entry is not None
+    assert entry.index("pkg-c@1.1.0") < entry.index("pkg-b@1.1.0")
+
+
+def test_a_self_declared_dependency_appears_in_its_own_line() -> None:
+    """``CE-4``, ratified as shipped 2026-07-31 -- there is no self-dependency guard.
+
+    This is the faithful upstream reading: ``get-changelog-entry.ts`` has no self-name check
+    either, so a package that declares itself in its own ``dependencies`` is listed in its own
+    "Updated dependencies" line. A guard was considered and declined -- it would hide a manifest
+    mistake behind a changelog that looks right, and a package pinning itself is a mistake worth
+    seeing.
+    """
+    release = Release("pkg-a", MINOR, v("1.0.0"), v("1.1.0"), ("cs-a",))
+    changesets = [Changeset("cs-a", "a summary", (ChangesetRelease("pkg-a", MINOR),))]
+
+    entry = get_changelog_entry(release, [release], changesets, GIT, deps=["pkg-a>=1.0.0,<1.1.0"])
+
+    assert entry is not None
+    assert "- pkg-a@1.1.0" in entry

@@ -16,18 +16,16 @@ amendment -- a module-level ``importorskip`` skips the *whole* module, so builde
 
 from __future__ import annotations
 
-import dataclasses
-
 import pytest
 from tests.engine.fake_state import (
     DEFAULT_CHANGESET_ID,
     DEFAULT_CHANGESET_SUMMARY,
     DepEntry,
     FakeFullState,
-    default_config,
     package_dir,
 )
 
+from molt.config import default_config
 from molt.versioning import BumpType
 
 pytestmark = pytest.mark.unit
@@ -168,7 +166,12 @@ def test_default_config_is_the_ported_changesets_default() -> None:
     come from the written defaults; the rest are filled in by ``normalizeWrittenConfig``
     (``config.ts:57-60, 95-110, 111-131, 148-156``).
 
-    ``dataclasses.replace`` is the documented way to derive a variant; the base value must stay
+    The values are read off the real :func:`molt.config.default_config`, which replaced the
+    engine suite's own ``FakeConfig`` stand-in (owner ruling 2026-07-31, closing gap ``RPE-7``);
+    the three snapshot / private-package assertions therefore use the configuration's nested
+    spellings rather than the flat ones the stand-in carried.
+
+    ``model_copy(update=...)`` is the documented way to derive a variant; the base value must stay
     unchanged so parallel tests cannot leak config into each other.
     """
     config = default_config()
@@ -178,10 +181,10 @@ def test_default_config_is_the_ported_changesets_default() -> None:
     assert config.bump_workspace_sources_only is False
     assert config.update_internal_dependents == "out-of-range"
     assert config.update_internal_dependencies == "patch"
-    assert config.snapshot_prerelease_template is None
-    assert config.snapshot_use_calculated_version is False
-    assert config.private_packages_version is True
+    assert config.snapshot.prerelease_template is None
+    assert config.snapshot.use_calculated_version is False
+    assert config.private_packages.version is True
 
-    derived = dataclasses.replace(config, ignore=("pkg-b",))
+    derived = config.model_copy(update={"ignore": ("pkg-b",)})
     assert derived.ignore == ("pkg-b",)
     assert config.ignore == ()

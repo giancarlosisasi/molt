@@ -553,3 +553,51 @@ def test_detects_a_single_package_project(tmp_path: Path, console: RecordingCons
     text = console.text()
     assert "acme" in text
     assert "packages/" not in text
+
+
+# --------------------------------------------------------------------------------------
+# IC-3 - `init` writes the whole option surface (owner ruling 2026-07-31, session 6)
+# --------------------------------------------------------------------------------------
+
+
+def test_every_supported_option_is_written(tmp_path: Path, console: RecordingConsole) -> None:
+    """``IC-3``, ruled 2026-07-31 -- all 15 keys, not upstream's 8.
+
+    A TOML table has no ``$schema`` affordance, so an editor cannot offer the options that are
+    missing from the file: the file *is* the discovery surface, and it used to hide two thirds of
+    the tool. The mirror of the existing programmatic cross-check on ``MOLT_KEY_ORDER``, and the
+    row that fails when a field is added to ``Config`` and forgotten here.
+    """
+    from molt.config.models import Config
+
+    root = make_project(tmp_path / "project")
+
+    run(cwd=root, console=console, prompts=default_prompts())
+
+    assert set(molt_table(root)) == set(Config.model_fields)
+
+
+def test_the_written_config_round_trips_to_the_defaults(
+    tmp_path: Path, console: RecordingConsole
+) -> None:
+    """The written file loads back cleanly and means exactly the defaults (``IC-3``).
+
+    A key-set assertion alone would pass a template that writes ``prerelease_template = ""``, which
+    ``SnapshotOptions`` rejects -- so ``init`` would produce a file molt refuses to load. TOML has
+    no null, so a nested member whose default is ``None`` is omitted instead, and this row is what
+    holds that rule.
+
+    Both channels are asserted: no errors *and* no warnings. A warning here would mean ``init``
+    wrote a key ``load_config`` does not recognise.
+    """
+    from molt.config import load_config
+    from molt.config.models import default_config
+
+    root = make_project(tmp_path / "project")
+
+    run(cwd=root, console=console, prompts=default_prompts())
+
+    result = load_config(root)
+    assert result.errors == []
+    assert result.warnings == []
+    assert result.config == default_config()

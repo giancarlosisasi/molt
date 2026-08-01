@@ -42,13 +42,6 @@ Deliberate molt divergences (research README section 4.4)
 - ``tool={"type": "yarn"}`` becomes ``tool={"type": "uv"}``. The engine ignores this field (the
   graph builder only reads ``root_package``, ``root_dir`` and ``packages``); it is kept so the
   shape stays recognisable against the reference fixture.
-
-:class:`FakeConfig` is a **temporary stand-in for the not-yet-built ``molt.config.Config``**
-(build step 3). Its field names are the canonical molt config keys recorded in
-``roadmap/tdd-ddd/progress.md`` ("Config key names") -- notably ``bump_workspace_sources_only``
-and a top-level ``update_internal_dependents``, promoted out of upstream's
-``___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH`` wrapper. When ``molt.config`` lands, delete
-this class and re-point ``default_config`` at ``molt.config.default_config``.
 """
 
 from __future__ import annotations
@@ -68,13 +61,11 @@ __all__ = [
     "VCS_SOURCE",
     "ChangesetRelease",
     "DepEntry",
-    "FakeConfig",
     "FakeFullState",
     "NewChangeset",
     "Package",
     "PackageManifest",
     "Packages",
-    "default_config",
     "package_dir",
 ]
 
@@ -203,47 +194,6 @@ class DepEntry:
     name: str
     version_range: str
     kind: Literal["direct", "dev", "optional"] = "direct"
-
-
-# ======================================================================================
-# FakeConfig -- stand-in for molt.config.Config (build step 3)
-# ======================================================================================
-
-
-@dataclass(frozen=True)
-class FakeConfig:
-    """The ported ``@changesets/config`` ``defaultConfig``, in molt's key names.
-
-    Frozen and tuple-valued so a test can derive a variant with
-    ``dataclasses.replace(default_config, ignore=("pkg-b",))`` without mutating anyone else's
-    fixture.
-
-    Reference shape (research doc 01 section 1 "Default config"). It is split across two upstream
-    files, and only five of these eleven fields come from the written defaults:
-    ``packages/config/src/defaults.ts:7-18`` (``baseBranch``, ``ignore``, ``fixed``, ``linked``,
-    ``updateInternalDependencies``) plus the schema defaults applied by
-    ``normalizeWrittenConfig`` in ``packages/config/src/config.ts`` -- ``changedFilePatterns``
-    ``:57-60``, ``privatePackages`` ``:95-105``, ``bumpVersionsWithWorkspaceProtocolOnly``
-    ``:106-110``, ``snapshot.useCalculatedVersion`` / ``snapshot.prereleaseTemplate``
-    ``:111-131``, and ``___experimentalUnsafeOptions.updateInternalDependents`` ``:148-156``.
-    """
-
-    ignore: tuple[str, ...] = ()
-    fixed: tuple[tuple[str, ...], ...] = ()
-    linked: tuple[tuple[str, ...], ...] = ()
-    bump_workspace_sources_only: bool = False
-    update_internal_dependents: Literal["out-of-range", "always"] = "out-of-range"
-    update_internal_dependencies: Literal["patch", "minor"] = "patch"
-    snapshot_use_calculated_version: bool = False
-    snapshot_prerelease_template: str | None = None
-    base_branch: str = "main"
-    changed_file_patterns: tuple[str, ...] = ("**",)
-    private_packages_version: bool = True
-
-
-def default_config() -> FakeConfig:
-    """Return the ported changesets default config (research doc 02, "default_config fixture")."""
-    return FakeConfig()
 
 
 # ======================================================================================

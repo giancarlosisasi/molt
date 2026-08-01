@@ -160,3 +160,32 @@ def test_every_step_is_a_pinned_action_or_a_bash_script(step: dict[str, Any]) ->
         return
     _, _, ref = str(uses).partition("@")
     assert _COMMIT_SHA.match(ref), f"`{uses}` is not pinned to a 40-character commit SHA"
+
+
+#: The Dependabot configuration that keeps the pin in ``action.yml`` current, resolved from the same
+#: repository-root anchor.
+DEPENDABOT_PATH = ACTION_PATH.parent / ".github" / "dependabot.yml"
+
+
+def test_the_repository_declares_an_automated_action_pin_updater() -> None:
+    """``CO-4``, ruled 2026-08-01 -- the bundled ``setup-uv`` pin is refreshed by Dependabot.
+
+    ``action.yml`` pins ``astral-sh/setup-uv`` to a commit SHA because that is the advice molt's own
+    documentation gives, and a pin nobody refreshes is a stale pin. Dependabot watching the
+    ``github-actions`` ecosystem at the repository root covers a root-level composite
+    ``action.yml``, which is where that pin lives.
+
+    The **interval is asserted** because it is ruled, not chosen: weekly, over monthly, so a
+    security fix in the one action molt bundles surfaces in days rather than in a month. An executor
+    "tidying" it must fail this row rather than pass review.
+    """
+    document = YAML(typ="safe").load(DEPENDABOT_PATH.read_text(encoding="utf-8"))
+
+    assert document["version"] == 2
+    matching = [
+        entry
+        for entry in document["updates"]
+        if entry.get("package-ecosystem") == "github-actions" and entry.get("directory") == "/"
+    ]
+    assert matching, "nothing watches the repository's own action definitions"
+    assert any(entry.get("schedule", {}).get("interval") == "weekly" for entry in matching)

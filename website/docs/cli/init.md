@@ -18,10 +18,12 @@ molt init [OPTIONS]
 
 1. Walks up from the working directory to find the workspace root.
 2. Detects the **ecosystem backend** -- uv, Poetry, Hatch, PDM, or setuptools -- and the workspace layout (single package, or a workspace with members). See [Ecosystems](/ecosystems/overview).
-3. Writes a molt **config**. By default molt writes a `[tool.molt]` table into the root `pyproject.toml`. If you prefer a standalone file, molt writes `.molt/config.json` instead. See [The config file](/config/config-file).
+3. Writes a molt **config** as a `[tool.molt]` table in the root `pyproject.toml`, with **every** option present at its default. `.molt/config.json` is read if you have one -- it is the migration path from a changesets `config.json` -- but `molt init` never produces one. See [The config file](/config/config-file).
 4. Creates the `.changeset/` directory with a short `README.md` explaining what the folder is for.
 
 Run interactively, `molt init` asks a few questions (base branch, changelog integration, whether to auto-commit changesets) and fills in sensible defaults for everything else. Run with `--non-interactive`, it accepts every default without prompting.
+
+The file it writes lists **every** option molt has, each set to its default, rather than the handful the prompts asked about. A TOML table carries no `$schema` line, so your editor cannot offer you the options that are missing from the file -- which makes the file itself the place you discover what molt can do. Delete the lines you do not care about; molt reads a missing key as its default either way.
 
 `molt init` is **idempotent and safe to re-run**. If a config already exists, molt leaves it untouched and reports that the project is already initialized. It never clobbers an existing `README.md`, and it creates only the pieces that are missing.
 

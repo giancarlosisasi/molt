@@ -41,6 +41,13 @@ inputs:
       the version phase only -- supplying it is also what makes the publish phase reachable at all.
     required: false
     default: ""
+  version-command:
+    description: >-
+      The command that versions the release, for example "molt version --snapshot canary". Empty
+      runs molt's own "molt version". Named version-command rather than version because
+      molt-version above already names a distribution pin.
+    required: false
+    default: ""
   title:
     description: The title of the release pull request.
     required: false
@@ -117,6 +124,7 @@ runs:
       env:
         MOLT_ACTION_VERSION: ${{ inputs.molt-version }}
         MOLT_ACTION_PUBLISH: ${{ inputs.publish }}
+        MOLT_ACTION_VERSION_COMMAND: ${{ inputs.version-command }}
         MOLT_ACTION_TITLE: ${{ inputs.title }}
         MOLT_ACTION_COMMIT: ${{ inputs.commit }}
         MOLT_ACTION_CREATE_RELEASES: ${{ inputs.create-releases }}
@@ -140,6 +148,7 @@ runs:
         # this same pinned install.
         uvx --from "${requirement}" molt-action \
           --publish "${MOLT_ACTION_PUBLISH}" \
+          --version-command "${MOLT_ACTION_VERSION_COMMAND}" \
           --title "${MOLT_ACTION_TITLE}" \
           --commit-message "${MOLT_ACTION_COMMIT}" \
           --create-releases "${MOLT_ACTION_CREATE_RELEASES}" \

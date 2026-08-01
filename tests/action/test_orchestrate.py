@@ -57,6 +57,7 @@ pytest.importorskip("molt.action", reason="molt.action.orchestrate is this suite
 
 from molt.action import (
     MAX_BODY_CHARACTERS,
+    ActionFailed,
     ActionResult,
     Mode,
     build_pull_request_body,
@@ -64,11 +65,14 @@ from molt.action import (
     run_action,
     select_mode,
 )
-from molt.errors import ExitError, MoltError
+from molt.action.body import MOLT_REPOSITORY_URL
+from molt.errors import ExitError, MoltError, MoltForgeError
 from molt.forge import PullRef, ReleaseInfo
 from molt.git import Git
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from tests.conftest import GitRepo, ProjectBuilder
 
 # ======================================================================================
@@ -105,6 +109,7 @@ class RecordingForge:
         open_pull: PullRef | None = None,
         created_number: int = 7,
         duplicate_releases: bool = False,
+        failing_releases: Sequence[str] = (),
     ) -> None:
         self.repo = repo
         self.journal = journal
@@ -112,6 +117,9 @@ class RecordingForge:
         self._open_pull = open_pull
         self._created_number = created_number
         self._duplicate_releases = duplicate_releases
+        #: Tags whose ``create_release`` raises after recording the call. Additive and empty by
+        #: default, so every construction site written before ``AP-7`` is untouched.
+        self._failing_releases = frozenset(failing_releases)
 
     # -- the protocol ------------------------------------------------------------------
 
@@ -136,6 +144,10 @@ class RecordingForge:
         repo: str | None = None,
     ) -> ReleaseInfo | None:
         self._record("create_release", tag, name=name, body=body, prerelease=prerelease, repo=repo)
+        # Recorded first, then raised: `AP-7`'s rows assert that molt *attempted* the releases
+        # after the failing one, which is only observable if a failure is still a recorded call.
+        if tag in self._failing_releases:
+            raise MoltForgeError(f"the host refused the release for {tag}")
         if self._duplicate_releases:
             return None
         return ReleaseInfo(tag=tag, name=name, url=f"{self.server_url}/releases/{tag}", id=1)
@@ -911,27 +923,219 @@ def test_a_published_package_without_its_changelog_section(
         assert result.published is True, "the package still published; only its release is skipped"
 
 
+#: A publish command that announces one package and then exits 3 -- the half-failed publish every
+#: ``AP-14`` / ``AP-7`` row below is written against.
+FAILING_PUBLISH_STUB = 'import sys\nprint("New tag: pkg-a@1.1.0")\nsys.exit(3)\n'
+
+
 @pytest.mark.integration
 def test_a_failing_publish_command_fails_the_run(
     tmp_path: Path, tmp_project: ProjectBuilder
 ) -> None:
-    """``index.ts:137-147`` -- a publish that exited non-zero is not a successful run.
+    """``index.ts:137-147`` -- a failing publish fails the run, **after** reporting what went out.
 
-    Reporting success for a publish that half-failed is the silent-CI-failure mode this whole tool
-    exists to avoid (research README section 3.4). molt fails at the same point upstream does, and
-    reports nothing as published: ``run_publish`` raises **before** it pushes tags or reads the
-    command's output, so molt cannot enumerate what a failing publish managed to upload, and
-    reporting packages it did not observe would be the same mistake in the other direction
-    (``openspec/GAPS.md`` ``AP-14``).
+    Renegotiated by owner ruling 2026-07-31 (session 6), closing gap ``AP-14``. molt used to raise
+    inside ``run_publish`` the moment the command exited non-zero, which happened before the tag
+    push and before the output scrape -- so a publish that uploaded three packages out of five
+    reported none of them and created no release for any of them. That was molt's divergence, not
+    upstream's: ``index.ts:137-147`` reports the partial publish.
+
+    The run still fails, and still with the publish command's own status. What changed is
+    everything that happens first: the tags are pushed, the ``New tag:`` lines are read, and a host
+    release is created for every package that did reach the index -- because by then those packages
+    are public and a release is only a pointer to them.
     """
     seed_published_workspace(tmp_project)
     journal: list[str] = []
     forge = RecordingForge(journal)
-    failing = stub_script(tmp_path, 'import sys\nprint("New tag: pkg-a@1.1.0")\nsys.exit(3)\n')
+    failing = stub_script(tmp_path, FAILING_PUBLISH_STUB)
 
     with pytest.raises(ExitError) as excinfo:
         run_action(cwd=tmp_project.root, publish=failing, forge=forge, git=FakeGit(journal))
 
     assert excinfo.value.code == 3, "the publish command's own status reaches the workflow"
-    assert forge.named("create_release") == [], "a failed publish creates no releases"
-    assert journal == [], "and pushes no tags"
+    assert [call.args[0] for call in forge.named("create_release")] == ["pkg-a@1.1.0"], (
+        "the package that did go out still gets its release"
+    )
+    assert "git.push_tags" in journal, "and the tags it did create are still pushed"
+
+
+@pytest.mark.integration
+def test_a_failing_publish_that_published_nothing_creates_no_release(
+    tmp_path: Path, tmp_project: ProjectBuilder
+) -> None:
+    """A publish that announced nothing has nothing to report (``AP-14``, ruled 2026-07-31).
+
+    The other end of the row above: reporting a package molt never observed would be the same
+    mistake in the other direction.
+    """
+    seed_published_workspace(tmp_project)
+    journal: list[str] = []
+    forge = RecordingForge(journal)
+    failing = stub_script(tmp_path, "import sys\nsys.exit(4)\n")
+
+    with pytest.raises(ExitError) as excinfo:
+        run_action(cwd=tmp_project.root, publish=failing, forge=forge, git=FakeGit(journal))
+
+    assert excinfo.value.code == 4
+    assert forge.named("create_release") == []
+
+
+@pytest.mark.integration
+def test_a_failing_publish_with_releases_switched_off_still_fails(
+    tmp_path: Path, tmp_project: ProjectBuilder
+) -> None:
+    """``create_releases=False`` changes the host, never the run's status (``AP-14``)."""
+    seed_published_workspace(tmp_project)
+    journal: list[str] = []
+    forge = RecordingForge(journal)
+    failing = stub_script(tmp_path, FAILING_PUBLISH_STUB)
+
+    with pytest.raises(ExitError) as excinfo:
+        run_action(
+            cwd=tmp_project.root,
+            publish=failing,
+            create_releases=False,
+            forge=forge,
+            git=FakeGit(journal),
+        )
+
+    assert excinfo.value.code == 3
+    assert forge.named("create_release") == []
+
+
+@pytest.mark.integration
+def test_one_failed_release_does_not_stop_the_others(
+    tmp_path: Path, tmp_project: ProjectBuilder
+) -> None:
+    """``AP-7``, ruled 2026-08-01 -- keep going, then fail naming every failure.
+
+    Upstream's ``run.ts:118-149`` has no ``try`` around its release loop either, so molt shipped a
+    faithful port; the ruling trades that faithfulness for the operator's own question, which is
+    "which releases am I missing?". By the time one ``create_release`` raises, every package in the
+    loop is already on the index, so stopping loses information that cannot be recovered.
+
+    The **first** release is the one that fails on purpose. Failing the last would pass even with
+    no ``try`` at all.
+    """
+    seed_published_workspace(tmp_project)
+    journal: list[str] = []
+    forge = RecordingForge(journal, failing_releases=["pkg-a@1.1.0"])
+
+    with pytest.raises(ExitError) as excinfo:
+        run_action(
+            cwd=tmp_project.root,
+            publish=stub_script(tmp_path, PUBLISH_STUB),
+            forge=forge,
+            git=FakeGit(journal),
+        )
+
+    assert [call.args[0] for call in forge.named("create_release")] == [
+        "pkg-a@1.1.0",
+        "pkg-b@2.0.0",
+    ], "the release after the failing one was still attempted"
+    assert excinfo.value.code == 1, "the publish itself succeeded, so this is molt's own failure"
+    assert "pkg-a" in str(excinfo.value), "the failed package is named"
+
+
+@pytest.mark.integration
+def test_a_failing_release_and_a_failing_publish_report_both(
+    tmp_path: Path, tmp_project: ProjectBuilder
+) -> None:
+    """When both failed, the **publish command's** status wins and the release is still named.
+
+    A child's status is propagated verbatim -- that contract predates ``AP-7`` and CI branches on
+    it -- so the code is 3, not molt's own 1.
+    """
+    seed_published_workspace(tmp_project)
+    journal: list[str] = []
+    forge = RecordingForge(journal, failing_releases=["pkg-a@1.1.0"])
+
+    with pytest.raises(ExitError) as excinfo:
+        run_action(
+            cwd=tmp_project.root,
+            publish=stub_script(tmp_path, FAILING_PUBLISH_STUB),
+            forge=forge,
+            git=FakeGit(journal),
+        )
+
+    assert excinfo.value.code == 3
+    assert "pkg-a" in str(excinfo.value)
+
+
+@pytest.mark.integration
+def test_a_failing_publish_carries_its_partial_result(
+    tmp_path: Path, tmp_project: ProjectBuilder
+) -> None:
+    """The failure carries what the run observed, so the entry point can still write the outputs.
+
+    Owner ruling 2026-08-01: after a release that half-published, an ``if: always()`` step must be
+    able to read the packages that did go out. :class:`molt.action.ActionFailed` is the carrier and
+    this row pins it one layer below the file writer -- ``tests/action/test_cli.py`` pins the write
+    itself.
+    """
+    seed_published_workspace(tmp_project)
+    journal: list[str] = []
+    forge = RecordingForge(journal)
+
+    with pytest.raises(ActionFailed) as excinfo:
+        run_action(
+            cwd=tmp_project.root,
+            publish=stub_script(tmp_path, FAILING_PUBLISH_STUB),
+            forge=forge,
+            git=FakeGit(journal),
+        )
+
+    failure = excinfo.value
+    assert isinstance(failure, ExitError), "every pinned row asserting ExitError still holds"
+    assert failure.code == 3
+    assert [package.name for package in failure.result.published_packages] == ["pkg-a"]
+
+
+def test_the_body_header_links_to_molts_repository() -> None:
+    """``AP-8``, ruled 2026-07-31 -- the header names molt and links to its repository.
+
+    Asserted against the imported constant rather than a copied URL: a copy here would let the
+    two drift and still pass.
+    """
+    body = build_pull_request_body(entries=[], base_branch="main", has_publish_command=False)
+
+    assert MOLT_REPOSITORY_URL in body
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("with_publish", [True, False], ids=["publish", "no-publish"])
+def test_a_repository_with_no_changeset_directory_has_nothing_pending(
+    tmp_path: Path, tmp_project: ProjectBuilder, with_publish: bool
+) -> None:
+    """``AP-15``, ratified as shipped 2026-08-01 -- an absent ``.changeset/`` is "nothing pending".
+
+    Every ``molt`` verb refuses a missing changeset directory and says to run ``molt init``,
+    because a person typing a command is working in a project they believe is initialized. The
+    action is the one caller for which that is wrong: a repository whose release pull request
+    merged with ``.changeset/`` deleted -- or one that has never used changesets at all -- must
+    still run the publish half.
+
+    A malformed changeset **file** still raises; that half is ``read_changesets``' own contract and
+    is pinned in ``tests/changeset``.
+    """
+    seed_published_workspace(tmp_project)
+    changeset_dir = tmp_project.root / ".changeset"
+    if changeset_dir.is_dir():
+        for entry in changeset_dir.iterdir():
+            entry.unlink()
+        changeset_dir.rmdir()
+    assert not changeset_dir.exists()
+
+    journal: list[str] = []
+    forge = RecordingForge(journal)
+    publish = stub_script(tmp_path, PUBLISH_STUB) if with_publish else None
+
+    result = run_action(cwd=tmp_project.root, publish=publish, forge=forge, git=FakeGit(journal))
+
+    assert result.has_changesets is False
+    if with_publish:
+        assert result.published is True, "the publish half still runs"
+    else:
+        assert result.published is False, "and with no publish command the run does nothing"
+        assert forge.calls == []

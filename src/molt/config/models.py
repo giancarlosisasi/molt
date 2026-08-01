@@ -387,6 +387,28 @@ class Config(BaseModel):
         changelog = self.changelog
         return changelog.dates if isinstance(changelog, ChangelogOptions) else False
 
+    @property
+    def snapshot_prerelease_template(self) -> str | None:
+        """Flat view of ``snapshot.prerelease_template``.
+
+        It exists so ``Config`` satisfies :class:`molt.engine.assemble.PlanConfig` directly, which
+        is what let ``tests/engine/fake_state.py::FakeConfig`` be retired (owner ruling 2026-07-31,
+        closing gap ``RPE-7``). Like the three ``changelog_*`` views above it is a ``property``, so
+        it is invisible to ``model_fields``: the parser's known-key set, ``model_dump()`` and the
+        generated JSON Schema are all unaffected.
+        """
+        return self.snapshot.prerelease_template
+
+    @property
+    def snapshot_use_calculated_version(self) -> bool:
+        """Flat view of ``snapshot.use_calculated_version``.
+
+        The sibling of :attr:`snapshot_prerelease_template`, and there for the same reason: the
+        engine's ``PlanConfig`` reads both flat, while ``Config`` spells them nested. See that
+        property's docstring for why neither is a field.
+        """
+        return self.snapshot.use_calculated_version
+
 
 def default_config() -> Config:
     """The default configuration -- what a repository with no config file gets, exactly.

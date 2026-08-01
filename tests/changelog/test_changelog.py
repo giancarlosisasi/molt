@@ -85,6 +85,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from packaging.version import Version
 
 from molt.versioning import BumpType
 
@@ -178,10 +179,16 @@ class FakeDependencyRelease:
     """One entry of ``dependenciesUpdated`` (doc 04 section 4.1).
 
     ``website/docs/extending/custom-generators.md`` reads ``d.name`` and ``d.new_version``.
+
+    ``new_version`` is a parsed :class:`~packaging.version.Version`, not a ``str``: that is what
+    the assembler really passes, and this double said ``str`` for as long as the contract was
+    undeclared -- nothing caught it, because both render identically through an f-string. Corrected
+    with :class:`molt.changelog.DependencyReleaseLike`, which now writes the contract down (owner
+    ruling 2026-07-31, closing gap ``CE-5``). No expected value in this file changes.
     """
 
     name: str
-    new_version: str
+    new_version: Version
     old_version: str = "0.0.1"
     type: str = "patch"
 
@@ -381,7 +388,7 @@ def test_dependency_release_line_links_the_commit_and_ends_with_a_colon(
     """
     forge_api.set_response(forge_payload())
     forge = make_forge(monkeypatch)
-    dependency = FakeDependencyRelease(name="pkg", new_version="1.0.0")
+    dependency = FakeDependencyRelease(name="pkg", new_version=Version("1.0.0"))
 
     line = github_generator.get_dependency_release_line(
         [changeset("something", commit=COMMIT_SHA)], [dependency], OPTIONS, forge
@@ -414,7 +421,7 @@ def test_dependency_release_line_uses_one_bullet_for_many_changesets(
             changeset("first", commit=COMMIT_SHA, cs_id="cs-1"),
             changeset("second", commit=other_sha, cs_id="cs-2"),
         ],
-        [FakeDependencyRelease(name="pkg", new_version="1.0.0")],
+        [FakeDependencyRelease(name="pkg", new_version=Version("1.0.0"))],
         OPTIONS,
         forge,
     )
@@ -453,7 +460,7 @@ def test_dependency_release_line_falls_back_to_a_bare_code_span(
 
     line = github_generator.get_dependency_release_line(
         [changeset("something", commit=COMMIT_SHA)],
-        [FakeDependencyRelease(name="pkg", new_version="1.0.0")],
+        [FakeDependencyRelease(name="pkg", new_version=Version("1.0.0"))],
         OPTIONS,
         forge,
     )
@@ -508,7 +515,7 @@ def test_dependency_release_line_omits_empty_brackets_when_no_changeset_has_a_co
 
     line = github_generator.get_dependency_release_line(
         [changeset("something", commit=None)],
-        [FakeDependencyRelease(name="pkg", new_version="1.0.0")],
+        [FakeDependencyRelease(name="pkg", new_version=Version("1.0.0"))],
         OPTIONS,
         forge,
     )
@@ -1500,7 +1507,8 @@ def test_git_generator_dependency_release_line(
         for index, commit in enumerate(commits)
     ]
     updated = [
-        FakeDependencyRelease(name=name, new_version=version) for name, version in dependencies
+        FakeDependencyRelease(name=name, new_version=Version(version))
+        for name, version in dependencies
     ]
 
     line = git_generator.get_dependency_release_line(changesets, updated, None, None)
@@ -1527,7 +1535,10 @@ def test_git_generator_needs_no_forge() -> None:
     assert git_generator.get_release_line(changeset("x"), BumpType.PATCH, None, None) == "- x"
     assert (
         git_generator.get_dependency_release_line(
-            [changeset("x")], [FakeDependencyRelease(name="p", new_version="1.0.0")], None, None
+            [changeset("x")],
+            [FakeDependencyRelease(name="p", new_version=Version("1.0.0"))],
+            None,
+            None,
         )
         == "- Updated dependencies\n  - p@1.0.0"
     )

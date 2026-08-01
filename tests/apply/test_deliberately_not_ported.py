@@ -53,7 +53,11 @@ def test_duplicate_package_in_a_release_plan_is_not_ported_as_written() -> None:
         "duplicate release is exactly the class of bug buffer-then-flush is meant to catch before "
         "the first write (research README section 5 item 12), and it is cheap next to the "
         "'Could not find matching package' check apply already performs (index.ts:92-102, ported "
-        "as test_a_release_for_a_missing_package_fails_before_any_write)."
+        "as test_a_release_for_a_missing_package_fails_before_any_write). "
+        "DONE: the owner accepted that recommendation on 2026-07-31 (gap ARP-3) and "
+        "ratify-session5-rulings added the guard in the same pre-write position, pinned by "
+        "test_a_plan_naming_the_same_package_twice_fails_before_any_write. This record stays "
+        "because the upstream half is still a drop: there is no changesets behavior to port."
     )
 
 

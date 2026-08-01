@@ -19,7 +19,7 @@ molt status [OPTIONS]
 - **A preview** of the next `molt version` for a human, grouped by bump type. `--verbose` adds the projected new version and the source changeset for each package.
 - **A CI gate.** When at least one versionable package has changed but **no changeset covers it**, `molt status` exits 1 with guidance to run `molt add` (or `molt add --empty` if the change needs no release). This is the check you run on every pull request.
 
-`--output json` emits the plan as a machine-readable document to stdout, for tooling that decides what to do next. See [Status checks](/guides/status).
+`--output json` emits the plan as a machine-readable document to stdout, for tooling that decides what to do next. `json` is the only value it accepts: molt never writes the plan to a file, so redirect stdout when you want one. See [Status checks](/guides/status).
 
 ## Options
 

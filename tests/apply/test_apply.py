@@ -715,7 +715,7 @@ def test_bump_workspace_sources_only_limits_rewrites_to_workspace_sources(tmp_pa
     ``website/docs/config/options.md`` ("Versioning and propagation") settles it: the flag is kept
     and renamed to **``bump_workspace_sources_only``**, "Only rewrite dependency pins that are
     backed by a workspace source" -- the same name
-    ``tests/engine/fake_state.FakeConfig`` already uses. With it on, pkg-a's workspace-sourced pin
+    :class:`molt.config.Config` uses. With it on, pkg-a's workspace-sourced pin
     moves and pkg-c's externally-versioned pin on the same package does not.
     """
     plan_builder = FakeReleasePlan(
@@ -2070,6 +2070,40 @@ def test_a_release_for_a_missing_package_fails_before_any_write(git_repo: GitRep
         _apply(git_repo.root, plan_builder.plan(), plan_builder.config)
 
     assert "Could not find matching package for release of" in str(excinfo.value)
+    assert "nothing to commit" in git_status(git_repo.root)
+    _assert_nothing_was_affected(git_repo, before)
+
+
+@pytest.mark.integration
+@pytest.mark.git
+def test_a_plan_naming_the_same_package_twice_fails_before_any_write(git_repo: GitRepo) -> None:
+    """``ARP-3``, ruled 2026-07-31 (session 6) -- a duplicate release is a pre-write hard error.
+
+    Upstream leaves this an ``it.todo`` ("for now we are assuming we have been passed valid
+    releasePlans", ``index.test.ts:2914``), and molt used to let the second version edit silently
+    win: the tree ended up carrying one of the two intended versions, with no signal and no way to
+    tell which. It is refused in the same position the unknown-package check occupies, so the tree
+    is pristine -- exactly the class of bug buffer-then-flush exists to catch.
+
+    The two spellings are ``Foo_Bar`` and ``foo-bar`` on purpose: the check is keyed on the PEP 503
+    normalized name, and a raw-name check would pass this plan straight through.
+    """
+    plan_builder = FakeReleasePlan(
+        releases=[
+            _rel("Pkg_A", BumpType.MINOR, "1.0.0", "1.1.0"),
+            _rel("pkg-a", BumpType.MAJOR, "1.0.0", "2.0.0"),
+        ],
+        include_base=False,
+    )
+    write_workspace(git_repo.root, _error_fixture_files())
+    git_repo.run("add", ".")
+    git_repo.commit("first commit")
+    before = _tree(git_repo.root)
+
+    with pytest.raises(Exception, match="pkg-a") as excinfo:
+        _apply(git_repo.root, plan_builder.plan(), plan_builder.config)
+
+    assert "more than once" in str(excinfo.value)
     assert "nothing to commit" in git_status(git_repo.root)
     _assert_nothing_was_affected(git_repo, before)
 

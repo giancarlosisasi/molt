@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 __all__ = [
     "DEFAULT_PR_TITLE",
     "MAX_BODY_CHARACTERS",
+    "MOLT_REPOSITORY_URL",
     "OMITTED_CONTENT_NOTE",
     "OMITTED_RELEASES_NOTE",
     "RELEASES_HEADING",
@@ -43,6 +44,13 @@ MAX_BODY_CHARACTERS = 60000
 #: The two are separate settings and stay separate: a repository with a commit-message convention
 #: needs the commit renamed without renaming the pull request its reviewers recognise.
 DEFAULT_PR_TITLE = "Version Packages"
+
+#: Where the header sentence points a reader who wants to know what opened their pull request
+#: (owner ruling 2026-07-31, closing gap ``AP-8``). A module constant rather than an input, and
+#: upstream does the same (``run.ts:190-197``): the body is built by a pure function with no host
+#: context, and deriving the link from ``github.action_repository`` would have every fork of the
+#: action advertise the fork in every pull request it opens.
+MOLT_REPOSITORY_URL = "https://github.com/giancarlosisasi/molt"
 
 #: ``run.ts:200`` -- the heading every tier keeps.
 RELEASES_HEADING = "# Releases"
@@ -131,9 +139,10 @@ def build_pull_request_body(
 def _header(*, base_branch: str, has_publish_command: bool) -> str:
     """The opening paragraph (``run.ts:190-197``).
 
-    molt names itself and links nowhere. Upstream links to ``changesets/action``; where molt's own
-    action lives is the composite action's decision, and a link to the wrong place would be
-    reproduced in every user's pull request (``openspec/GAPS.md`` ``AP-8``).
+    The sentence links to :data:`MOLT_REPOSITORY_URL`, exactly as upstream links to
+    ``changesets/action`` -- owner ruling 2026-07-31, closing gap ``AP-8``, which is what settled
+    where molt's own action lives. Keep the sentence short: the header survives every truncation
+    tier, so a longer one eats into the release information a large monorepo can fit.
     """
     outcome = (
         "the packages will be published automatically"
@@ -141,7 +150,8 @@ def _header(*, base_branch: str, has_publish_command: bool) -> str:
         else "publish the packages yourself, or configure a publish command so this action does it"
     )
     return (
-        "This pull request was opened by molt's release action. It carries every version bump and "
+        f"This pull request was opened by [molt]({MOLT_REPOSITORY_URL})'s release action. "
+        "It carries every version bump and "
         f"changelog entry the pending changesets add up to. When you are ready to release, merge "
         f"it and {outcome}. If you are not ready yet, that is fine: every time a changeset lands "
         f"on {base_branch}, this pull request is updated.\n"

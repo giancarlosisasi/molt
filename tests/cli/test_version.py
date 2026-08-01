@@ -319,6 +319,28 @@ def test_no_changesets_warns_and_exits_1(
     assert versions(tmp_project.root) == {"pkg-a": "1.0.0"}, "nothing may be written"
 
 
+def test_a_deliberate_exit_is_not_rewrapped(
+    tmp_project: ProjectBuilder, console: RecordingConsole, fake_git: FakeGit
+) -> None:
+    """``VC-7``, ruled 2026-07-31 (session 6) -- the funnel re-raises an ``ExitError`` untouched.
+
+    ``ExitError`` is a **subclass** of ``MoltError``, so a funnel whose two ``except`` clauses are
+    ordered the other way round catches every deliberate exit the command raises, prints
+    "The process exited with code: 1" over the message the command already printed, and re-wraps
+    it. This row is what fails when that happens: the empty-buffer warning must appear exactly
+    once, and no exit sentence may reach the console at all.
+    """
+    tmp_project.add_package("pkg-a", "1.0.0")
+
+    with pytest.raises(ExitError) as excinfo:
+        run_version(tmp_project.root, console, fake_git)
+
+    assert excinfo.value.code == 1
+    reported = console.warnings + console.errors
+    assert len([line for line in reported if NO_CHANGESETS_FRAGMENT in line]) == 1
+    assert all("The process exited with code" not in line for line in reported)
+
+
 def test_an_unknown_ignore_name_is_rejected(
     tmp_project: ProjectBuilder, console: RecordingConsole, fake_git: FakeGit
 ) -> None:
@@ -2127,17 +2149,23 @@ def test_a_missing_changelog_template_is_reported_by_name(
     A typo in a template filename is a configuration mistake, so it has to name the file and the
     place molt looked -- and it must not leave a half-released tree behind, which is what the
     version assertion checks.
+
+    Renegotiated by owner ruling 2026-07-31 (session 6), closing gap ``VC-7``: every failure now
+    leaves ``run()`` through one funnel as ``ExitError(1)``, so the *message* is on the console
+    where the user reads it, and ``str(excinfo.value)`` is ``ExitError``'s own pinned sentence.
+    The original ``MoltTemplateError`` is still on ``__cause__``. Same shape rows 35/36 use.
     """
-    from molt.errors import MoltError
+    from molt.errors import ExitError
 
     tmp_project.add_package("pkg-a", "1.0.0")
     tmp_project.set_config(changelog={"template": "does-not-exist.md.jinja"})
     tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "This is a summary")
 
-    with pytest.raises(MoltError) as excinfo:
+    with pytest.raises(ExitError) as excinfo:
         run_version(tmp_project.root, console, fake_git)
 
-    assert "does-not-exist.md.jinja" in str(excinfo.value)
+    assert excinfo.value.code == 1
+    assert "does-not-exist.md.jinja" in "\n".join(console.errors)
     assert versions(tmp_project.root) == {"pkg-a": "1.0.0"}
 
 
@@ -2260,17 +2288,26 @@ def test_a_github_changelog_with_no_repository_fails_loudly(
     ``GITHUB_REPOSITORY`` is cleared explicitly rather than assumed absent -- the suite may well be
     running inside an Action, where it is set, and a row whose outcome depends on the environment
     it runs in is not a row.
+
+    Renegotiated by owner ruling 2026-07-31 (session 6), closing gap ``VC-7``: ``MoltForgeError``
+    no longer escapes, because every failure leaves ``run()`` through one funnel as
+    ``ExitError(1)`` -- the class is still on ``__cause__`` for a caller that needs it. The message
+    assertion is **strengthened** to compensate: losing the exception class would otherwise leave
+    this row unable to tell a missing repository from any other exit-1 failure.
     """
-    from molt.errors import MoltForgeError
+    from molt.errors import ExitError
 
     monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
     tmp_project.add_package("pkg-a", "1.0.0")
     tmp_project.set_config(changelog="github")
     tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "This is a summary")
 
-    with pytest.raises(MoltForgeError):
+    with pytest.raises(ExitError) as excinfo:
         run_version(tmp_project.root, console, fake_git)
 
+    assert excinfo.value.code == 1
+    reported = "\n".join(console.errors)
+    assert "GITHUB_REPOSITORY" in reported or "repository" in reported
     assert versions(tmp_project.root) == {"pkg-a": "1.0.0"}, "nothing is written"
 
 
@@ -2584,6 +2621,20 @@ def test_version_never_prompts(
     assert versions(tmp_project.root) == {"pkg-a": "1.1.0"}
 
 
+#: A **valid** uv lockfile recording ``pkg-a`` at the version the release moves past. It has to
+#: parse: ``VC-6`` makes molt skip the refresh for a file it cannot read, so an unparseable fixture
+#: would prove the opposite of what the row below claims.
+STALE_LOCKFILE = """version = 1
+revision = 3
+requires-python = ">=3.11"
+
+[[package]]
+name = "pkg-a"
+version = "1.0.0"
+source = { editable = "packages/pkg-a" }
+"""
+
+
 @pytest.mark.integration
 @pytest.mark.slow
 def test_the_lockfile_is_refreshed(
@@ -2596,17 +2647,62 @@ def test_the_lockfile_is_refreshed(
     versions on the next ``uv sync``. Marked ``integration`` because it spawns the real ``uv``;
     the fixture is a single dependency-free member so the resolve is offline.
 
-    The sentinel content is what makes this non-vacuous -- asserting only that ``uv.lock`` exists
+    The stale content is what makes this non-vacuous -- asserting only that ``uv.lock`` exists
     would pass against an implementation that never touched a pre-existing one.
+
+    **The seeded lockfile must stay parseable.** It used to be ``# stale sentinel``, which is not a
+    lockfile at all; owner ruling 2026-07-31 (session 6), closing gap ``VC-6``, makes molt *skip*
+    the refresh for an unreadable file rather than regenerate it, so the old fixture would now be
+    correctly left alone and this row would fail for the wrong reason. A valid but stale document
+    is what the row was always trying to express. The unreadable case is
+    :func:`test_an_unreadable_lockfile_is_left_alone`.
     """
     tmp_project.add_package("pkg-a", "1.0.0")
-    lockfile = write_file(tmp_project.root, "uv.lock", "# stale sentinel\n")
+    lockfile = write_file(tmp_project.root, "uv.lock", STALE_LOCKFILE)
     tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "This is a summary")
 
     run_version(tmp_project.root, console, fake_git)
 
-    assert lockfile.read_bytes() != b"# stale sentinel\n"
+    assert lockfile.read_bytes() != STALE_LOCKFILE.encode("utf-8")
     assert b"pkg-a" in lockfile.read_bytes()
+
+
+@pytest.mark.unit
+def test_an_unreadable_lockfile_is_left_alone(
+    tmp_project: ProjectBuilder,
+    console: RecordingConsole,
+    fake_git: FakeGit,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``VC-6``, ruled 2026-07-31 (session 6) -- molt never deletes a lockfile it cannot read.
+
+    molt used to move an unparseable ``uv.lock`` aside and regenerate it, because ``uv lock``
+    refuses to run at all with one in the way. The ruling reverses that: removing a file molt did
+    not write is not a release command's decision, and an unreadable lockfile is as likely to be a
+    half-finished merge as it is corruption -- in which case the deleted bytes were the ones the
+    user needed.
+
+    Marked ``unit``, not ``integration``: the refresh returns **before** ``uv`` is ever spawned,
+    and ``_uv_lock`` is replaced with a raiser so that is an assertion rather than a claim. Without
+    it the row cannot discriminate -- a mutation making ``_is_lockfile`` always true spawns a real
+    ``uv lock``, which refuses the unparseable file, leaves its bytes alone and warns naming
+    ``uv.lock``, so every other assertion here still holds. Verified by running that mutation.
+    """
+
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise AssertionError("`uv lock` must not be spawned for an unreadable lockfile")
+
+    monkeypatch.setattr("molt.commands.version._uv_lock", refuse)
+
+    tmp_project.add_package("pkg-a", "1.0.0")
+    lockfile = write_file(tmp_project.root, "uv.lock", "# not a lockfile\n")
+    tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "This is a summary")
+
+    run_version(tmp_project.root, console, fake_git)
+
+    assert lockfile.read_bytes() == b"# not a lockfile\n", "byte-identical, and still there"
+    assert any("uv.lock" in warning for warning in console.warnings), "and the user is told"
+    assert versions(tmp_project.root) == {"pkg-a": "1.1.0"}, "the release itself still succeeded"
 
 
 # ======================================================================================

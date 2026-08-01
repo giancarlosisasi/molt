@@ -1242,3 +1242,80 @@ def test_a_plan_entry_with_a_denormalized_name_is_still_tagged_normalized(
 
     assert git.tags == ["foo-bar@1.0.0"]
     assert len(uploader.calls) == 1
+
+
+# --------------------------------------------------------------------------------------
+# PY-4 / PY-5 - the two tag-only rulings (owner rulings 2026-07-31, session 6)
+# --------------------------------------------------------------------------------------
+
+
+def test_a_tag_only_release_in_a_failed_chunk_is_not_tagged(
+    tmp_project: ProjectBuilder, pypi_registry: PyPIRegistry, tmp_path: Path
+) -> None:
+    """``PY-4``, ratified as shipped 2026-07-31 -- an abandoned chunk tags nothing, tag-only too.
+
+    A tag-only release carries no upload of its own, so tagging it inside a chunk whose upload
+    failed would be defensible on its own terms and is still wrong: the tag is what a **re-run**
+    reads to decide the release is done. Tagging it here would make the next run skip a release
+    whose chunk-mate never reached the index.
+
+    No product change -- this row exists because nothing pinned the behavior, which left the next
+    contributor free to "tidy" the guard away.
+    """
+    root = workspace(tmp_project, Pkg("alpha"), Pkg("bravo", private=True))
+    pack_dir = write_plan_file(
+        root / ".packed",
+        publish_plan([packed(root / ".packed", "alpha"), tag_only_entry("bravo", "1.0.0")]),
+    )
+    out = tmp_path / "output.ndjson"
+    git = FakeGit()
+
+    run_failing(
+        lambda: publish(
+            cwd=root,
+            from_pack_dir=pack_dir,
+            output=out,
+            console=RecordingConsole(),
+            git=git,
+            builder=FakeBuilder(),
+            uploader=FakeUploader(fail_on={"alpha"}),
+            oidc=FakeOIDC(),
+        )
+    )
+
+    assert git.tags == [], "neither the failed upload nor its tag-only chunk-mate is tagged"
+    assert read_ndjson(out) == [], "and no event claims a tag that does not exist"
+
+
+def test_git_tag_false_makes_a_tag_only_release_a_no_op(
+    tmp_project: ProjectBuilder, pypi_registry: PyPIRegistry
+) -> None:
+    """``PY-5``, ratified 2026-07-31 -- ``--no-git-tag`` suppresses tag-only releases too.
+
+    A tag-only release *is* its tag: it is never uploaded, so switching tagging off leaves it with
+    nothing to do at all. The option row in ``website/docs/cli/publish.md`` left the case unstated,
+    which is what the gap recorded; the behavior itself is right, because ``--no-git-tag`` means "I
+    tag releases myself" and molt tagging one anyway would fight the user's own scheme.
+    """
+    root = workspace(tmp_project, Pkg("alpha"), Pkg("bravo", private=True))
+    pack_dir = write_plan_file(
+        root / ".packed",
+        publish_plan([packed(root / ".packed", "alpha"), tag_only_entry("bravo", "1.0.0")]),
+    )
+    git, uploader = FakeGit(), FakeUploader()
+
+    result = publish(
+        cwd=root,
+        from_pack_dir=pack_dir,
+        git_tag=False,
+        console=RecordingConsole(),
+        git=git,
+        builder=FakeBuilder(),
+        uploader=uploader,
+        oidc=FakeOIDC(),
+    )
+
+    assert uploader.order == ["alpha"], "a tag-only release is never uploaded, with or without tags"
+    assert git.calls == []
+    assert result.tags == ()
+    assert [ref.name for ref in result.published] == ["alpha"], "bravo is neither published"
