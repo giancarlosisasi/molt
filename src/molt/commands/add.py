@@ -429,6 +429,7 @@ def _resolve(
         selection = _confirm_first_majors(selection, prompts, non_interactive=non_interactive)
     else:
         selection = _interactive_selection(
+            console=console,
             prompts=prompts,
             git=git,
             root=root,
@@ -813,6 +814,7 @@ def _confirm_first_majors(
 
 def _interactive_selection(
     *,
+    console: Any,
     prompts: Any,
     git: Any,
     root: Path,
@@ -827,12 +829,17 @@ def _interactive_selection(
     """
     if len(versionable) == 1:
         return _single_package_flow(versionable[0], prompts)
-    changed = _changed_packages(git=git, root=root, config=config, since=since)
+    changed = _changed_packages(console=console, git=git, root=root, config=config, since=since)
     return _monorepo_flow(versionable, changed, prompts)
 
 
 def _changed_packages(
-    *, git: Any, root: Path, config: Config, since: str | Sequence[str] | None
+    *,
+    console: Any,
+    git: Any,
+    root: Path,
+    config: Config,
+    since: str | Sequence[str] | None,
 ) -> set[str]:
     """Normalized names of the packages changed since ``--since`` or the configured base branch.
 
@@ -840,6 +847,11 @@ def _changed_packages(
     what a changeset may contain (``website/docs/cli/add.md``, the ``--since`` row). So a git
     failure -- a fresh repository, a CI checkout that never fetched the base branch -- degrades to
     "nothing changed" rather than stopping a run that has nothing else to do with git.
+
+    The degradation is **reported**, which upstream also does (``add/index.ts:80-89``) and molt
+    used not to (gap ``AC-9``). Silence here makes a mistyped ``base_branch`` look exactly like a
+    branch with no changes: the user is handed one undifferentiated group of packages and has no
+    way to tell which of the two happened.
     """
     from molt.errors import GitError
     from molt.names import normalize_name
@@ -855,7 +867,15 @@ def _changed_packages(
             changed_file_patterns=list(config.changed_file_patterns),
             ecosystem=config.ecosystem,
         )
-    except GitError:
+    except GitError as exc:
+        # `add/index.ts:80-89` phrases it "since the ref" when `--since` supplied the reference and
+        # "since the base branch" otherwise; the reference itself is named either way, because it
+        # is the thing the user has to fix.
+        source = "the ref" if since else "the base branch"
+        console.warn(
+            f"Could not detect which packages changed since {source} `{ref}`. "
+            f"Every package is offered as unchanged; the selection itself is unaffected. ({exc})"
+        )
         return set()
     return {normalize_name(str(name)) for name in names}
 

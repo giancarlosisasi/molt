@@ -93,6 +93,24 @@ Repeatable flags always yield a list, and repeated scalars keep the last value (
 - The **same package under two bump types** produces `The package <name> is passed to multiple release type options ... Please select only one release type for this package.`
 - A project with **no versionable packages** exits 1 with guidance to check `ignore` and that manifests carry a version.
 
+## Running without a terminal
+
+`molt add` needs a terminal to ask a question on. When there is none -- a cron job, a `docker run`
+with no tty, a CI step -- it **stops immediately and names the question it could not ask**, instead
+of blocking forever the way `changeset add` does:
+
+```text
+error molt cannot prompt: standard input is not a terminal, and this run needs an answer to:
+Which packages would you like to include?. Supply it as a command-line flag, or run molt from a
+terminal.
+```
+
+That is the fallback, not the fix. From a script, pass `--non-interactive` (or `--yes`) together
+with a complete selection, and molt never builds a prompt at all. The two situations report
+differently on purpose: a run that passed `--non-interactive` is told about the flag, and a run
+that did not is told about the terminal -- naming a flag the user never passed just sends them
+looking through their own script for it.
+
 ## Exit codes
 
 | Situation | Exit code |
@@ -102,6 +120,7 @@ Repeatable flags always yield a list, and repeated scalars keep the last value (
 | Unknown or duplicated package, or no versionable packages | 1 |
 | `.changeset/` missing (run `molt init`) | 1 |
 | `--non-interactive` with an incomplete selection | 1 |
+| No terminal to ask a question on | 1 |
 
 ## Examples
 

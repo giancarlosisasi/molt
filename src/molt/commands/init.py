@@ -139,7 +139,9 @@ def run(
     :func:`molt.ecosystem.find_workspace_root`, so configuration lands at the workspace root even
     when ``init`` is run from a nested package. ``console``/``prompts`` are injectable seams for
     the conformance suite (:mod:`tests.cli.fake_cli`); a real invocation gets the module-level
-    :data:`molt.ui.console.console` and the (not yet built) ``QuestionaryPrompts``.
+    :data:`molt.ui.console.console` and :class:`molt.ui.prompts.QuestionaryPrompts`, which is a
+    shipped implementation as of ``implement-interactive-add`` -- this line used to say "not yet
+    built", and a run with no flags used to fail at the first question because of it.
 
     Heavy imports (``molt.config``, ``molt.ecosystem``) happen here, not at module scope --
     ``tests/cli/test_cli.py``'s import-light assertion pins that for every ``molt.commands.*``

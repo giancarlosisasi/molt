@@ -62,6 +62,21 @@ dependencies = [
     # is not free, so `molt.forge` is on `tests/cli/test_cli.py::HEAVY_MODULE_PREFIXES` and a
     # command imports the forge inside `run()`.
     "httpx>=0.28",
+    # Interactive prompts (roadmap/tech-stack.md section 5, owner ruling 2026-08-01). Chosen over
+    # InquirerPy (dead since 2022-06), `rich.prompt` (no multiselect, which `molt add`
+    # fundamentally requires) and textual (a whole framework for five questions). Built on
+    # `prompt_toolkit`, so importing it is expensive: `src/molt/ui/prompts.py` is the ONLY module
+    # that names it and it imports it inside each method body, never at module scope, because
+    # `src/molt/cli.py` imports `molt.ui.prompts` at module scope and every `molt --help` would
+    # otherwise pay for the terminal framework. Pinned by
+    # `tests/cli/test_prompts.py::test_importing_the_cli_loads_neither_questionary_nor_prompt_toolkit`.
+    "questionary>=2.1",
+    # The external-editor primitive (`click.edit`, research doc 03 section 11.2). Already installed
+    # as a Typer dependency, so this downloads nothing -- it declares what molt now imports
+    # directly. `click.edit` resolves $VISUAL/$EDITOR, falls back per platform and round-trips the
+    # temp file, which is the whole matrix molt would otherwise re-implement and under-test on
+    # Windows; upstream's `launch-editor` sniffing is deliberately not ported.
+    "click>=8.1",
 ]
 
 [project.scripts]

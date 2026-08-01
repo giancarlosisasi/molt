@@ -23,12 +23,11 @@ What you are asked depends on the shape of your repository.
 molt skips straight to the bump and the summary:
 
 ```text
-? What kind of change is this for acme-core? (current version is 1.2.0)
-> patch  (X.X.Y)
-  minor  (X.Y.X)
-  major  (Y.X.X)
-? Please enter a summary for this change (this will be in the changelogs).
-> Fix a race condition in the export writer.
+? What kind of change is this for acme-core? (current version is 1.2.0) (Use arrow keys)
+ > patch
+   minor
+   major
+? Please enter a summary for this change (this will be in the changelogs). Fix a race condition in the export writer.
 ```
 
 ### Workspaces
@@ -36,12 +35,13 @@ molt skips straight to the bump and the summary:
 In a workspace, molt first asks *which* packages changed, then *how much*. The package list puts the packages that actually changed since your base branch first, so the common case is a couple of keystrokes:
 
 ```text
-? Which packages were affected by the changes you made?
-  changed packages
-> [x] acme-core
-  unchanged packages
-  [ ] acme-cli
-  [ ] acme-utils
+? Which packages would you like to include? (Use arrow keys to move, <space> to
+select, <a> to toggle, <i> to invert)
+ > o changed packages
+   o   acme-core
+   o unchanged packages
+   o   acme-cli
+   o   acme-utils
 ```
 
 Then, for the packages you selected, molt asks for the major bumps, then the minor bumps; anything you do not mark as major or minor is patched. You end on the same summary prompt.
@@ -49,6 +49,16 @@ Then, for the packages you selected, molt asks for the major bumps, then the min
 If a summary is a breaking change, molt reminds you to spell out **what** broke, **why**, and **how** to migrate -- that text is what your users read.
 
 Submitting an empty summary opens your `$EDITOR` so you can write a longer entry, including Markdown headings (molt preserves them).
+
+### What the prompts do
+
+A few rules are worth knowing before you meet them:
+
+- **The group headings are selectable.** `changed packages` and `unchanged packages` are rows you can check like any other. Checking a heading selects every package under it, so "everything that changed" is one keystroke. The heading expands when you submit -- it does not tick each member's box as you move, and you cannot check a heading and then uncheck one of its members. Select the members individually if you need that.
+- **Only groups that have members are shown.** In a repository where nothing changed since your base branch, you get one group, still labelled `unchanged packages`, so you can see why everything is listed together. If molt cannot work out what changed -- an unfetched base branch in a shallow CI clone, or a typo in `base_branch` -- it says so and offers that same single group rather than pretending nothing changed.
+- **Nothing you skip is asked about twice.** After the major and the minor questions, every package you selected and did not mark gets a patch, with no prompt of its own.
+- **An empty summary opens your editor.** Save and close and molt takes the text; close without saving and molt asks again on the console. molt strips only its own comment from the top of the buffer -- your text, Markdown headings included, comes back exactly as you typed it.
+- **Ctrl-C at any question stops cleanly.** molt prints `Canceled`, writes nothing, and exits `0`.
 
 The result is a file like this, with a random, human-readable name:
 

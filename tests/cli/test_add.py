@@ -69,9 +69,10 @@ from tests.cli.fake_cli import (
     ScriptedPrompts,
     changeset_ids,
 )
+from tests.cli.fake_questionary import FakeQuestionary, pick
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Iterator, Sequence
     from pathlib import Path
 
     from tests.cli.fake_cli import PromptCall
@@ -81,7 +82,7 @@ pytest.importorskip("molt.commands.add", reason="build step 6 - `molt add` is a 
 pytest.importorskip("molt.errors", reason="build step 9 - molt.errors is a TDD target")
 
 from molt.commands.add import run
-from molt.errors import ExitError
+from molt.errors import ExitError, GitError
 
 pytestmark = pytest.mark.functional
 
@@ -1597,3 +1598,241 @@ def test_open_launches_the_editor_after_the_success_message(tmp_project: Project
     assert timeline.index("success") < timeline.index("editor"), (
         f"--open fires after the success message (add/index.ts:168-170): {timeline}"
     )
+
+
+# ======================================================================================
+# The guided flow over the REAL prompt adapter (gap AC-1) -- added rows only
+# ======================================================================================
+#
+# Everything above drives an injected `ScriptedPrompts`, which is why `AC-1` -- the shipped
+# `Prompts` implementation raising `NotImplementedError` -- stayed invisible to this suite for two
+# changes. The rows below pass **no** `prompts=` argument at all, so `molt.commands.add.run` builds
+# the real `molt.ui.prompts.QuestionaryPrompts` and the only thing doubled is the prompt library
+# underneath it (`tests/cli/fake_questionary.py`).
+#
+# Nothing above this line is edited, renamed, reordered or re-parametrized: every pre-existing row
+# stays green untouched, which is this change's regression contract.
+
+
+class GitThatCannotDetect(GitWithChanges):
+    """A git double whose changed-package query fails, for gap ``AC-9``.
+
+    The real failure it models is ordinary: a base branch that was never fetched in a shallow CI
+    clone, or a ``base_branch`` with a typo in it.
+    """
+
+    def get_changed_packages_since_ref(self, ref: str, **kwargs: Any) -> list[str]:
+        del kwargs
+        self.calls.append(GitCall("get_changed_packages_since_ref", (ref,)))
+        raise GitError(128, f"fatal: bad revision '{ref}'")
+
+
+@pytest.fixture
+def real_prompts(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Make the real adapter usable in-process, and leave no process-global behind.
+
+    Requested explicitly by the new rows rather than made autouse: an autouse fixture in this
+    module would change the environment every pre-existing row runs in, and those must stay exactly
+    as they were.
+
+    Two guards, and the rows are order-dependent garbage without them. The ``--non-interactive``
+    flag is a module global written once per run by the CLI shell, so an earlier test that
+    dispatched through ``molt.cli`` leaves it set. And under pytest ``sys.stdin`` is
+    ``DontReadFromInput``, whose ``isatty()`` is ``False``, so the adapter's terminal probe has to
+    be pointed at a terminal or every row takes the refusal path (design D5, seam note).
+    """
+    from molt.ui import prompts as adapter
+
+    adapter.set_non_interactive(False)
+    monkeypatch.setattr(adapter, "_stdin_is_a_terminal", lambda: True)
+    yield
+    adapter.set_non_interactive(False)
+
+
+def guided_run(
+    root: Path,
+    *,
+    console: RecordingConsole,
+    git: FakeGit,
+    **options: Any,
+) -> None:
+    """Call ``molt.commands.add.run`` with **no** ``prompts=``, so the shipped adapter is built."""
+    run(cwd=root, console=console, git=git, **options)
+
+
+def test_a_guided_run_writes_a_changeset_with_no_prompt_object(
+    tmp_project: ProjectBuilder, real_prompts: None
+) -> None:
+    """The whole monorepo interview, end to end, with nothing injected at the prompt seam.
+
+    **This is the row that would have caught ``AC-1``**: every other row in this file supplies a
+    prompt double, so a shipped implementation that raises ``NotImplementedError`` passed them all.
+
+    It also exercises the group header for real -- selecting ``changed packages`` selects both of
+    its members (design D4) -- then the major pass, the minor pass, the implicit patch for
+    everything left (``createChangeset.ts:234-253``) and the summary prompt.
+    """
+    del real_prompts
+    root = monorepo(tmp_project, "pkg-a", "pkg-b", "pkg-c")
+    console = RecordingConsole()
+    git = GitWithChanges(changed_files=["packages/pkg-a/a.py", "packages/pkg-b/b.py"])
+    library = FakeQuestionary(
+        checkbox=[pick("changed packages"), [], pick("pkg-a")], text=[SUMMARY]
+    )
+
+    with pytest.MonkeyPatch.context() as patch:
+        library.install(patch)
+        guided_run(root, console=console, git=git)
+
+    written = read_only_changeset(root)
+    assert sorted(written.releases) == [("pkg-a", "minor"), ("pkg-b", "patch")]
+    assert written.summary == SUMMARY
+    assert library.kinds == ["checkbox", "checkbox", "checkbox", "text"]
+    assert library.remaining == {}
+
+
+# (library script, why) -- every question in the guided flow routes through the same contract.
+GUIDED_CANCEL_CASES: Final = [
+    ({"checkbox": [None]}, "Ctrl-C at the package multiselect, before anything is chosen"),
+    ({"checkbox": [pick("  pkg-a"), None]}, "Ctrl-C at the major multiselect"),
+    ({"checkbox": [pick("  pkg-a"), [], None]}, "Ctrl-C at the minor multiselect"),
+    (
+        {"checkbox": [pick("  pkg-a"), pick("pkg-a")], "confirm": [None]},
+        "Ctrl-C at the first-major confirmation",
+    ),
+    (
+        {"checkbox": [pick("  pkg-a"), [], []], "text": [None]},
+        "Ctrl-C at the summary prompt, after the whole selection is made",
+    ),
+]
+
+
+@pytest.mark.parametrize(("script", "why"), GUIDED_CANCEL_CASES)
+def test_cancelling_at_every_interactive_step_writes_nothing(
+    tmp_project: ProjectBuilder, real_prompts: None, script: dict[str, Any], why: str
+) -> None:
+    """Cancelling exits **0** and leaves ``.changeset/`` empty, at every question in the flow.
+
+    Exit 0 is a deliberate, documented divergence from POSIX 130 (research doc 03 section 11.6):
+    a user who aborted a prompt has not failed at anything. The library reports a cancellation by
+    returning ``None`` from ``Question.ask()``, which the shared ``is_cancel`` predicate already
+    accepts -- so this is also the row that proves ``.ask()``, not ``unsafe_ask()``, is what the
+    adapter drives.
+
+    A second, wider table beside :data:`CANCEL_CASES` rather than an extension of it, so no pinned
+    row's identity changes. The packages are pre-1.0 so the first-major confirmation is reachable.
+    """
+    del real_prompts
+    root = monorepo(tmp_project, "pkg-a", "pkg-b", version="0.1.0")
+    console = RecordingConsole()
+    git = GitWithChanges(changed_files=["packages/pkg-a/a.py"])
+    library = FakeQuestionary(**script)
+
+    with pytest.MonkeyPatch.context() as patch:
+        library.install(patch)
+        code = exit_code_of(lambda: guided_run(root, console=console, git=git))
+
+    assert code == 0, why
+    assert changeset_ids(root) == [], why
+    assert console.contains("Canceled"), why
+
+
+def test_declining_a_first_major_in_the_guided_flow_falls_through_to_minor(
+    tmp_project: ProjectBuilder, real_prompts: None
+) -> None:
+    """The interactive path keeps upstream's fall-through (``createChangeset.ts:197-209``).
+
+    Owner ruling ``AC-3`` (2026-07-30) made a declined **flag-selected** first major abort the run;
+    it deliberately left the interactive path alone, because the interactive path always has a next
+    question to ask. A declined package is not dropped -- it stays in ``pkgsLeftToGetBumpTypeFor``
+    and the minor prompt offers it again, so the user gets a second choice instead of losing the
+    changeset.
+    """
+    del real_prompts
+    root = monorepo(tmp_project, "pkg-a", "pkg-b", version="0.1.0")
+    console = RecordingConsole()
+    git = GitWithChanges(changed_files=["packages/pkg-a/a.py"])
+    library = FakeQuestionary(
+        checkbox=[pick("  pkg-a"), pick("pkg-a"), pick("pkg-a")],
+        confirm=[False],
+        text=[SUMMARY],
+    )
+
+    with pytest.MonkeyPatch.context() as patch:
+        library.install(patch)
+        guided_run(root, console=console, git=git)
+
+    assert library.of("checkbox")[2].titles == ["pkg-a"], (
+        "a declined first major is offered again at the minor selection, not dropped"
+    )
+    assert read_only_changeset(root).releases == [("pkg-a", "minor")]
+
+
+def test_with_no_changed_packages_the_one_group_keeps_its_own_label(
+    tmp_project: ProjectBuilder, real_prompts: None
+) -> None:
+    """The single group offered is labelled ``unchanged packages``. **Closes gap ``AC-11``.**
+
+    ``test_without_changed_packages_only_one_group_is_offered`` asserts the group's members and the
+    group count but never its label, so calling the one group ``packages`` was untested. It is a
+    label the user reads, and it is the only thing in that question that says why every package is
+    listed together.
+    """
+    del real_prompts
+    root = monorepo(tmp_project, "pkg-a", "pkg-b")
+    console = RecordingConsole()
+    git = GitWithChanges()
+    library = FakeQuestionary(checkbox=[pick("  pkg-a"), [], []], text=[SUMMARY])
+
+    with pytest.MonkeyPatch.context() as patch:
+        library.install(patch)
+        guided_run(root, console=console, git=git)
+
+    assert library.of("checkbox")[0].titles == ["unchanged packages", "  pkg-a", "  pkg-b"]
+    assert read_only_changeset(root).releases == [("pkg-a", "patch")]
+
+
+def test_a_failed_detection_is_reported_and_the_run_continues(
+    tmp_project: ProjectBuilder, real_prompts: None
+) -> None:
+    """A git failure during changed-package detection warns and degrades. **Closes gap ``AC-9``.**
+
+    Detection only decides which group a package is listed under, never what a changeset may
+    contain, so a fresh repository or a shallow CI clone must not stop the run
+    (``website/docs/cli/add.md``, the ``--since`` row). But silence made a mistyped ``base_branch``
+    look exactly like a branch with no changes; upstream reports it (``add/index.ts:80-89``) and
+    molt did not. The reference is named because it is the thing the user has to fix.
+    """
+    del real_prompts
+    root = monorepo(tmp_project, "pkg-a", "pkg-b")
+    tmp_project.set_config(base_branch="trunk")
+    console = RecordingConsole()
+    git = GitThatCannotDetect()
+    library = FakeQuestionary(checkbox=[pick("  pkg-a"), [], []], text=[SUMMARY])
+
+    with pytest.MonkeyPatch.context() as patch:
+        library.install(patch)
+        guided_run(root, console=console, git=git)
+
+    assert len(console.warnings) == 1, console.warnings
+    assert "trunk" in console.warnings[0], "the warning names the reference that could not be read"
+    assert git.refs == ["trunk"], "detection is still attempted"
+    assert library.of("checkbox")[0].titles == ["unchanged packages", "  pkg-a", "  pkg-b"]
+    assert read_only_changeset(root).releases == [("pkg-a", "patch")]
+
+
+def test_the_flag_path_issues_no_detection_warning(tmp_project: ProjectBuilder) -> None:
+    """``AC-9``'s discriminator: a warning emitted unconditionally would pass the row above.
+
+    The flag path does no changed-package detection at all (design D7), so there is nothing to
+    fail and nothing to report -- even with a git double that cannot answer the query.
+    """
+    root = monorepo(tmp_project, "pkg-a", "pkg-b")
+    console = RecordingConsole()
+    git = GitThatCannotDetect()
+
+    add_changeset(root, console=console, git=git, patch=["pkg-a"], message=SUMMARY)
+
+    assert git.refs == [], "no detection runs on the flag path"
+    assert console.warnings == []
+    assert read_only_changeset(root).releases == [("pkg-a", "patch")]

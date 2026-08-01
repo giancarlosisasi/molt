@@ -37,6 +37,22 @@ Molt refuses to run when configuration is ambiguous: if **both** a `[tool.molt]`
 | `--cwd <path>` | path | current directory | Directory to initialize; root discovery starts here. |
 | `-h`, `--help` | flag | -- | Show help and exit. |
 
+## Running without a terminal
+
+`molt init` needs a terminal to ask its questions on. When there is none -- a container with no
+tty, a CI step, a cron job -- it **stops immediately and names the question it could not ask**
+rather than blocking:
+
+```text
+error molt cannot prompt: standard input is not a terminal, and this run needs an answer to:
+Which branch should molt treat as the base branch?. Supply it as a command-line flag, or run molt
+from a terminal.
+```
+
+Pass `--non-interactive` (or `--yes`) for a scripted setup: every question takes its default and no
+prompt is built. The two situations report differently on purpose -- a run that passed the flag is
+told about the flag, and a run that did not is told about the terminal.
+
 ## Exit codes
 
 | Situation | Exit code |
@@ -44,6 +60,7 @@ Molt refuses to run when configuration is ambiguous: if **both** a `[tool.molt]`
 | Initialized, or already initialized | 0 |
 | Both a `[tool.molt]` table and `.molt/config.json` exist (ambiguous config) | 1 |
 | Not a recognizable project / no writable workspace root | 1 |
+| No terminal to ask a question on | 1 |
 
 ## Examples
 
