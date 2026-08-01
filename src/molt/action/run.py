@@ -12,6 +12,13 @@ package's version, runs the script, works out what actually moved, commits, and 
 (``run.ts:146``). :func:`run_publish` runs the publish script, pushes the tags the script created,
 and reports which packages went out by scraping the ``New tag:`` lines it printed.
 
+**How the version commit reaches the remote is a mode**, :class:`CommitMode`. The default is the
+git command line, exactly as above. Selecting :attr:`CommitMode.API` makes no local branch, no
+local commit and no push: the working tree's changes against the base commit are sent to the host,
+which authors the commit and therefore can sign it -- what a protected branch requiring signed
+commits needs. Tags are unaffected in both modes and still go over git, because a tag ref carries
+no signature either way (``openspec/GAPS.md`` ``ACM-1``).
+
 Two deliberate divergences from upstream
 -----------------------------------------
 * **``script`` is an argv list, not a bare string** (design D1). ``run.ts:121`` splits a command
@@ -34,9 +41,11 @@ from __future__ import annotations
 import re
 import subprocess
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from molt.action.api_commit import collect_file_changes
 from molt.ecosystem import (
     discover_workspace,
     find_workspace_root,
@@ -54,6 +63,7 @@ __all__ = [
     "DEFAULT_COMMIT_MESSAGE",
     "VERSION_BRANCH_PREFIX",
     "ChangedPackage",
+    "CommitMode",
     "PublishedPackage",
     "RunPublishResult",
     "RunVersionResult",
@@ -80,6 +90,30 @@ _SINGLE_TAG_PATTERN = re.compile(r"New tag:")
 #: :attr:`molt.ecosystem.Workspace.backend` for a repository that declares no workspace -- the
 #: analogue of ``@manypkg``'s ``tool === "root"`` test (``run.ts:44``).
 _SINGLE_BACKEND = "single"
+
+
+class CommitMode(StrEnum):
+    """How :func:`run_version` gets the release commit onto the remote.
+
+    Ports ``changesets/action`` v1.9.0's ``commitMode`` input, with one value renamed:
+    ``github-api`` becomes :attr:`API`, because molt's forge seam means the host is not necessarily
+    GitHub and the same input has to keep meaning the right thing when a GitLab backend exists --
+    the rename that produced ``create-releases`` and ``base-branch`` (``openspec/GAPS.md``
+    ``CO-7``). :attr:`GIT_CLI` deliberately keeps upstream's spelling, so a workflow migrating from
+    ``changesets/action`` does not have to change a value it already has.
+
+    **An explicit mode, never inferred from "is there a forge"** (api-commits design D6). Upstream
+    branches on ``if (this.octokit)``, so "the caller passed no client" and "the caller chose the
+    git CLI" are one fact. In molt they are not: ``molt.action.orchestrate`` builds a real forge
+    from the environment whenever none is injected, so a forge is essentially always present and
+    inferring the mode from it would make :attr:`GIT_CLI` unreachable in production.
+
+    A :class:`~enum.StrEnum` so the value a workflow writes and the value molt compares are the
+    same string, which is what lets an unrecognised input be refused by name rather than coerced.
+    """
+
+    GIT_CLI = "git-cli"
+    API = "api"
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,8 +174,10 @@ def run_version(
     commit_message: str = DEFAULT_COMMIT_MESSAGE,
     branch: str | None = None,
     git: Any = None,
+    commit_mode: CommitMode = CommitMode.GIT_CLI,
+    forge: Any = None,
 ) -> RunVersionResult:
-    """Run the version script on ``changeset-release/<branch>`` and force-push the result.
+    """Run the version script and publish the result to ``changeset-release/<branch>``.
 
     The order is upstream's (``run.ts:106-148``) and each step depends on the one before it:
 
@@ -161,6 +197,20 @@ def run_version(
 
     ``branch`` names the branch being released and defaults to whatever ``cwd`` currently has
     checked out, which is what a CI checkout leaves behind.
+
+    ``commit_mode`` selects **how steps 1, 5 and 6 happen**, and nothing else (api-commits
+    design D6). :attr:`CommitMode.GIT_CLI` is the default and is the six steps above, unchanged.
+    :attr:`CommitMode.API` skips step 1 entirely -- upstream's ``git.ts::prepareBranch`` returns
+    early with its own reason, *"Preparing a new local branch is not necessary when using the
+    API"*, and a local branch switch would change which tree the changes are measured against --
+    and replaces steps 5 and 6 with one :meth:`molt.forge.Forge.create_commit` call, so the host
+    authors the commit and can sign it. Steps 2, 3 and 4 are identical in both modes: the changed
+    set is still the before/after version diff, never what was staged.
+
+    ``forge`` is required in API mode and unused in the other. It is injected rather than
+    constructed here, because :mod:`molt.forge` costs ``httpx`` and the caller
+    (``molt.action.orchestrate``) has already resolved one for the pull-request lifecycle -- and
+    sharing that instance is what keeps its cache alive across the run.
     """
     from molt.git import Git
 
@@ -171,8 +221,9 @@ def run_version(
     version_branch = f"{VERSION_BRANCH_PREFIX}{base_branch}"
     head = seam.get_current_commit_id()
 
-    seam.switch_to_maybe_existing_branch(version_branch)
-    seam.reset(head)
+    if commit_mode is CommitMode.GIT_CLI:
+        seam.switch_to_maybe_existing_branch(version_branch)
+        seam.reset(head)
 
     workspace_root = find_workspace_root(root)
     before = _versions_by_directory(discover_workspace(workspace_root))
@@ -186,12 +237,50 @@ def run_version(
         if before.get(package.directory) != after_versions.get(package.directory)
     )
 
-    if not seam.is_clean():
-        seam.add(root)
-        seam.commit(commit_message)
-    seam.push(version_branch, force=True)
+    if commit_mode is CommitMode.GIT_CLI:
+        _publish_with_git(seam, root, branch=version_branch, message=commit_message)
+    else:
+        _publish_with_forge(seam, forge, branch=version_branch, base=head, message=commit_message)
 
     return RunVersionResult(version_branch=version_branch, changed_packages=changed)
+
+
+def _publish_with_git(seam: Any, root: Path, *, branch: str, message: str) -> None:
+    """Commit what the script left behind and force-push it (``run.ts:139-146``).
+
+    The commit is conditional and the push is not, which is easy to misread as an oversight. It is
+    upstream's shape and it is right: a version script that changed nothing has nothing to commit,
+    but the release branch must still be reset onto the commit being released, or it keeps carrying
+    the *previous* release. :func:`_publish_with_forge` reproduces exactly that asymmetry.
+    """
+    if not seam.is_clean():
+        seam.add(root)
+        seam.commit(message)
+    seam.push(branch, force=True)
+
+
+def _publish_with_forge(seam: Any, forge: Any, *, branch: str, base: str, message: str) -> None:
+    """Send one API commit carrying everything the script changed (``git.ts::pushChanges``).
+
+    The changes are measured **against ``base``**, the commit that was checked out before the
+    script ran -- not against ``HEAD``. A project configured with ``commit = true`` runs a version
+    script that commits its own work, and diffing against ``HEAD`` would drop exactly that work
+    from the release (api-commits design D7; ``openspec/GAPS.md`` ``ACM-9`` records that the two
+    modes therefore produce different commit *histories* for such a project, both correct).
+
+    Nothing local is written: no branch, no commit, no push. The host makes the branch carry one
+    commit on top of ``base``, and returns ``None`` when the script changed nothing -- which is
+    still a branch reset onto ``base``, matching what the force-push above does unconditionally.
+    """
+    if forge is None:
+        raise MoltError(
+            f"commit-mode `{CommitMode.API.value}` needs a host connection and none was supplied. "
+            f"Set GITHUB_TOKEN, or release with commit-mode `{CommitMode.GIT_CLI.value}`."
+        )
+    additions, deletions = collect_file_changes(seam, base=base)
+    forge.create_commit(
+        branch, base=base, message=message, additions=additions, deletions=deletions
+    )
 
 
 def run_publish(

@@ -42,7 +42,7 @@ pytest.importorskip("molt.action.cli", reason="molt.action.cli is this suite's t
 
 from molt.action.cli import OUTPUT_NAMES, main, output_payload, write_github_output
 from molt.action.orchestrate import ActionFailed, ActionResult
-from molt.action.run import PublishedPackage
+from molt.action.run import CommitMode, PublishedPackage
 from molt.errors import ExitError, MoltError
 
 if TYPE_CHECKING:
@@ -177,6 +177,10 @@ OPTION_ROWS = [
     ),
     pytest.param(["--create-releases", "false"], "create_releases", False, id="create-releases"),
     pytest.param(["--base-branch", "develop"], "base_branch", "develop", id="base-branch"),
+    # The mode arrives as the string a composite substitutes and reaches the loop as the enum
+    # member, never as that string: `run_version` compares identities, so a raw string would
+    # silently select the git command line on a workflow that asked for the API.
+    pytest.param(["--commit-mode", "api"], "commit_mode", CommitMode.API, id="commit-mode"),
     pytest.param(["--cwd", "."], "cwd", Path("."), id="cwd"),
 ]
 
@@ -241,6 +245,57 @@ def test_an_unrecognised_boolean_is_rejected_naming_the_option(
 
     assert recorder.calls == [], "the loop must not run on an unreadable input"
     assert "--create-releases" in capsys.readouterr().err
+
+
+#: A commit mode the entry point must refuse. The second row is the migration case and is the
+#: reason the first one is not enough: ``github-api`` is upstream's own spelling, so it is the value
+#: a workflow moving off ``changesets/action@v1`` is most likely to carry across unchanged.
+REJECTED_COMMIT_MODES = [
+    pytest.param("gitcli", id="a-typo"),
+    pytest.param("github-api", id="upstreams-spelling-is-not-an-alias"),
+]
+
+
+@pytest.mark.parametrize("written", REJECTED_COMMIT_MODES)
+@pytest.mark.usefixtures("clean_environment")
+def test_an_unrecognised_commit_mode_is_refused_naming_both_spellings(
+    written: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``CO-8``'s ratified rule, applied to the mode (api-commits design D8).
+
+    Coercing a typo to the default would leave a repository failing its branch protection on every
+    release with nothing in the log to explain why -- the mode is invisible in the output, so there
+    is no other signal at all.
+
+    ``github-api`` is refused **deliberately**, not by omission: accepting it as an alias would put
+    a host name back into the surface the rename exists to clear. The message carries the migration
+    instead, which is why both accepted spellings have to appear in it.
+    """
+    recorder = double(monkeypatch, Recorder())
+
+    assert main(["--commit-mode", written]) == 1
+
+    assert recorder.calls == [], "the loop must not run on an unreadable input"
+    error = capsys.readouterr().err
+    assert "--commit-mode" in error
+    assert "git-cli" in error and "api" in error, "the message is the migration"
+
+
+@pytest.mark.parametrize("written", ["", "   ", "git-cli", "GIT-CLI"])
+@pytest.mark.usefixtures("clean_environment")
+def test_the_default_mode_is_the_git_command_line(
+    written: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Absent, empty or the git command line: all three are today's behaviour, unchanged.
+
+    An empty string is what a composite substitutes for an input the workflow left out (``CO-17``),
+    and the spelling is read case-insensitively for the same reason booleans are -- GitHub itself
+    coerces loosely, so a workflow that wrote ``GIT-CLI`` means the mode it named.
+    """
+    recorder = double(monkeypatch, Recorder())
+
+    assert main(["--commit-mode", written]) == 0
+    assert recorder.kwargs["commit_mode"] is CommitMode.GIT_CLI
 
 
 # ======================================================================================

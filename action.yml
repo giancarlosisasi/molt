@@ -70,6 +70,18 @@ inputs:
       pull request targets it. Defaults to the branch the workflow is running on.
     required: false
     default: ${{ github.ref_name }}
+  commit-mode:
+    description: >-
+      How the version commit reaches the remote. "git-cli" commits and force-pushes from the
+      runner. "api" sends the changes to GitHub instead, so GitHub authors the commit, signs it
+      with its own key and marks it verified -- which is what a branch protection rule requiring
+      signed commits accepts. "api" buys the signature and nothing else: review requirements and
+      required status checks still apply, and a commit made with the workflow's own token still
+      does not start another workflow run. Upstream calls this input commitMode and spells the
+      second value github-api; molt keeps git-cli and renames the other, because the host is not
+      necessarily GitHub.
+    required: false
+    default: git-cli
   github-token:
     description: >-
       The token molt uses to open the pull request and create releases. Defaults to the workflow's
@@ -104,7 +116,13 @@ runs:
     # Ports `setupGitUser` (index.ts:39-46). A bare runner has no committer identity and the
     # version phase's commit would fail with git's own "please tell me who you are". Set only when
     # unset, so a workflow that configured its own keeps it.
+    #
+    # Skipped in `api` mode, where there is no local commit to attribute -- upstream's `setupUser`
+    # returns early for the same reason (`git.ts:57-60`). Not tidiness: this step writes a GLOBAL
+    # git identity onto the runner, so a workflow that runs molt and then does its own git work
+    # would otherwise inherit a `github-actions[bot]` identity it never asked for.
     - name: Configure a committer identity
+      if: inputs.commit-mode != 'api'
       shell: bash
       run: |
         set -euo pipefail
@@ -129,6 +147,7 @@ runs:
         MOLT_ACTION_COMMIT: ${{ inputs.commit }}
         MOLT_ACTION_CREATE_RELEASES: ${{ inputs.create-releases }}
         MOLT_ACTION_BASE_BRANCH: ${{ inputs.base-branch }}
+        MOLT_ACTION_COMMIT_MODE: ${{ inputs.commit-mode }}
         MOLT_ACTION_TOKEN_INPUT: ${{ inputs.github-token }}
       run: |
         set -euo pipefail
@@ -152,4 +171,5 @@ runs:
           --title "${MOLT_ACTION_TITLE}" \
           --commit-message "${MOLT_ACTION_COMMIT}" \
           --create-releases "${MOLT_ACTION_CREATE_RELEASES}" \
-          --base-branch "${MOLT_ACTION_BASE_BRANCH}"
+          --base-branch "${MOLT_ACTION_BASE_BRANCH}" \
+          --commit-mode "${MOLT_ACTION_COMMIT_MODE}"

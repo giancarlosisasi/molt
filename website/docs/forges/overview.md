@@ -25,6 +25,7 @@ A forge backend answers a small, host-agnostic set of questions:
 - **Attribution.** Given a commit, which pull request introduced it, and who authored it? Given a pull request number, its author and merge commit? This is what lets [changelog templates](/guides/changelog-templates) render `Thanks @author!` and link back to the PR.
 - **Release publication.** Given an existing tag, a name and a changelog body, create a release on the host -- one per released package, with that package's changelog entry as the body. This is implemented today.
 - **Pull request lifecycle.** Find the open release PR for a branch and update it in place, or open a new one. This is implemented today.
+- **Commit creation.** Given a branch, a base commit, a message and a set of file additions and deletions, make that branch carry one commit holding those changes on top of that base. This is implemented today.
 
 The engine, the changelog generators, and the CI loop call these; they never assume the host is GitHub.
 
@@ -34,7 +35,13 @@ The engine, the changelog generators, and the CI loop call these; they never ass
 
 **The prerelease flag follows PEP 440, not npm semver.** `1.0.0rc1`, `1.0.0a1`, `1.0.0b2`, `1.0.0.dev1` and every `molt version --snapshot` version are published as prereleases; `1.0.0` and a post-release such as `1.0.0.post1` are not, and neither is a local version such as `1.0.0+local.build`. If you are migrating from changesets, this is a deliberate difference: it marks a release as a prerelease when the version string contains a hyphen, and no PEP 440 prerelease contains one.
 
-With the pull-request lifecycle shipped, all three answers a backend must give now exist -- attribution, release publication, and the release pull request.
+With the pull-request lifecycle shipped, all four answers a backend must give now exist -- attribution, release publication, the release pull request, and commit creation.
+
+### Two details of commit creation worth knowing
+
+**The seam says "commit", never "sign".** A commit the *host* authors on its own server can be signed by that host, which is what makes [`commit-mode: api`](/guides/ci-github-action#signed-commits) work on GitHub. Signing is a property of a particular backend's implementation, not a promise the seam makes -- a member named for it would be a GitHub-shaped hole in a host-neutral protocol. Every host molt names as a backend candidate has a multi-file commit endpoint that fits behind this shape.
+
+**File contents cross as bytes, keyed by path.** Additions are a mapping from a repository-relative path to that file's raw bytes, and the backend applies whatever encoding its host wants on the wire -- base64 for GitHub, raw text behind an encoding flag for GitLab. Decoding to text at the seam would corrupt a file that is not UTF-8 and would silently translate line endings on a Windows checkout. A file the host's commit API cannot represent -- a symbolic link, an executable, a submodule -- is refused by name rather than committed as the wrong kind of file.
 
 ### Two details of the pull-request lifecycle worth knowing
 

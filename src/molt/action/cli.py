@@ -76,6 +76,7 @@ __all__ = [
     "main",
     "output_payload",
     "parse_boolean_input",
+    "parse_commit_mode",
     "write_github_output",
 ]
 
@@ -108,6 +109,12 @@ ACTION_INPUTS: Final[dict[str, str | None]] = {
     "commit": "commit-message",
     "create-releases": "create-releases",
     "base-branch": "base-branch",
+    # Upstream's `commitMode`, kebab-cased. Its `git-cli` default keeps upstream's spelling so a
+    # migrating workflow does not have to change a value it already has; its other value is `api`
+    # rather than `github-api`, because molt's forge seam means the host is not necessarily GitHub
+    # (`CO-7`'s rename rule). `github-api` is deliberately NOT an alias -- the error message is the
+    # migration (api-commits design D8).
+    "commit-mode": "commit-mode",
     # The credential. It reaches this process as an environment variable and never as an option.
     "github-token": None,
 }
@@ -167,6 +174,42 @@ def parse_boolean_input(value: str | None, *, option: str) -> bool | None:
     raise MoltError(
         f"`{option}` must be `{_TRUE}` or `{_FALSE}` (any case); got `{value}`. "
         f"Leave it empty to use the default."
+    )
+
+
+def parse_commit_mode(value: str | None, *, option: str) -> Any:
+    """``value`` as a :class:`molt.action.CommitMode`, ``None`` when it was not supplied.
+
+    The same contract as :func:`parse_boolean_input`, for the same reasons: a composite forwards
+    ``${{ inputs.commit-mode }}`` verbatim, so the value arrives as a string and an input the
+    workflow left out arrives as an empty one (``openspec/GAPS.md`` ``CO-17``).
+
+    An unrecognised value is a **hard error** naming the option and both accepted spellings (the
+    rule ratified as ``CO-8``). That matters more here than anywhere else: a typo silently meaning
+    ``git-cli`` would leave a repository failing its branch protection on every release with
+    nothing in the log to explain why, and the one value a migrating workflow is most likely to
+    carry across -- upstream's ``github-api`` -- is exactly such a typo. It is not accepted as an
+    alias, deliberately: the error message carries the migration instead of putting a host name
+    back into the surface the rename exists to clear (api-commits design D8).
+
+    :class:`~molt.action.CommitMode` is imported inside the body, matching the lazy dispatch this
+    module already uses for :mod:`molt.action.orchestrate`: it lives beside the version loop, which
+    pulls the ecosystem layer, and ``molt-action --help`` must not pay for that.
+    """
+    from molt.action.run import CommitMode
+
+    if value is None:
+        return None
+    text = value.strip().lower()
+    if not text:
+        return None
+    for mode in CommitMode:
+        if text == mode.value:
+            return mode
+    accepted = " or ".join(f"`{mode.value}`" for mode in CommitMode)
+    raise MoltError(
+        f"`{option}` must be {accepted}; got `{value}`. "
+        f"Leave it empty to use the default (`{CommitMode.GIT_CLI.value}`)."
     )
 
 
@@ -342,6 +385,13 @@ def run_release_loop(
         str | None,
         typer.Option("--base-branch", help="The branch being released. Defaults to the checkout."),
     ] = None,
+    commit_mode: Annotated[
+        str | None,
+        typer.Option(
+            "--commit-mode",
+            help="How the version commit reaches the remote: git-cli (default) or api.",
+        ),
+    ] = None,
     cwd: Annotated[
         Path | None,
         typer.Option("--cwd", help="Directory to run in. Defaults to the current directory."),
@@ -353,9 +403,11 @@ def run_release_loop(
     # must not pay for them. It is looked up as a module attribute rather than bound at import,
     # which is what lets a test replace it.
     from molt.action import orchestrate
+    from molt.action.run import CommitMode
 
     _token()
     releases = parse_boolean_input(create_releases, option="--create-releases")
+    mode = parse_commit_mode(commit_mode, option="--commit-mode")
 
     try:
         result = orchestrate.run_action(
@@ -366,6 +418,7 @@ def run_release_loop(
             commit_message=_text(commit_message),
             base_branch=_text(base_branch),
             create_releases=True if releases is None else releases,
+            commit_mode=CommitMode.GIT_CLI if mode is None else mode,
         )
     # The outputs are written for a failing run too, through the *same* `report` (owner ruling
     # 2026-08-01). This does not belong in `main()`'s funnel: that funnel maps exceptions to exit

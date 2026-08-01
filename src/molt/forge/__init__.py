@@ -11,13 +11,15 @@ and then speak only :class:`Forge`.
 
 What the protocol covers, and it is now the whole list
 ------------------------------------------------------
-``website/docs/forges/overview.md`` ("What a forge backend provides") promises three answers, and
-all three are declared: **attribution** (:meth:`Forge.commit_info`, :meth:`Forge.pull_request_info`
+``website/docs/forges/overview.md`` ("What a forge backend provides") promises four answers, and
+all four are declared: **attribution** (:meth:`Forge.commit_info`, :meth:`Forge.pull_request_info`
 -- who wrote a change and which pull request carried it), **release publication**
-(:meth:`Forge.create_release`), and the **pull-request lifecycle**
+(:meth:`Forge.create_release`), the **pull-request lifecycle**
 (:meth:`Forge.find_open_pull_request`, :meth:`Forge.create_pull_request`,
 :meth:`Forge.update_pull_request` -- find the open release pull request for a branch, open one, or
-replace the title and body of the one that is already there).
+replace the title and body of the one that is already there), and **commit creation**
+(:meth:`Forge.create_commit` -- put a set of file changes on a branch, host-side, which is what
+lets a host sign the release commit it authors).
 
 Importing this package costs ``httpx``, which is why it is on ``tests/cli/test_cli.py``'s
 ``HEAVY_MODULE_PREFIXES`` list -- ``molt --help`` must not pay for it, so a command that needs a
@@ -35,6 +37,7 @@ from molt.forge.github import (
     GitHubForge,
 )
 from molt.forge.protocol import (
+    NO_FILE_ADDITIONS,
     SHORT_SHA_LENGTH,
     AuthorRef,
     CommitInfo,
@@ -55,6 +58,7 @@ __all__ = [
     "MAX_ATTEMPTS",
     "MAX_BACKOFF_SECONDS",
     "MAX_TOTAL_BACKOFF_SECONDS",
+    "NO_FILE_ADDITIONS",
     "REQUEST_TIMEOUT_SECONDS",
     "SHORT_SHA_LENGTH",
     "AuthorRef",

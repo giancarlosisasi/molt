@@ -95,9 +95,15 @@ class Git:
     repository root itself is discovered lazily from it (``rev-parse --show-cdup``,
     ``index.ts:188-200``) and cached, because it cannot change for the lifetime of the object.
 
-    The public surface conforms to ``tests/cli/fake_cli.py::FakeGit``, method for method. That
+    The **command** surface conforms to ``tests/cli/fake_cli.py::FakeGit``, method for method. That
     double is committed and four CLI suites inject it, so it outranks this class: if a signature has
     to change, the double changes first and ``tests/cli/test_fake_cli.py`` proves it (design D1).
+
+    The CI-loop surface below is the deliberate exception, and it is now eight methods rather than
+    six: the branch/remote group plus :meth:`diff_name_status` and :meth:`list_untracked`. None of
+    them is on ``FakeGit``, because no ``molt`` **command** calls any of them and giving the double
+    a method would let a command acquire the ability with no row noticing
+    (``openspec/GAPS.md`` ``CA-6``, widened by ``ACM-7``).
     """
 
     __slots__ = ("_root", "cwd")
@@ -212,6 +218,51 @@ class Git:
         args.append(ref)
         return [line for line in self._run(*args).splitlines() if line.strip()]
 
+    def diff_name_status(self, ref: str) -> list[tuple[str, str]]:
+        """``(status, path)`` for every file the **working tree** changes against ``ref``.
+
+        Ports the first of the two reads ``@changesets/ghcommit``'s ``src/git.ts::getFileChanges``
+        runs to turn a working tree into a host commit's additions and deletions.
+
+        Three flags, each load-bearing:
+
+        * ``--no-relative`` is the flag form of design D5, exactly as on :meth:`diff_name_only`:
+          without it a repository that sets ``diff.relative = true`` makes the answer depend on the
+          caller's working directory.
+        * ``--no-renames`` so a rename arrives as a ``D`` plus an ``A`` rather than an ``R`` a
+          caller would have to split back apart. Same result, one branch fewer, and no dependence
+          on git's rename-similarity threshold.
+        * ``-z`` so the paths are NUL-separated. Without it git applies ``core.quotePath`` and a
+          path holding a space, a quote or a byte outside ASCII arrives as its own **escaped
+          rendering** -- ``"src/caf\\303\\251.py"`` -- which would then be committed as a filename
+          spelled exactly that way.
+
+        With ``-z`` and ``--name-status`` git emits ``<status>NUL<path>NUL`` per entry, so the
+        fields are read in pairs rather than split on a tab.
+        """
+        raw = self._run("diff", "--name-status", "--no-renames", "--no-relative", "-z", ref)
+        fields = [field for field in raw.split("\0") if field]
+        return [(fields[index], fields[index + 1]) for index in range(0, len(fields) - 1, 2)]
+
+    def list_untracked(self) -> list[str]:
+        """Every untracked, non-ignored file, as repo-relative POSIX paths.
+
+        The second read ``@changesets/ghcommit``'s ``src/git.ts::getFileChanges`` runs
+        (``git ls-files --others --exclude-standard``). Not optional for a release: ``molt version``
+        writes a brand-new ``CHANGELOG.md`` for a package that never had one, and the git command
+        line's own ``git add .`` picks that up -- so an API commit that skipped untracked files
+        would quietly drop the first changelog of every new package.
+
+        ``--exclude-standard`` is what honours ``.gitignore``; without it a release would try to
+        commit a virtual environment. ``-z`` for the same reason :meth:`diff_name_status` needs it,
+        and the command runs at the repository root because ``ls-files`` reports paths relative to
+        the working directory, which would otherwise make the answer depend on where molt was
+        invoked. A file inside an untracked **directory** is listed individually, which is
+        ``ls-files``' own behaviour and what the commit API needs -- it takes files, not trees.
+        """
+        raw = self._run("ls-files", "--others", "--exclude-standard", "-z", at_root=True)
+        return [path for path in raw.split("\0") if path]
+
     # ----------------------------------------------------------------------------------
     # Mutating operations
     # ----------------------------------------------------------------------------------
@@ -274,7 +325,8 @@ class Git:
     # ----------------------------------------------------------------------------------
     # Branches and the remote -- the CI-loop surface (``release-utils/src/gitUtils.ts``)
     #
-    # These five are used by :mod:`molt.action` and by nothing else. They are **not** part of the
+    # These six are used by :mod:`molt.action` and by nothing else, as are
+    # :meth:`diff_name_status` and :meth:`list_untracked` above. They are **not** part of the
     # command surface ``tests/cli/fake_cli.py::FakeGit`` doubles: no command pushes, and adding a
     # push to that double would let a command acquire one without a test noticing.
     # ----------------------------------------------------------------------------------

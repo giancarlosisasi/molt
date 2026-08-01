@@ -59,6 +59,7 @@ from molt.action import (
     MAX_BODY_CHARACTERS,
     ActionFailed,
     ActionResult,
+    CommitMode,
     Mode,
     build_pull_request_body,
     pull_request_entry,
@@ -67,11 +68,11 @@ from molt.action import (
 )
 from molt.action.body import MOLT_REPOSITORY_URL
 from molt.errors import ExitError, MoltError, MoltForgeError
-from molt.forge import PullRef, ReleaseInfo
+from molt.forge import NO_FILE_ADDITIONS, CommitRef, PullRef, ReleaseInfo
 from molt.git import Git
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
     from tests.conftest import GitRepo, ProjectBuilder
 
@@ -172,6 +173,27 @@ class RecordingForge:
     ) -> PullRef:
         self._record("update_pull_request", number, title=title, body=body, repo=repo)
         return PullRef(number=number, url=f"{self.server_url}/molt/molt/pull/{number}")
+
+    def create_commit(
+        self,
+        branch: str,
+        *,
+        base: str,
+        message: str,
+        additions: Mapping[str, bytes] = NO_FILE_ADDITIONS,
+        deletions: Sequence[str] = (),
+        repo: str | None = None,
+    ) -> CommitRef | None:
+        self._record(
+            "create_commit",
+            branch,
+            base=base,
+            message=message,
+            additions=dict(additions),
+            deletions=tuple(deletions),
+            repo=repo,
+        )
+        return CommitRef(sha="c0ffee0", url=f"{self.server_url}/molt/molt/commit/c0ffee0")
 
     # -- recording ---------------------------------------------------------------------
 
@@ -693,6 +715,102 @@ def test_the_sections_are_ordered_public_first_then_highest_bump(
         "## pkg-a@1.0.1",
         "## pkg-b@2.0.0",
     ]
+
+
+#: Every local git write the version phase performs in the default mode. API mode must perform
+#: **none** of them, which is the whole of the "no local branch, no local commit and no push"
+#: requirement -- and the reason it is a list rather than a single assertion is that dropping any
+#: one of them individually would still leave a run that writes locally.
+LOCAL_GIT_WRITES = (
+    "git.switch_to_maybe_existing_branch",
+    "git.reset",
+    "git.add",
+    "git.commit",
+    "git.push",
+)
+
+
+@pytest.mark.integration
+@pytest.mark.git
+@pytest.mark.slow
+def test_api_mode_makes_no_local_git_writes_and_sends_one_api_commit(
+    release_repo: ReleaseRepo,
+) -> None:
+    """The whole of "API mode makes no local branch, no local commit and no push", in one row.
+
+    Ports ``changesets/action`` v1.9.0 ``git.ts``: ``prepareBranch`` returns early -- *"Preparing a
+    new local branch is not necessary when using the API"* -- and ``pushChanges`` replaces
+    ``git add .`` + ``git commit`` + ``git push --force`` with one API call.
+
+    Skipping the branch prep is not tidiness. A local branch switch would change which tree the
+    changes are measured against, and molt measures them against the commit that was checked out
+    before the script ran.
+
+    The pull-request half is asserted here too, because it is what a reader will assume changed and
+    it did not: the same lookup runs first and the same create-or-update follows.
+    """
+    result = release_repo.run(commit_mode=CommitMode.API)
+
+    journal = release_repo.journal
+    for write in LOCAL_GIT_WRITES:
+        assert write not in journal, f"API mode must not call {write}: {journal}"
+    assert journal.count("forge.create_commit") == 1, journal
+
+    commit = release_repo.forge.only("create_commit")
+    assert commit.args == ("changeset-release/main",)
+    assert commit.kwargs["message"] == "Version Packages"
+    assert commit.kwargs["base"] == release_repo.clone.run("rev-parse", "HEAD").stdout.strip()
+    assert result.pull_request_number == 7, "the release pull request is opened exactly as before"
+
+
+@pytest.mark.integration
+@pytest.mark.git
+@pytest.mark.slow
+def test_api_mode_commits_what_the_version_run_wrote(release_repo: ReleaseRepo) -> None:
+    """The commit carries the release, not an empty change set.
+
+    The three manifests the stub rewrote arrive as additions and each new ``CHANGELOG.md`` arrives
+    with them, which is the half that only works because the untracked read exists. The consumed
+    changeset is a deletion.
+
+    Asserted on the *payload* rather than on "a commit happened", because a run that sent an empty
+    ``fileChanges`` would satisfy the row above and would put an empty commit on the release
+    branch.
+    """
+    release_repo.run(commit_mode=CommitMode.API)
+
+    commit = release_repo.forge.only("create_commit")
+    additions = commit.kwargs["additions"]
+
+    assert sorted(additions) == [
+        "packages/pkg-a/CHANGELOG.md",
+        "packages/pkg-a/pyproject.toml",
+        "packages/pkg-b/CHANGELOG.md",
+        "packages/pkg-b/pyproject.toml",
+        "packages/pkg-c/CHANGELOG.md",
+        "packages/pkg-c/pyproject.toml",
+    ]
+    assert b'version = "1.0.1"' in additions["packages/pkg-a/pyproject.toml"]
+    assert isinstance(additions["packages/pkg-a/CHANGELOG.md"], bytes)
+    assert commit.kwargs["deletions"] == ()
+
+
+@pytest.mark.integration
+@pytest.mark.git
+@pytest.mark.slow
+def test_the_default_mode_still_commits_and_pushes_locally(release_repo: ReleaseRepo) -> None:
+    """The negative control for the row above -- and the point of the default.
+
+    Without it, "API mode makes no local git writes" would also pass against a version phase that
+    had stopped writing locally in **both** modes. The two rows share one fixture on purpose, so
+    the only difference between them is the mode.
+    """
+    release_repo.run()
+
+    journal = release_repo.journal
+    for write in LOCAL_GIT_WRITES:
+        assert write in journal, f"the default mode must still call {write}: {journal}"
+    assert release_repo.forge.named("create_commit") == [], "and must not reach the commit API"
 
 
 # ======================================================================================

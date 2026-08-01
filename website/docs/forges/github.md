@@ -11,14 +11,27 @@ The GitHub backend is molt's first-class forge: it attributes changes to pull re
 The GitHub backend implements the [forge protocol](/forges/overview) against GitHub's API:
 
 - **Attribution.** Resolves the pull request and author behind each commit, so [changelog templates](/guides/changelog-templates) can link the PR (`[#1613](...)`), credit the author (`Thanks [@author](...)!`), and link the commit.
-- **Releases.** Creates a GitHub Release for a package's tag, carrying its changelog entry as the body. The backend can do this today; nothing in the CLI calls it yet -- the loop that will create one release per published package lives in the [CI action](/guides/ci-github-action), which is still being built.
-- **Release pull request.** Opens and updates the "Version Packages" PR that the [CI loop](/guides/ci-github-action) keeps in sync. Not implemented yet.
+- **Releases.** Creates a GitHub Release for a package's tag, carrying its changelog entry as the body. The [CI action](/guides/ci-github-action) creates one per published package.
+- **Release pull request.** Opens and updates the "Version Packages" PR that the [CI loop](/guides/ci-github-action) keeps in sync.
+- **Commits.** Creates a commit on a branch through GitHub's API, which is what [`commit-mode: api`](/guides/ci-github-action#signed-commits) uses so that GitHub signs the release commit.
 
-## Creating releases: the one REST call
+## Which transport each call uses
 
-Everything above except release creation is GraphQL. GitHub's GraphQL schema has no release-creation mutation at all, so that one call goes to the REST API instead -- `POST {api}/repos/{owner}/{name}/releases` -- and it is the only place molt leaves GraphQL. It is not a second, weaker client: the same token, the same timeout, the same bounded jittered retry and the same `Retry-After` handling apply to it as to every attribution query.
+Molt uses **both** of GitHub's APIs, and the split is GitHub's rather than molt's:
 
-Two behaviors to expect from it. A tag that already has a release is reported as "nothing created" rather than as an error, so re-running a half-failed publish finishes the job instead of failing on what already succeeded. And the prerelease flag follows PEP 440 -- `1.0.0rc1`, `1.0.0a1` and every snapshot version are marked as prereleases, a post-release and a local version are not.
+| Call | Transport | Why it cannot be the other one |
+|---|---|---|
+| Attribution | GraphQL | One request answers commit, pull request and author together. |
+| Creating a commit | GraphQL | `createCommitOnBranch` is the only GitHub API that authors a multi-file commit **server-side**, which is what makes it signed and marked *Verified*. The REST git-database path builds the commit object on the client, so there is nothing for GitHub to sign. |
+| Creating a release | REST | GitHub's GraphQL schema has no release-creation mutation at all -- `POST {api}/repos/{owner}/{name}/releases`. |
+| The release pull request | REST | Listing, opening and updating a pull request are all REST. |
+| Moving the release branch's ref | REST | GraphQL has no ref mutations. |
+
+None of them is a second, weaker client: the same token, the same timeout, the same bounded jittered retry and the same `Retry-After` handling apply to every one of them.
+
+Two behaviors to expect from **release creation**. A tag that already has a release is reported as "nothing created" rather than as an error, so re-running a half-failed publish finishes the job instead of failing on what already succeeded. And the prerelease flag follows PEP 440 -- `1.0.0rc1`, `1.0.0a1` and every snapshot version are marked as prereleases, a post-release and a local version are not.
+
+Two behaviors to expect from **commit creation**. A commit is never made on a branch that molt has momentarily emptied: replacing an existing release branch happens through a short-lived `molt/tmp/<branch>` ref, because a release branch that briefly holds no changes against its base is one GitHub may auto-close the pull request for -- and, with "automatically delete head branches" on, delete. And a run whose version command changed nothing sends no commit at all: the branch is reset onto the base and molt reports that no commit was needed, rather than writing an empty commit into a public diff.
 
 ## Attribution via GraphQL
 
@@ -40,7 +53,7 @@ The backend resolves its endpoints and repository from the environment, which CI
 - `GITHUB_TOKEN` -- the API token described above.
 - `GITHUB_SERVER_URL` -- defaults to `https://github.com`; override for GitHub Enterprise Server.
 - `GITHUB_GRAPHQL_URL` -- defaults to `https://api.github.com/graphql`; override for GHES.
-- `GITHUB_API_URL` -- the REST base used for creating releases; defaults to `GITHUB_GRAPHQL_URL` with the trailing `/graphql` removed. Every GitHub Actions runner sets it, GHES included, so it is normally already correct. Set it yourself for a self-hosted instance you run molt against from outside Actions: a GHES REST base is `https://your-host/api/v3`, which is not what stripping `/graphql` off its GraphQL URL produces.
+- `GITHUB_API_URL` -- the REST base used for releases, pull requests and refs; defaults to `GITHUB_GRAPHQL_URL` with the trailing `/graphql` removed. Every GitHub Actions runner sets it, GHES included, so it is normally already correct. Set it yourself for a self-hosted instance you run molt against from outside Actions: a GHES REST base is `https://your-host/api/v3`, which is not what stripping `/graphql` off its GraphQL URL produces.
 
 For local runs, molt also reads these from a `.env` file if present. The GitHub-flavored [changelog generator](/guides/changelog-templates) can take an explicit `repo` in its options instead of relying on `GITHUB_REPOSITORY`.
 

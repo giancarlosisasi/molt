@@ -41,11 +41,16 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from molt.errors import MoltForgeRepoError
 
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
 __all__ = [
+    "NO_FILE_ADDITIONS",
     "SHORT_SHA_LENGTH",
     "AuthorRef",
     "CommitInfo",
@@ -56,6 +61,14 @@ __all__ = [
     "ReleaseInfo",
     "validate_repo_name",
 ]
+
+#: The default ``additions`` for :meth:`Forge.create_commit` -- an **immutable** empty mapping, not
+#: a ``{}`` literal. A mutable default is shared by every call that omits the argument, so a
+#: backend that ever wrote into it would corrupt the next caller's commit; a
+#: :class:`~types.MappingProxyType` makes that unrepresentable rather than a bug to find later.
+#: It is a module-level constant so :class:`Forge` and every backend can share the *same* default
+#: object, which is what lets a signature row compare the two defaults for equality.
+NO_FILE_ADDITIONS: Mapping[str, bytes] = MappingProxyType({})
 
 #: How many characters of a sha a rendered link label carries (design D9;
 #: ``get-commit-info.ts:63``, ``get-pull-request-info.ts:56``). Fixed rather than git's variable
@@ -279,6 +292,59 @@ class Forge(Protocol):
         ``head`` is positional because it is the subject; everything else is keyword-only, so a
         caller cannot transpose ``title`` and ``body`` -- two strings whose order no type checker
         can police.
+        """
+        ...
+
+    def create_commit(
+        self,
+        branch: str,
+        *,
+        base: str,
+        message: str,
+        additions: Mapping[str, bytes] = NO_FILE_ADDITIONS,
+        deletions: Sequence[str] = (),
+        repo: str | None = None,
+    ) -> CommitRef | None:
+        """Put ``additions`` and ``deletions`` on ``branch``, on top of ``base``, host-side.
+
+        Ports ``changesets/action`` v1.9.0 ``src/git.ts::pushChanges`` -- which, in its
+        ``commitMode: github-api`` arm, replaces ``git add .`` + ``git commit`` + ``git push
+        --force`` with one ``commitChangesFromRepo({..., base: {commit: context.sha}, force:
+        true})`` call into ``@changesets/ghcommit``. molt keeps the whole choreography that library
+        performs -- create the branch when it is absent, replace it without ever emptying it, clean
+        up afterwards -- **inside the backend**, so the protocol stays one method.
+
+        ``branch`` ends carrying exactly one commit on top of ``base``, whatever it carried before.
+        ``base`` is the commit the caller measured its changes against; a host that supports it
+        SHOULD refuse the write when the branch has moved since (see "a branch that moved under the
+        caller is reported, not retried" in the ``forge-seam`` spec).
+
+        **This member does not promise a signature** (design D1). It says "create a commit on a
+        branch through the host's API"; whether the host signs what it authors is a property of that
+        host's implementation, documented on the backend and in
+        ``website/docs/forges/github.md``. A member called ``sign_commit`` would be a GitHub-shaped
+        hole in a host-neutral protocol -- and every candidate backend
+        (``website/docs/forges/gitlab-gitea-others.md``) has a multi-file commit endpoint that fits
+        behind this shape: GitLab ``POST /projects/:id/repository/commits`` with ``actions[]``,
+        Gitea/Forgejo ``POST /repos/{owner}/{repo}/contents``, Bitbucket
+        ``POST /2.0/repositories/{workspace}/{repo}/src``.
+
+        ``None`` means **no commit was needed** -- there was nothing to commit -- not that
+        something failed. Same idiom as :meth:`create_release` returning ``None`` for a release the
+        host already has and :meth:`commit_info` returning ``None`` for a commit that is not there.
+
+        Shape notes, each deliberate (design D3):
+
+        * ``additions`` maps a repository-relative POSIX path to the file's **bytes**. Bytes, not
+          text: the encoding a host wants on the wire is that host's business, and decoding to
+          ``str`` at the seam would corrupt a file that is not UTF-8 and silently translate CRLF
+          on a Windows checkout. A **mapping**, not a list of records, so "the same path twice" is
+          unrepresentable rather than a silent last-one-wins on the host.
+        * ``branch`` is the only positional argument. ``base`` and ``message`` are two strings and
+          a positional pair invites transposing them where no type checker can help.
+        * Required, not optional (owner ruling 2026-07-31/2026-08-01, session 6, on the same terms
+          it ruled :meth:`create_release` required -- ``openspec/GAPS.md`` ``FR-6``). molt's action
+          commits, so a backend that cannot serve the action is not a complete backend.
         """
         ...
 

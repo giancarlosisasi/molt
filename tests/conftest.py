@@ -13,9 +13,11 @@ matching module lands. They port the reference harness described in
 - ``pypi_registry``-> §5.6 PyPI JSON registry mock with a stale-read knob (doc 07 §"stale").
 - ``forge_api``    -> §5.7 GitHub GraphQL mock capturing the query + auth header (doc 08).
 - ``forge_rest_api``-> the same idea for the forge's REST endpoints: release creation
-  (``changesets/action`` v1.9.0 ``src/run.ts::createRelease``) and the pull-request lifecycle
-  (``run.ts:347-407``). GitHub's GraphQL schema has no release-creation mutation, so those calls
-  cannot go through ``forge_api``'s ``/graphql`` matcher.
+  (``changesets/action`` v1.9.0 ``src/run.ts::createRelease``), the pull-request lifecycle
+  (``run.ts:347-407``) and the git-ref calls that surround an API commit
+  (``@changesets/ghcommit`` ``src/core.ts::commitChanges``). GitHub's GraphQL schema has no
+  release-creation mutation and no ref mutations, so none of those calls can go through
+  ``forge_api``'s ``/graphql`` matcher.
 
 Downstream test agents rely on the public fixture names verbatim; do not rename them.
 Optional third-party deps (``tomlkit``, ``respx``/``httpx``) are imported lazily inside the
@@ -604,7 +606,7 @@ def forge_api() -> Iterator[ForgeAPI]:
 
 
 class ForgeRestAPI:
-    """Mocks the forge's REST endpoints: release creation and the pull-request lifecycle.
+    """Mocks the forge's REST endpoints: releases, the pull-request lifecycle, and git refs.
 
     A sibling of :class:`ForgeAPI`, deliberately **beside** it rather than grafted onto it: that
     class matches ``POST .+/graphql/?$`` and every existing forge row depends on that pattern, so
@@ -613,19 +615,31 @@ class ForgeRestAPI:
     ``octokit.rest.repos.createRelease`` (``changesets/action`` v1.9.0 ``src/run.ts``) -- and the
     pull-request lifecycle (``run.ts:347-407``) is REST for the same reason.
 
-    Four endpoints, each host-agnostic like :class:`ForgeAPI`'s, so a GitHub Enterprise Server base
+    Eight endpoints, each host-agnostic like :class:`ForgeAPI`'s, so a GitHub Enterprise Server base
     URL is intercepted too:
 
-    ===================================== ==========================================
-    ``POST .../repos/<o>/<n>/releases``   create a release
-    ``GET  .../repos/<o>/<n>/pulls``      list the open pull requests
-    ``POST .../repos/<o>/<n>/pulls``      open a pull request
-    ``PATCH .../repos/<o>/<n>/pulls/<i>`` update one in place
-    ===================================== ==========================================
+    ========================================== ==========================================
+    ``POST .../repos/<o>/<n>/releases``         create a release
+    ``GET  .../repos/<o>/<n>/pulls``            list the open pull requests
+    ``POST .../repos/<o>/<n>/pulls``            open a pull request
+    ``PATCH .../repos/<o>/<n>/pulls/<i>``       update one in place
+    ``GET  .../repos/<o>/<n>/git/ref/<ref>``    read one ref (404 when it is absent)
+    ``POST .../repos/<o>/<n>/git/refs``         create a ref
+    ``PATCH .../repos/<o>/<n>/git/refs/<ref>``  move a ref
+    ``DELETE .../repos/<o>/<n>/git/refs/<ref>`` delete a ref
+    ========================================== ==========================================
+
+    The four ref endpoints serve ``Forge.create_commit``'s branch choreography, which is REST
+    because GraphQL has no ref mutations -- while the commit itself is the GraphQL
+    ``createCommitOnBranch`` mutation and therefore lands on :class:`ForgeAPI`. They were added
+    here rather than in a second local router precisely so the ordering is observable: a row that
+    needs the *whole* sequence in one list aliases the two fixtures' :attr:`requests` onto each
+    other (``tests/forge/test_api_commits.py``), which only works because every handler in both
+    classes appends to ``self.requests``.
 
     A row may program the **status** as well as the body: the duplicate-release contract is a 422
     carrying an ``already_exists`` error code, and a fixture that could only answer 200 could not
-    express it. :attr:`requests` records every request across all four endpoints in order, so a row
+    express it. :attr:`requests` records every request across all eight endpoints in order, so a row
     can assert that a lookup happened before a write.
     """
 
@@ -636,6 +650,12 @@ class ForgeRestAPI:
     #: One numbered pull request -- ``PATCH`` only, and deliberately not matched by the collection
     #: pattern above, so a mistyped update URL fails to match rather than silently listing.
     _PULL_URL_RE = r".+/repos/.+/pulls/\d+$"
+    #: Reading one ref is GitHub's **singular** ``git/ref/<ref>`` endpoint, which 404s for a ref
+    #: that is not there; writing goes to the plural ``git/refs``. The two patterns cannot overlap:
+    #: ``git/ref/`` never appears in ``git/refs/...``.
+    _REF_READ_URL_RE = r".+/repos/.+/git/ref/.+$"
+    _REFS_URL_RE = r".+/repos/.+/git/refs$"
+    _REF_ITEM_URL_RE = r".+/repos/.+/git/refs/.+$"
 
     #: A plausible created-release document, so a row that does not care about the response body
     #: still gets a well-formed 201. ``.invalid`` is reserved by RFC 2606.
@@ -664,10 +684,20 @@ class ForgeRestAPI:
         self._body: Any = dict(self._DEFAULT_RELEASE)
         self._listing: Any = []
         self._pull: Any = dict(self._DEFAULT_PULL)
+        #: What a ref read answers with. ``None`` is a 404 -- "the branch is not there yet", which
+        #: is a first release run and therefore the right default.
+        self._ref_head: str | None = None
+        self._ref_create_status = 201
+        self._ref_update_status = 200
+        self._ref_delete_status = 204
         router.post(url__regex=self._RELEASES_URL_RE).mock(side_effect=self._handle)
         router.get(url__regex=self._PULLS_URL_RE).mock(side_effect=self._handle_listing)
         router.post(url__regex=self._PULLS_URL_RE).mock(side_effect=self._handle_created_pull)
         router.patch(url__regex=self._PULL_URL_RE).mock(side_effect=self._handle_updated_pull)
+        router.get(url__regex=self._REF_READ_URL_RE).mock(side_effect=self._handle_ref_read)
+        router.post(url__regex=self._REFS_URL_RE).mock(side_effect=self._handle_ref_create)
+        router.patch(url__regex=self._REF_ITEM_URL_RE).mock(side_effect=self._handle_ref_update)
+        router.delete(url__regex=self._REF_ITEM_URL_RE).mock(side_effect=self._handle_ref_delete)
 
     def set_response(self, body: Any, *, status: int = 201) -> None:
         """Program what the next release request (and every one after it) is answered with."""
@@ -681,6 +711,27 @@ class ForgeRestAPI:
     def set_pull_request(self, body: Any) -> None:
         """Program the document a create or an update is answered with."""
         self._pull = body
+
+    def set_ref(self, sha: str | None) -> None:
+        """Program the sha a ref read reports; ``None`` makes the read a 404."""
+        self._ref_head = sha
+
+    def set_ref_statuses(
+        self, *, create: int | None = None, update: int | None = None, delete: int | None = None
+    ) -> None:
+        """Program the status a ref write is answered with.
+
+        Three separate knobs because the three failures they express are different contracts: a
+        **create** answering 422 is the ordinary "this ref already exists" a leftover temporary
+        branch produces, an **update** answering 422 is the branch vanishing mid-run, and a
+        **delete** that fails must not fail the release at all.
+        """
+        if create is not None:
+            self._ref_create_status = create
+        if update is not None:
+            self._ref_update_status = update
+        if delete is not None:
+            self._ref_delete_status = delete
 
     def _handle(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
@@ -697,6 +748,42 @@ class ForgeRestAPI:
     def _handle_updated_pull(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         return self._httpx.Response(200, json=self._pull)
+
+    def _handle_ref_read(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        if self._ref_head is None:
+            return self._httpx.Response(404, json={"message": "Not Found"})
+        ref = "/".join(request.url.path.split("/git/ref/")[-1].split("/"))
+        return self._httpx.Response(
+            200,
+            json={
+                "ref": f"refs/{ref}",
+                "object": {"sha": self._ref_head, "type": "commit"},
+            },
+        )
+
+    def _handle_ref_create(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        if self._ref_create_status == 201:
+            return self._httpx.Response(201, json={"object": {"sha": ""}})
+        return self._httpx.Response(
+            self._ref_create_status,
+            json={"message": "Reference already exists"},
+        )
+
+    def _handle_ref_update(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        if self._ref_update_status == 200:
+            return self._httpx.Response(200, json={"object": {"sha": ""}})
+        return self._httpx.Response(
+            self._ref_update_status, json={"message": "Reference does not exist"}
+        )
+
+    def _handle_ref_delete(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        if self._ref_delete_status == 204:
+            return self._httpx.Response(204)
+        return self._httpx.Response(self._ref_delete_status, json={"message": "Not Found"})
 
     @property
     def last_request(self) -> httpx.Request | None:

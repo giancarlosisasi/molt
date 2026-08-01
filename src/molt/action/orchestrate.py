@@ -50,7 +50,7 @@ from typing import TYPE_CHECKING, Any
 
 from molt.action.body import DEFAULT_PR_TITLE, build_pull_request_body, pull_request_entry
 from molt.action.mode import Mode, mode_for, read_pending_changesets
-from molt.action.run import VERSION_BRANCH_PREFIX, run_publish, run_version
+from molt.action.run import VERSION_BRANCH_PREFIX, CommitMode, run_publish, run_version
 from molt.action.utils import get_changelog_entry
 from molt.ecosystem import discover_workspace, find_workspace_root, is_private
 from molt.errors import ExitError, MoltError
@@ -155,6 +155,7 @@ def run_action(
     commit_message: str | None = None,
     base_branch: str | None = None,
     create_releases: bool = True,
+    commit_mode: CommitMode = CommitMode.GIT_CLI,
     forge: Any = None,
     git: Any = None,
 ) -> ActionResult:
@@ -168,6 +169,10 @@ def run_action(
     out -- what a CI checkout leaves behind. It is resolved **before** the version phase runs,
     because :func:`~molt.action.run_version` switches branches and the answer afterwards would be
     the release branch.
+
+    ``commit_mode`` selects how the version phase's commit reaches the remote and defaults to the
+    git command line, so every existing call site and every pinned row is byte-identical with no
+    edit. It only ever reaches the version phase; the publish phase has no commit of its own.
 
     ``forge`` and ``git`` are seams. They default to a real :class:`~molt.forge.GitHubForge` and
     :class:`molt.git.Git`, resolved lazily inside the call.
@@ -192,6 +197,7 @@ def run_action(
             commit_message=commit_message,
             base_branch=base_branch,
             create_releases=create_releases,
+            commit_mode=commit_mode,
             forge=forge,
             git=git,
         )
@@ -222,6 +228,7 @@ def _dispatch(
     commit_message: str | None,
     base_branch: str | None,
     create_releases: bool,
+    commit_mode: CommitMode,
     forge: Any,
     git: Any,
 ) -> ActionResult:
@@ -238,6 +245,7 @@ def _dispatch(
             title=title,
             commit_message=commit_message,
             base_branch=base_branch,
+            commit_mode=commit_mode,
             forge=forge,
             git=git,
         )
@@ -264,6 +272,7 @@ def _version_phase(
     title: str | None,
     commit_message: str | None,
     base_branch: str | None,
+    commit_mode: CommitMode,
     forge: Any,
     git: Any,
 ) -> ActionResult:
@@ -298,6 +307,10 @@ def _version_phase(
         commit_message=commit_message if commit_message is not None else DEFAULT_PR_TITLE,
         branch=base,
         git=seam,
+        commit_mode=commit_mode,
+        # The **same** forge instance the lookup above used, never a second one: its attribution
+        # cache is per instance (forge design D2), and in API mode this is the call that writes.
+        forge=forge_seam,
     )
 
     body = build_pull_request_body(

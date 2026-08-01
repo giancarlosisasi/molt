@@ -162,6 +162,32 @@ def test_every_step_is_a_pinned_action_or_a_bash_script(step: dict[str, Any]) ->
     assert _COMMIT_SHA.match(ref), f"`{uses}` is not pinned to a 40-character commit SHA"
 
 
+def test_the_committer_identity_step_is_conditional_on_the_commit_mode() -> None:
+    """api-commits design D8 -- the identity step is skipped when nothing local commits.
+
+    The step exists because a bare runner has no committer identity and the version phase's local
+    commit would fail with git's own "please tell me who you are". In API mode there is no local
+    commit, and upstream reaches the same place from the other direction: ``setupUser`` opens with
+    ``if (this.octokit) { return; }``.
+
+    It is a real improvement rather than tidiness: the step writes a **global** git identity onto
+    the runner, so a workflow that runs molt's action and then does its own git work would
+    otherwise inherit a ``github-actions[bot]`` it never asked for.
+
+    What this row cannot do is evaluate the condition -- only a runner does that, which is
+    ``CO-12``'s residue, now one item longer (``openspec/GAPS.md`` ``ACM-8``). So it asserts the
+    two things that are checkable here: the condition exists on the identity step, and it names the
+    input rather than something that merely looks like it.
+    """
+    identity = next(step for step in STEPS if "user.name" in str(step.get("run", "")))
+    condition = str(identity.get("if", ""))
+
+    assert condition, "the identity step must be conditional"
+    assert "inputs.commit-mode" in condition, condition
+    assert "'api'" in condition or '"api"' in condition, condition
+    assert "commit-mode" in ACTION["inputs"], "the condition names an input that exists"
+
+
 #: The Dependabot configuration that keeps the pin in ``action.yml`` current, resolved from the same
 #: repository-root anchor.
 DEPENDABOT_PATH = ACTION_PATH.parent / ".github" / "dependabot.yml"

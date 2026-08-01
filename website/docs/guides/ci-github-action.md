@@ -95,6 +95,7 @@ Every input is optional. Supplying only a token runs the version phase with the 
 | `commit` | `Version Packages` | The commit message molt writes on the release branch. Separate from the title. |
 | `create-releases` | `true` | Create one GitHub Release per published package. `true` or `false`; anything else fails the run rather than being read as `false`. |
 | `base-branch` | the branch the workflow runs on | The branch being released. The release branch is `changeset-release/<base-branch>`. |
+| `commit-mode` | `git-cli` | How the version commit reaches the remote. `git-cli` commits and force-pushes from the runner; `api` sends the changes to GitHub instead, so GitHub authors and **signs** the commit. See [Signed commits](#signed-commits). Anything else fails the run. |
 | `github-token` | `${{ github.token }}` | The token molt uses to open the pull request and create releases. A `GITHUB_TOKEN` already in the step's environment wins over this input. |
 
 You also configure PyPI Trusted Publishing once, on PyPI itself, to trust this repository and workflow. After that there is no API token anywhere in the workflow -- see [Publishing](/guides/publishing#trusted-publishing-over-oidc----no-long-lived-token).
@@ -185,6 +186,34 @@ One case writes nothing, deliberately: a run that fails before it observes anyth
 
 Molt also fails the run when a package published but its GitHub Release could not be created. It creates every remaining release first and then fails naming each one it could not create, with the reason -- the packages are already on the index by then, and re-running is safe because a release that already exists is left alone.
 
+## Signed commits
+
+If your release branch is protected by a rule that **requires signed commits**, set `commit-mode: api`:
+
+```yaml
+      - uses: giancarlosisasi/molt@v1
+        with:
+          commit-mode: api
+          publish: molt publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+In that mode molt does not commit locally at all. It runs the version command on the branch the workflow checked out, works out what changed, and sends those changes to GitHub. **GitHub authors the commit**, so GitHub signs it with its own key, marks it *Verified*, and attributes it to whoever owns the token. A branch protection rule that requires signed commits accepts it. The default, `git-cli`, commits and force-pushes from the runner exactly as before -- and an unsigned commit is what such a rule rejects.
+
+**What the mode buys is the signature, and only the signature.** Three things it does not change, and a reader who sees "signed commits" will assume all three:
+
+- It does **not** bypass a review requirement or a required status check. An API commit is subject to branch protection exactly as a push is.
+- It does **not** make the release branch trigger other workflows. A commit authored with the workflow's own `GITHUB_TOKEN` never starts another workflow run, over the API just as over a push.
+- It does **not** sign tags. Molt pushes tags with git in both modes; a tag ref carries no signature either way.
+
+Using a **GitHub App token or a PAT** instead of `${{ github.token }}` changes two of those: the commit is attributed to the app or the user rather than to `github-actions[bot]`, and the release branch *does* trigger workflows.
+
+Two observable differences from the default mode, both harmless on their own and worth knowing if you add steps after molt:
+
+- **The checkout stays on your base branch.** No local `changeset-release/<base>` branch is created or checked out, so a later step cannot inspect one locally. It exists on the remote, which is where the pull request reads it from.
+- **No committer identity is configured on the runner.** The Action's identity step writes a *global* git identity, and in `api` mode there is nothing local to attribute, so the step is skipped. A later step doing its own `git commit` will need to configure one.
+
 ## What molt's Action does not do
 
 Deliberate omissions, each with the reason -- a changesets user migrating looks for exactly these.
@@ -193,7 +222,7 @@ Deliberate omissions, each with the reason -- a changesets user migrating looks 
 |---|---|---|
 | Pre mode (`pre.json`, a title suffix and a banner on the release PR) | -- | Molt has no pre state at all: `1.0.1-next.0` is not a legal PEP 440 version, so `--pre` is a stateless flag on [`molt version`](/cli/version). |
 | Draft pull requests (`prDraft`) | -- | Not implemented; the release PR is always opened ready for review. |
-| Signed commits over the API (`commitMode: github-api`) | -- | Molt always commits with the git CLI, so a repository that requires signed commits on a protected branch cannot use the Action yet. |
+| Signed **tags** in `api` mode (`commitMode` also routes `pushTag`) | -- | Molt pushes tags with git in both modes. A tag ref carries no signature either way -- `git push origin <tag>` and the API create the same object -- so signing the commit solves the problem on its own. |
 | A `cwd` input | -- | The Action runs in the checkout root, so a repository whose Python workspace lives in a subdirectory cannot use it yet. |
 
 ## Migrating from `changesets/action`
@@ -210,7 +239,7 @@ The release branch name is unchanged -- `changeset-release/<base>` -- so an open
 | `branch` | `base-branch` | Renamed for clarity: it is the branch being released, not the release branch. |
 | `cwd` | -- | Not supported. |
 | `setupGitUser` | -- | Absorbed: the Action configures a `github-actions[bot]` identity when the runner has none, and leaves one you configured yourself alone. |
-| `commitMode` | -- | Not supported; the git CLI always. |
+| `commitMode` | `commit-mode` | Renamed, and **one value changes**: `git-cli` is spelled the same, `github-api` becomes `api`. Copying `github-api` across fails the run naming both accepted spellings rather than quietly running the wrong mode. |
 | `prDraft` | -- | Not supported. |
 | `publishedPackages` (output) | `published_packages` | Outputs are snake_case, like every other machine-readable payload molt emits. |
 

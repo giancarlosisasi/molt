@@ -1124,6 +1124,97 @@ def test_get_changed_changeset_files_since_ref_overrides_diff_relative(
 
 
 # ======================================================================================
+# The two CI-loop reads an API commit is built from
+# (`@changesets/ghcommit` src/git.ts::getFileChanges)
+# ======================================================================================
+
+
+def test_diff_name_status_reports_a_modification_an_addition_and_a_deletion(
+    git_repo: GitRepo,
+) -> None:
+    """The statuses ``collect_file_changes`` sorts additions from deletions by.
+
+    Only ``D`` becomes a deletion; everything else describes a path that still exists and whose
+    contents the commit API replaces wholesale. A **rename** is asserted here too, because
+    ``--no-renames`` is what makes git report it as the ``D`` plus the ``A`` molt wants instead of
+    an ``R`` molt would have to split back apart -- and without the flag this row's fourth and
+    fifth entries collapse into one.
+    """
+    run_seed(git_repo, {"keep.txt": "one\n", "gone.txt": "two\n", "old-name.txt": "three\n"})
+    base = read_commit_of(git_repo, "HEAD")
+    write_file(git_repo.root / "keep.txt", "one changed\n")
+    (git_repo.root / "gone.txt").unlink()
+    (git_repo.root / "old-name.txt").rename(git_repo.root / "new-name.txt")
+    write_file(git_repo.root / "brand-new.txt", "four\n")
+    git_repo.run("add", "-A")
+
+    entries = Git(git_repo.root).diff_name_status(base)
+
+    assert sorted(entries) == [
+        ("A", "brand-new.txt"),
+        ("A", "new-name.txt"),
+        ("D", "gone.txt"),
+        ("D", "old-name.txt"),
+        ("M", "keep.txt"),
+    ]
+
+
+def test_both_reads_keep_a_path_with_a_space_and_a_non_ascii_character_intact(
+    git_repo: GitRepo,
+) -> None:
+    """This is what ``-z`` is for, and the only row in the file that can catch a dropped one.
+
+    Without ``-z`` git applies ``core.quotePath`` to a path holding a byte outside ASCII and prints
+    its **escaped rendering** -- ``"caf\\303\\251 note.txt"``, quotes included. molt would then send
+    that string to the host as a filename, so the release would commit a file literally named after
+    the escape sequence. The repository-level ``core.quotePath=false`` molt already passes covers
+    the non-ASCII half; the quoting a space triggers is ``-z``'s alone.
+
+    Both reads are exercised in one row on purpose: they are two different git commands and a
+    dropped flag on either produces the same broken commit.
+    """
+    # Written as escapes, not as literal characters: this repo's sources are ASCII-only because a
+    # cp1252 console corrupts anything else in a pytest failure report. U+00E9 is LATIN SMALL
+    # LETTER E WITH ACUTE, which is two bytes in UTF-8 and therefore two octal escapes under
+    # `core.quotePath`.
+    tracked = "caf\u00e9 note.txt"
+    untracked = "new caf\u00e9.txt"
+    run_seed(git_repo, {tracked: "one\n"})
+    base = read_commit_of(git_repo, "HEAD")
+    write_file(git_repo.root / tracked, "one changed\n")
+    write_file(git_repo.root / untracked, "two\n")
+
+    git = Git(git_repo.root)
+
+    assert git.diff_name_status(base) == [("M", tracked)]
+    assert git.list_untracked() == [untracked]
+
+
+def test_list_untracked_honours_gitignore_and_names_files_inside_a_new_directory(
+    git_repo: GitRepo,
+) -> None:
+    """``--exclude-standard`` is what keeps a virtual environment out of a release commit.
+
+    Without it every ignored file in the tree becomes an addition, which for a real project means
+    trying to commit ``.venv/`` through an API that takes one file at a time. The second half is
+    ``ls-files``' own shape and the commit API depends on it: a brand-new package directory is
+    reported **file by file**, not as the directory, because the API takes files rather than trees.
+    """
+    run_seed(git_repo, {".gitignore": "ignored.txt\n"})
+    write_file(git_repo.root / "ignored.txt", "no\n")
+    write_file(git_repo.root / "packages" / "pkg-a" / "CHANGELOG.md", "# pkg-a\n")
+    write_file(git_repo.root / "packages" / "pkg-a" / "pyproject.toml", "[project]\n")
+
+    untracked = Git(git_repo.root).list_untracked()
+
+    assert untracked == [
+        "packages/pkg-a/CHANGELOG.md",
+        "packages/pkg-a/pyproject.toml",
+    ]
+    assert all("\\" not in path for path in untracked), "paths stay POSIX-shaped on every platform"
+
+
+# ======================================================================================
 # Environment sanity -- keeps every row above honest
 # ======================================================================================
 

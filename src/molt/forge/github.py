@@ -1,12 +1,24 @@
 """The GitHub forge backend: hand-written GraphQL over ``httpx``, with a cache that hits.
 
-**Attribution** is GraphQL; the **write** side is REST. GitHub's schema has no release-creation
-mutation, so :meth:`GitHubForge.create_release` posts to the REST API (``changesets/action`` v1.9.0
-``src/run.ts::createRelease`` reaches for ``octokit.rest.repos.createRelease`` for the same reason),
-and the pull-request lifecycle follows it there: listing and creating a pull request are REST
-upstream too, and molt updates one over REST as well rather than through the GraphQL mutation
-upstream needs only because it also flips draft state (design D2). Every transport goes through the
-one :meth:`GitHubForge._send` loop, so none of them can ship without the resilience the first has.
+**Attribution and commit creation are GraphQL; releases and the pull-request lifecycle are REST.**
+That split is GitHub's own, not molt drifting, and each half is forced:
+
+* GitHub's GraphQL schema has **no release-creation mutation**, so
+  :meth:`GitHubForge.create_release` posts to the REST API (``changesets/action`` v1.9.0
+  ``src/run.ts::createRelease`` reaches for ``octokit.rest.repos.createRelease`` for the same
+  reason), and the pull-request lifecycle follows it there: listing and creating a pull request are
+  REST upstream too, and molt updates one over REST as well rather than through the GraphQL
+  mutation upstream needs only because it also flips draft state (design D2).
+* GitHub has **no signed REST commit**. The REST git-database path
+  (``blobs`` -> ``trees`` -> ``commits`` -> ``refs``) composes the commit object *client-side*, so
+  there is nothing for GitHub to sign and the result shows as unverified. The GraphQL
+  ``createCommitOnBranch`` mutation is the only API that authors a multi-file commit server-side,
+  which is what makes it signed and marked verified -- so :meth:`GitHubForge.create_commit` is
+  GraphQL (api-commits design D2). The ref choreography around it is REST, because GraphQL has no
+  ref mutations either.
+
+Every transport goes through the one :meth:`GitHubForge._send` loop, so none of them can ship
+without the resilience the first has.
 
 Ports ``packages/get-github-info`` @ v3.0.0-next.9 -- ``env.ts``, ``utils.ts``, ``dataloader.ts``,
 ``get-commit-info.ts`` and ``get-pull-request-info.ts`` (research doc 08, the two
@@ -42,8 +54,11 @@ GitHub-flavored changelog generator, which the same page documents as able to "t
 
 from __future__ import annotations
 
+import base64
+import logging
 import os
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 from string import Template
 from typing import TYPE_CHECKING, Any, Literal
@@ -52,6 +67,7 @@ import httpx
 
 from molt.errors import MoltForgeError
 from molt.forge.protocol import (
+    NO_FILE_ADDITIONS,
     AuthorRef,
     CommitInfo,
     CommitRef,
@@ -78,8 +94,16 @@ __all__ = [
     "DEFAULT_SERVER_URL",
     "GITHUB_API_VERSION",
     "REQUEST_TIMEOUT_SECONDS",
+    "TEMPORARY_BRANCH_PREFIX",
     "GitHubForge",
 ]
+
+#: Where a failed temporary-ref cleanup is reported. A release whose commit already landed must not
+#: fail because a leftover ref could not be deleted, so the failure is logged rather than raised --
+#: and the backend has no console seam of its own (``molt.forge`` is imported inside a command
+#: body, never at module scope), so the standard library's logger is the channel. Same mechanism
+#: ``molt.apply`` uses.
+_LOGGER = logging.getLogger("molt.forge")
 
 #: ``env.ts:23-26``. Overridden by ``GITHUB_GRAPHQL_URL`` for GitHub Enterprise Server -- the
 #: override routes the request, and every URL in a result comes from the response, so the rendered
@@ -106,6 +130,14 @@ GITHUB_API_VERSION = "2022-11-28"
 #: The suffix a GraphQL endpoint carries, stripped to derive the REST base when ``GITHUB_API_URL``
 #: is not set (design D5).
 _GRAPHQL_PATH_SUFFIX = "/graphql"
+
+#: Where :meth:`GitHubForge.create_commit` stages a replacement release branch (api-commits design
+#: D4, ``openspec/GAPS.md`` ``ACM-3``). Upstream's ``@changesets/ghcommit`` uses
+#: ``changesets-ghcommit-temp/<branch>``; molt namespaces it under ``molt/`` instead, because it is
+#: molt's ref in the user's repository and a ``changesets-`` prefix in a molt user's branch list is
+#: a support question waiting to happen. One prefix also lets a repository protect or ignore the
+#: whole namespace with a single rule.
+TEMPORARY_BRANCH_PREFIX = "molt/tmp/"
 
 #: The two headers GitHub's REST API asks a client to pin, sent by every REST call this backend
 #: makes. The GraphQL path sends ``Accept: application/json``, which is right there and wrong here.
@@ -191,6 +223,28 @@ fragment PullFragment on PullRequest {
   mergeCommit {
     commitUrl
     abbreviatedOid
+  }
+}
+""")
+
+# The commit mutation is the first query here that DOES use a GraphQL variable, so it escapes `$`
+# as `$$` exactly as the comment above says a future one must. Everything it sends travels in that
+# one `$input` variable rather than being interpolated into the text -- which is not a style
+# choice: `fileChanges` carries base64 file contents and `message` carries whatever a workflow put
+# in its `commit` input, and interpolating either into a query is how a payload becomes a query
+# injection (api-commits task 3.1).
+#
+# The branch is addressed as `{repositoryNameWithOwner, branchName}` (design D2). GitHub's
+# `CommittableBranch` accepts either that pair or a global node id; upstream's
+# `@changesets/ghcommit` resolves the node id first, which is one extra round trip and one more
+# hand-written query to keep.
+_CREATE_COMMIT_MUTATION = Template("""\
+mutation ($$input: CreateCommitOnBranchInput!) {
+  createCommitOnBranch(input: $$input) {
+    commit {
+      oid
+      commitUrl
+    }
   }
 }
 """)
@@ -341,6 +395,27 @@ def _pull_ref(document: Any) -> PullRef | None:
     if not isinstance(number, int) or not isinstance(url, str):
         return None
     return PullRef(number=number, url=url)
+
+
+def _commit_ref(data: Mapping[str, Any]) -> CommitRef:
+    """The commit ``createCommitOnBranch`` created, read off its response.
+
+    ``oid`` and ``commitUrl`` come **off the response** and are never built from a base URL
+    (design D8) -- the rule that makes a GitHub Enterprise Server install work with no backend
+    change. A 200 that carries no commit is a failure rather than a ``None``: the mutation
+    reported success, so molt cannot tell the caller "no commit was needed" and cannot report one
+    either.
+    """
+    payload = data.get("createCommitOnBranch")
+    commit = payload.get("commit") if isinstance(payload, dict) else None
+    if not isinstance(commit, dict):
+        raise MoltForgeError(
+            f"The GitHub API accepted the commit mutation but returned no commit: {data!r}"
+        )
+    oid, url = commit.get("oid"), commit.get("commitUrl")
+    if not isinstance(oid, str):
+        raise MoltForgeError(f"The GitHub API returned a created commit with no oid: {commit!r}")
+    return CommitRef(sha=oid, url=url if isinstance(url, str) else "")
 
 
 def _merge_key(node: Mapping[str, Any]) -> tuple[bool, str]:
@@ -555,6 +630,150 @@ class GitHubForge:
             raise self._http_error(response)
         return self._require_pull_ref(response)
 
+    def create_commit(
+        self,
+        branch: str,
+        *,
+        base: str,
+        message: str,
+        additions: Mapping[str, bytes] = NO_FILE_ADDITIONS,
+        deletions: Sequence[str] = (),
+        repo: str | None = None,
+    ) -> CommitRef | None:
+        """Make ``branch`` carry one commit holding these changes on top of ``base``.
+
+        Ports ``changesets/action`` v1.9.0 ``src/git.ts::pushChanges`` and the
+        ``@changesets/ghcommit`` ``src/core.ts::commitChanges`` choreography it calls
+        (api-commits design D2 and D4; both fetched and read 2026-08-01).
+
+        **GitHub signs what it authors.** The GraphQL ``createCommitOnBranch`` mutation is the only
+        GitHub API that composes a multi-file commit server-side -- "Commits made using this
+        mutation are automatically signed by GitHub if supported and will be marked as verified" --
+        which is the whole product claim behind ``commit-mode: api``. The REST git-database path
+        would deliver every mechanic of this method and none of its purpose, because a commit
+        object the client builds itself has nothing for GitHub to sign.
+
+        The choreography, and why the temporary branch is not an optimisation to remove::
+
+            head = read_ref(branch)
+            if head is None:   create_ref(branch, base); commit on branch
+            elif head == base: commit on branch
+            else:              force temp -> base; commit on temp;
+                               force branch -> commit; delete temp
+
+        Forcing the release branch back to ``base`` and committing on it would be one call fewer
+        and is exactly what ``@changesets/ghcommit`` warns against in its own comment: *"We cannot
+        reset the branch and then commit because if the branch has an existing PR, GitHub will
+        auto-close as it sees there's no changes with the base."* molt is more exposed to that than
+        upstream, because reusing one release pull request across days is pinned product behaviour
+        -- its number, its review comments and its subscribers have to survive every update, and
+        with "automatically delete head branches" on, an auto-close can take the branch with it and
+        the following mutation then fails against a ref that no longer exists.
+
+        The temporary ref is **force-updated** when it already exists rather than created, so a
+        branch left behind by a crashed run cannot fail the next one, and it is deleted in a
+        ``finally`` whose own failure is logged rather than raised -- a release whose commit already
+        landed must not fail on cleanup.
+
+        ``None`` with no additions and no deletions (design D5): the branch is still forced onto
+        ``base``, exactly as ``git-cli`` mode force-pushes unconditionally, but **no mutation is
+        sent**. Sending one with empty ``fileChanges`` would write an empty commit onto the release
+        branch every time a version script no-ops, and the release pull request's diff is a public
+        document.
+
+        A stale ``expectedHeadOid`` is reported and **not retried** -- see :meth:`_commit_on`.
+        """
+        target = self._target_repo(repo)
+        if not message.strip():
+            raise MoltForgeError(
+                "A commit message is required: `message` was empty or whitespace only. GitHub's "
+                "commit headline cannot be blank, so molt refuses before sending the commit."
+            )
+
+        payload_additions = [
+            {"path": path, "contents": base64.b64encode(bytes(contents)).decode("ascii")}
+            for path, contents in sorted(additions.items())
+        ]
+        payload_deletions = [{"path": path} for path in sorted(deletions)]
+
+        if not payload_additions and not payload_deletions:
+            self._force_ref(branch, base, repo=repo)
+            return None
+
+        file_changes: dict[str, Any] = {}
+        if payload_additions:
+            file_changes["additions"] = payload_additions
+        if payload_deletions:
+            file_changes["deletions"] = payload_deletions
+
+        commit_on = partial(
+            self._commit_on, slug=target, expected=base, message=message, changes=file_changes
+        )
+
+        head = self._read_ref(branch, repo=repo)
+        if head is None:
+            self._create_ref(branch, base, repo=repo)
+            return commit_on(branch)
+        if head == base:
+            return commit_on(branch)
+
+        temporary = f"{TEMPORARY_BRANCH_PREFIX}{branch}"
+        self._force_ref(temporary, base, repo=repo)
+        try:
+            commit = commit_on(temporary)
+            self._update_ref(branch, commit.sha, repo=repo)
+        finally:
+            self._delete_ref(temporary, repo=repo)
+        return commit
+
+    def _commit_on(
+        self,
+        branch: str,
+        *,
+        slug: str,
+        expected: str,
+        message: str,
+        changes: Mapping[str, Any],
+    ) -> CommitRef:
+        """Send one ``createCommitOnBranch`` mutation and read the commit back out of it.
+
+        The message is split into GraphQL's ``CommitMessage``: the first line is ``headline``
+        (a required non-empty scalar) and the remainder is ``body``, omitted when there is none.
+
+        **A stale head is reported, never retried.** ``expectedHeadOid`` is what makes this write
+        safe -- it means "commit only if nothing else has touched this branch since I measured it"
+        -- so GitHub answering HTTP 200 with an ``errors`` array saying the head moved is a real
+        answer, not a blip. Retrying past it would commit changes measured against a base that is
+        no longer there, which is how a release silently loses somebody else's work. The retry
+        budget in :meth:`_send` never sees it: a 200 is not a transient status.
+        """
+        headline, _, body = message.partition("\n")
+        commit_message: dict[str, str] = {"headline": headline.strip() or message.strip()}
+        if body.strip():
+            commit_message["body"] = body.strip("\n")
+
+        variables = {
+            "input": {
+                "branch": {
+                    "repositoryNameWithOwner": slug,
+                    "branchName": branch,
+                },
+                "expectedHeadOid": expected,
+                "message": commit_message,
+                "fileChanges": dict(changes),
+            }
+        }
+        try:
+            data = self._request(_CREATE_COMMIT_MUTATION.substitute(), variables=variables)
+        except MoltForgeError as error:
+            raise MoltForgeError(
+                f"GitHub refused the commit on {branch!r} at {expected}: {error}. Another run may "
+                f"have moved the branch; molt does not retry, because the changes were measured "
+                f"against {expected} and committing them onto a different head would discard that "
+                f"work."
+            ) from error
+        return _commit_ref(data)
+
     def _require_pull_ref(self, response: httpx.Response) -> PullRef:
         """Read a pull-request document into a :class:`PullRef`, or fail saying what came back.
 
@@ -602,6 +821,113 @@ class GitHubForge:
             url=url if isinstance(url, str) else "",
             id=identifier if isinstance(identifier, int) else 0,
         )
+
+    # -- refs (api-commits design D4) --------------------------------------------------
+    #
+    # REST, because GraphQL has no ref mutations. Each one is a single request through `_send`, so
+    # the retry budget, the `Retry-After` floor, the 403 ruling and the mandatory token apply to
+    # them exactly as they do to everything else this backend sends.
+
+    def _read_ref(self, branch: str, *, repo: str | None) -> str | None:
+        """The sha ``refs/heads/<branch>`` points at, or ``None`` when the host does not have it.
+
+        ``GET /repos/{owner}/{repo}/git/ref/heads/{branch}`` -- the **singular** ``ref`` endpoint,
+        which answers 404 for a branch that does not exist. Absence is a value here: a first release
+        run has no release branch yet, and that is the ordinary case rather than a failure.
+        """
+        response = self._send(
+            "GET", f"{self._repo_url(repo)}/git/ref/heads/{branch}", headers=_REST_HEADERS
+        )
+        if response.status_code == httpx.codes.NOT_FOUND:
+            return None
+        if response.status_code != httpx.codes.OK:
+            raise self._http_error(response)
+        document = self._json_body(response)
+        if not isinstance(document, dict):
+            raise MoltForgeError(f"The GitHub API returned an unexpected payload: {document!r}")
+        obj = document.get("object")
+        sha = obj.get("sha") if isinstance(obj, dict) else None
+        if not isinstance(sha, str):
+            raise MoltForgeError(
+                f"The GitHub API answered a ref lookup for {branch!r} with no sha: "
+                f"{response.text[:200]!r}"
+            )
+        return sha
+
+    def _create_ref(self, branch: str, sha: str, *, repo: str | None) -> None:
+        """Create ``refs/heads/<branch>`` at ``sha`` (``POST .../git/refs``)."""
+        response = self._send(
+            "POST",
+            f"{self._repo_url(repo)}/git/refs",
+            json={"ref": f"refs/heads/{branch}", "sha": sha},
+            headers=_REST_HEADERS,
+        )
+        if response.status_code != httpx.codes.CREATED:
+            raise self._http_error(response)
+
+    def _force_ref(self, branch: str, sha: str, *, repo: str | None) -> None:
+        """Point ``refs/heads/<branch>`` at ``sha``, creating it if it is not there yet.
+
+        A create that answers 422 means the ref already exists, which is the **normal** state for a
+        temporary branch a previous run was interrupted before deleting. Treating that as fatal
+        would let one crashed run block every release afterwards, so it force-updates instead.
+        """
+        response = self._send(
+            "POST",
+            f"{self._repo_url(repo)}/git/refs",
+            json={"ref": f"refs/heads/{branch}", "sha": sha},
+            headers=_REST_HEADERS,
+        )
+        if response.status_code == httpx.codes.CREATED:
+            return
+        if response.status_code == httpx.codes.UNPROCESSABLE_ENTITY:
+            self._update_ref(branch, sha, repo=repo)
+            return
+        raise self._http_error(response)
+
+    def _update_ref(self, branch: str, sha: str, *, repo: str | None) -> None:
+        """Force ``refs/heads/<branch>`` onto ``sha`` (``PATCH .../git/refs/heads/<branch>``).
+
+        ``force: true`` because the release branch is molt's to own and is replaced on every run --
+        which is already true in ``git-cli`` mode, where the same step is a ``git push --force``
+        (``run.ts:146``). A non-forcing update is not expressible and nothing asks for one.
+
+        A branch that vanished between the read and this update answers 422; it is reported naming
+        the branch rather than silently recreated, because a ref disappearing mid-run means
+        something else is writing to this repository.
+        """
+        response = self._send(
+            "PATCH",
+            f"{self._repo_url(repo)}/git/refs/heads/{branch}",
+            json={"sha": sha, "force": True},
+            headers=_REST_HEADERS,
+        )
+        if response.status_code != httpx.codes.OK:
+            detail = self._http_error(response)
+            raise MoltForgeError(f"GitHub would not move the branch {branch!r} to {sha}: {detail}")
+
+    def _delete_ref(self, branch: str, *, repo: str | None) -> None:
+        """Delete ``refs/heads/<branch>``. **Never raises** -- cleanup must not fail a release.
+
+        This runs in the ``finally`` of :meth:`create_commit`, so it can be reached both after a
+        commit that landed and after a mutation that failed. In the first case the release is
+        already done and failing on a leftover ref would report a failure that did not happen; in
+        the second, raising here would replace the real error with this one. Either way the next
+        run force-updates the ref rather than creating it, so a survivor is harmless.
+        """
+        try:
+            response = self._send(
+                "DELETE", f"{self._repo_url(repo)}/git/refs/heads/{branch}", headers=_REST_HEADERS
+            )
+        except MoltForgeError as error:
+            _LOGGER.warning("Could not delete the temporary branch %s: %s", branch, error)
+            return
+        if response.status_code not in (httpx.codes.NO_CONTENT, httpx.codes.OK):
+            _LOGGER.warning(
+                "Could not delete the temporary branch %s: HTTP %s",
+                branch,
+                response.status_code,
+            )
 
     # -- resolution --------------------------------------------------------------------
 
@@ -824,14 +1150,25 @@ class GitHubForge:
         # would otherwise return `None` into a caller annotated to receive a response.
         raise MoltForgeError("The GitHub request loop ended without a result")
 
-    def _request(self, query: str) -> Mapping[str, Any]:
+    def _request(
+        self, query: str, *, variables: Mapping[str, Any] | None = None
+    ) -> Mapping[str, Any]:
         """POST ``query`` through :meth:`_send` and return its ``data`` block.
 
         The **GraphQL half** of the transport: this is where a 200 stops being success on its own
         (design D6) and where anything that is not a 200 becomes an error. Everything about naps,
         statuses and headers lives one level down.
+
+        ``variables`` is omitted from the body entirely when it is ``None``, so the two attribution
+        queries -- which use none -- still send exactly ``{"query": ...}``, the shape
+        ``dataloader.ts:107`` sends and ``tests/forge/test_github.py`` pins. The commit mutation is
+        the one caller that supplies them, and it supplies **everything** that way rather than
+        interpolating file contents into query text.
         """
-        response = self._send("POST", self.api_url, json={"query": query})
+        payload: dict[str, Any] = {"query": query}
+        if variables is not None:
+            payload["variables"] = dict(variables)
+        response = self._send("POST", self.api_url, json=payload)
         if response.status_code != httpx.codes.OK:
             raise self._http_error(response)
         return self._read_data(response)
