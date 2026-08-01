@@ -23,6 +23,8 @@ You install the distribution `molt-cli` and type the command `molt`. See [Instal
 | `molt git-tag` | Create annotated git tags for released packages. | [molt git-tag](/cli/git-tag) |
 | `molt pre` | Prerelease control. Molt has no persistent pre-mode: prereleases are the stateless `molt version --pre` flag. | [Prerelease control](/cli/pre) |
 
+The distribution also installs a second command, `molt-action`, which runs the whole release loop for a CI workflow. It is **not** part of the `molt` command table and is not documented as a verb: molt's [composite GitHub Action](/guides/ci-github-action) is what invokes it, and everything it does is reachable from the commands above. You never need to type it.
+
 ## The default command
 
 `molt` with no command word runs [`molt add`](/cli/add). An option that belongs to `add` also works with no command word:

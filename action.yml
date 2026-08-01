@@ -1,0 +1,146 @@
+# molt's composite GitHub Action -- `uses: giancarlosisasi/molt@v1`.
+#
+# It lives at the repository root because that is what lets a workflow reference it as
+# `owner/repo@ref` with no path, and because the action's ref is then a molt ref: the action and
+# the CLI it drives cannot drift apart into separate release processes (change design D1).
+#
+# A *composite* action rather than a compiled JavaScript one: molt's action is the CLI it installs,
+# so there is no bundled `dist/` to review and no second implementation to keep in step. Every step
+# below is either the uv install, one line of git configuration, or `molt-action` itself.
+#
+# `action.yml` is a data file under test. `tests/action/test_action_yml.py` parses this file and
+# asserts that every input has an option on the entry point, that the outputs are exactly the four
+# documented names, that `runs.using` is composite, and that every `uses:` is pinned to a commit.
+#
+# Ported from `changesets/action` v1.9.0 `action.yml` and `src/index.ts` (read 2026-07-31): the
+# input meanings, the token precedence (`index.ts:14-20`) and the committer identity
+# (`index.ts:39-46`). Not ported: the `.netrc` write (`index.ts:47-53`) and the npm registry
+# plumbing (`index.ts:75-115`) -- molt pushes with the checkout's own credentials and publishes
+# over PyPI Trusted Publishing.
+name: molt
+description: >-
+  Automate a Python release with molt: keep a "Version Packages" pull request in sync with pending
+  changesets, then publish, tag and cut host releases when it merges.
+author: Giancarlos Isasi
+
+branding:
+  icon: package
+  color: purple
+
+inputs:
+  molt-version:
+    description: >-
+      The exact molt-cli version to install, for example "0.1.0". Empty installs the latest
+      release. Pinning is recommended: it is what keeps this action and the CLI it runs in
+      lockstep between releases.
+    required: false
+    default: ""
+  publish:
+    description: >-
+      The command that publishes the release, for example "molt publish". Leave it empty to run
+      the version phase only -- supplying it is also what makes the publish phase reachable at all.
+    required: false
+    default: ""
+  title:
+    description: The title of the release pull request.
+    required: false
+    default: Version Packages
+  commit:
+    description: >-
+      The commit message molt writes on the release branch. Separate from the pull-request title,
+      so a repository with a conventional-commit convention can rename one and keep the other.
+    required: false
+    default: Version Packages
+  create-releases:
+    description: >-
+      Create one host release per published package, with that package's changelog entry as the
+      body. "true" or "false". Switching it off does not change what is published.
+    required: false
+    default: "true"
+  base-branch:
+    description: >-
+      The branch being released. The release branch is "changeset-release/<base-branch>" and the
+      pull request targets it. Defaults to the branch the workflow is running on.
+    required: false
+    default: ${{ github.ref_name }}
+  github-token:
+    description: >-
+      The token molt uses to open the pull request and create releases. Defaults to the workflow's
+      own token. A GITHUB_TOKEN already in the environment wins over this input.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  published:
+    description: '"true" when at least one package was published this run.'
+    value: ${{ steps.molt-action.outputs.published }}
+  published_packages:
+    description: A JSON array of {"name", "version"} objects for what went out.
+    value: ${{ steps.molt-action.outputs.published_packages }}
+  has_changesets:
+    description: '"true" when the repository has pending changesets.'
+    value: ${{ steps.molt-action.outputs.has_changesets }}
+  pull_request_number:
+    description: >-
+      The number of the release pull request this run opened or updated. Empty when the run opened
+      none, which is every publish run.
+    value: ${{ steps.molt-action.outputs.pull_request_number }}
+
+runs:
+  using: composite
+  steps:
+    # Pinned to a commit, not to a tag: the action's own advice is to pin third-party actions, so
+    # it holds itself to it. molt's release process owns this pin (openspec/GAPS.md CO-4).
+    - name: Install uv
+      uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+    # Ports `setupGitUser` (index.ts:39-46). A bare runner has no committer identity and the
+    # version phase's commit would fail with git's own "please tell me who you are". Set only when
+    # unset, so a workflow that configured its own keeps it.
+    - name: Configure a committer identity
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -z "$(git config --get user.name || true)" ]; then
+          git config --global user.name "github-actions[bot]"
+        fi
+        if [ -z "$(git config --get user.email || true)" ]; then
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        fi
+
+    # Every input reaches the script through `env:`, never through a `${{ ... }}` interpolation
+    # inside the shell line. An interpolated title containing a quote or a `$(...)` would be
+    # executed by bash; an environment variable is data no matter what it holds.
+    - name: Run molt's release loop
+      id: molt-action
+      shell: bash
+      env:
+        MOLT_ACTION_VERSION: ${{ inputs.molt-version }}
+        MOLT_ACTION_PUBLISH: ${{ inputs.publish }}
+        MOLT_ACTION_TITLE: ${{ inputs.title }}
+        MOLT_ACTION_COMMIT: ${{ inputs.commit }}
+        MOLT_ACTION_CREATE_RELEASES: ${{ inputs.create-releases }}
+        MOLT_ACTION_BASE_BRANCH: ${{ inputs.base-branch }}
+        MOLT_ACTION_TOKEN_INPUT: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+
+        # Token precedence, ported from index.ts:14-20: a GITHUB_TOKEN already in the environment
+        # wins, so a workflow written before the input existed keeps working.
+        export GITHUB_TOKEN="${GITHUB_TOKEN:-${MOLT_ACTION_TOKEN_INPUT}}"
+
+        # An empty `molt-version` means "no `==` pin", not `molt-cli==`.
+        requirement="molt-cli"
+        if [ -n "${MOLT_ACTION_VERSION}" ]; then
+          requirement="molt-cli==${MOLT_ACTION_VERSION}"
+        fi
+
+        # `uvx --from` puts the ephemeral environment's bin directory on PATH for the child
+        # process, so the `molt version` and `molt publish` commands the loop spawns resolve to
+        # this same pinned install.
+        uvx --from "${requirement}" molt-action \
+          --publish "${MOLT_ACTION_PUBLISH}" \
+          --title "${MOLT_ACTION_TITLE}" \
+          --commit-message "${MOLT_ACTION_COMMIT}" \
+          --create-releases "${MOLT_ACTION_CREATE_RELEASES}" \
+          --base-branch "${MOLT_ACTION_BASE_BRANCH}"

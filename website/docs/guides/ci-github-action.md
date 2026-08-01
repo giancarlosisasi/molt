@@ -8,8 +8,10 @@ Automate the whole release loop on GitHub: molt keeps a "Version Packages" pull 
 
 Molt ships a composite GitHub Action that installs itself with [uv](/ecosystems/uv) and runs the release loop for you. Because it is the same `molt` you run locally, nothing about the automation is GitHub-specific magic -- the Action just wires molt's own commands into the two events that matter.
 
-:::warning What ships today
-The **release loop itself is implemented**: mode selection, the release pull request (opened, reused and force-updated), its body, and the GitHub Release per published package. The **`action.yml` wrapper is not published yet** -- `uses: molt/action@v1` in the workflow below does not resolve, and the `molt-version` / `publish` inputs are the shape it will take. Until it lands, drive the same loop yourself with plain `molt` commands (see [Molt is not tied to GitHub Actions](#molt-is-not-tied-to-github-actions)).
+The Action lives at the root of the molt repository, so you reference it as `uses: giancarlosisasi/molt@v1` -- there is no separate action repository to keep in step with the CLI.
+
+:::warning The `v1` tag is not published yet
+Everything on this page ships: `action.yml`, its seven inputs, its four outputs, and the release loop behind them. What does not exist yet is the moving **`v1` tag** the line below references, because that is release-process work rather than code. Until it is cut, reference a commit (`uses: giancarlosisasi/molt@<sha>`) -- which is what you should do in production anyway -- or drive the same loop yourself with plain `molt` commands (see [Molt is not tied to GitHub Actions](#molt-is-not-tied-to-github-actions)).
 :::
 
 ## The two-phase loop
@@ -70,17 +72,29 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v6
-
-      - uses: molt/action@v1
+      - uses: giancarlosisasi/molt@v1
         with:
-          molt-version: "0.1.x"   # pin molt; keeps the Action and the tool in lockstep
+          molt-version: "0.1.0"   # pin molt; keeps the Action and the tool in lockstep
           publish: molt publish   # the command to run in the publish phase
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-That is the entire release automation for a single package or a monorepo. In production, pin `actions/checkout`, `astral-sh/setup-uv`, and `molt/action` to full commit SHAs.
+That is the entire release automation for a single package or a monorepo. There is **no separate `astral-sh/setup-uv` step**: the Action installs uv itself, from a commit-pinned copy it owns. In production, pin `actions/checkout` and `giancarlosisasi/molt` to full commit SHAs.
+
+## Inputs
+
+Every input is optional. Supplying only a token runs the version phase with the defaults below.
+
+| Input | Default | What it does |
+|---|---|---|
+| `molt-version` | latest release | The exact `molt-cli` version to install, for example `"0.1.0"`. Empty installs the latest release. See [Pinning molt](#pinning-molt). |
+| `publish` | *(empty)* | The command that publishes the release, for example `molt publish`. Leave it empty to run the version phase only -- supplying it is also what makes the publish phase reachable at all. |
+| `title` | `Version Packages` | The title of the release pull request. |
+| `commit` | `Version Packages` | The commit message molt writes on the release branch. Separate from the title. |
+| `create-releases` | `true` | Create one GitHub Release per published package. `true` or `false`; anything else fails the run rather than being read as `false`. |
+| `base-branch` | the branch the workflow runs on | The branch being released. The release branch is `changeset-release/<base-branch>`. |
+| `github-token` | `${{ github.token }}` | The token molt uses to open the pull request and create releases. A `GITHUB_TOKEN` already in the step's environment wins over this input. |
 
 You also configure PyPI Trusted Publishing once, on PyPI itself, to trust this repository and workflow. After that there is no API token anywhere in the workflow -- see [Publishing](/guides/publishing#trusted-publishing-over-oidc----no-long-lived-token).
 
@@ -96,7 +110,9 @@ Starting from `permissions: {}` at the workflow level and granting per job is th
 
 ## Pinning molt
 
-`molt-version` pins the exact molt the Action runs, and it defaults to the Action's own version. Pinning it is what stops the Action and the CLI from drifting apart between releases -- a failure mode worth designing out from the start. Because the Action installs molt with `uvx` from a warm uv cache, a pinned version resolves in seconds.
+`molt-version` pins the exact molt the Action runs. Left empty, it installs the **latest release** -- it does not read the Action's own ref, because turning a ref like `v1` (or a branch, or a SHA) into a PyPI specifier is guesswork, and guessing a version is the opposite of pinning one.
+
+Pin it. A pinned version is what stops your releases from changing behavior on a day you did not touch anything, and because the Action installs molt with `uvx` from a warm uv cache, a pinned version resolves in seconds. `uvx` also puts that same install on `PATH` for the commands molt spawns, so `publish: molt publish` runs the version you pinned and not some other one.
 
 ## Molt is not tied to GitHub Actions
 
@@ -104,9 +120,9 @@ The Action is a convenience, not a dependency. Every phase above is a plain molt
 
 ```bash
 # Anywhere uv is available -- no GitHub, no Action
-uvx molt-cli molt version
+uvx --from molt-cli molt version
 git commit -am "Version Packages"
-uvx molt-cli molt publish
+uvx --from molt-cli molt publish
 ```
 
 This is a deliberate contrast with changesets, whose publish flow is coupled to its own GitHub Action. Molt keeps the orchestration and the CLI as the same code path, so "run it in CI" and "run it by hand" are the same tool.
@@ -121,12 +137,58 @@ Molt is tested on Windows, macOS, and Linux from the first commit, so the CLI be
 
 ## Action outputs
 
-The Action exposes outputs so later steps can react to a release:
+The Action exposes four outputs so later steps can react to a release:
 
-- `published` -- `"true"` when at least one package was published this run.
-- `published_packages` -- a JSON array of `{ "name", "version" }` for what went out.
-- `has_changesets` -- `"true"` when pending changesets exist (the version phase ran).
-- `pull_request_number` -- the number of the created or updated "Version Packages" PR.
+| Output | Value |
+|---|---|
+| `published` | `"true"` when at least one package was published this run. |
+| `published_packages` | A JSON array of `{ "name", "version" }` objects for what went out. `[]` when nothing was published. |
+| `has_changesets` | `"true"` when pending changesets exist. |
+| `pull_request_number` | The number of the created or updated "Version Packages" PR. **Empty** when the run opened none, which is every publish run. |
+
+```yaml
+      - uses: giancarlosisasi/molt@v1
+        id: molt
+        with:
+          publish: molt publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - if: steps.molt.outputs.published == 'true'
+        run: echo "released ${{ steps.molt.outputs.published_packages }}"
+```
+
+Every value is written to `GITHUB_OUTPUT` in the delimiter (heredoc) form, so a value containing a newline or an equals sign survives intact.
+
+## What molt's Action does not do
+
+Deliberate omissions, each with the reason -- a changesets user migrating looks for exactly these.
+
+| changesets has | molt does not | Why |
+|---|---|---|
+| Pre mode (`pre.json`, a title suffix and a banner on the release PR) | -- | Molt has no pre state at all: `1.0.1-next.0` is not a legal PEP 440 version, so `--pre` is a stateless flag on [`molt version`](/cli/version). |
+| Draft pull requests (`prDraft`) | -- | Not implemented; the release PR is always opened ready for review. |
+| Signed commits over the API (`commitMode: github-api`) | -- | Molt always commits with the git CLI, so a repository that requires signed commits on a protected branch cannot use the Action yet. |
+| A `version` command override | -- | Molt always runs `molt version`. The publish command **is** configurable (`publish`); the version command is not. |
+| A `cwd` input | -- | The Action runs in the checkout root, so a repository whose Python workspace lives in a subdirectory cannot use it yet. |
+
+## Migrating from `changesets/action`
+
+The release branch name is unchanged -- `changeset-release/<base>` -- so an open release pull request, its number and any branch protection rule written against that name all survive the switch.
+
+| `changesets/action@v1` | molt | Note |
+|---|---|---|
+| `publish` | `publish` | Same meaning: the command run in the publish phase. |
+| `version` | -- | Not supported; molt always runs `molt version`. |
+| `title` | `title` | Same spelling. |
+| `commit` | `commit` | Same spelling. |
+| `createGithubReleases` | `create-releases` | Renamed: kebab-case, and host-neutral -- molt's forge seam means the host is not necessarily GitHub. |
+| `branch` | `base-branch` | Renamed for clarity: it is the branch being released, not the release branch. |
+| `cwd` | -- | Not supported. |
+| `setupGitUser` | -- | Absorbed: the Action configures a `github-actions[bot]` identity when the runner has none, and leaves one you configured yourself alone. |
+| `commitMode` | -- | Not supported; the git CLI always. |
+| `prDraft` | -- | Not supported. |
+| `publishedPackages` (output) | `published_packages` | Outputs are snake_case, like every other machine-readable payload molt emits. |
 
 ## See also
 

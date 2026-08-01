@@ -68,6 +68,14 @@ dependencies = [
 # The distribution is `molt-cli` (the `molt` name is squatted on PyPI by a dead 2012 project),
 # but the command users type is `molt`. See roadmap/tech-stack.md §1.
 molt = "molt.cli:main"
+# The CI entry point the composite action runs (`action.yml`). Deliberately a SECOND console
+# script rather than a `molt` verb: `tests/cli/test_cli.py::test_help_lists_every_command_in_the_table`
+# asserts the registered command set equals a frozen tuple, and `molt --help` is a documented
+# product surface that should not grow a verb only a CI runner types (change design D2). `uvx`
+# puts this on `PATH` beside `molt`, so the version and publish commands the loop spawns resolve
+# to the same pinned install. Requires `uv sync` after this edit before the script exists in the
+# environment.
+molt-action = "molt.action.cli:main"
 
 [project.entry-points."molt.commit"]
 # The default commit-message convention (`add` + `version` messages), registered as an entry point
