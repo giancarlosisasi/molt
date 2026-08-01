@@ -29,6 +29,21 @@ Running `molt version` with **no pending changesets exits 1** with `No unrelease
 
 All mutations are **buffered and flushed together**. Changelog generation runs first and acts as the transactional guard: if it fails, nothing is written to disk. A mid-run failure therefore never leaves you half-bumped with changesets still on disk, so re-running cannot double-bump. This fixes a known changesets footgun.
 
+### Where the new version is written
+
+A released package's new version goes **where its version source says**, which is
+`[project].version` only for a statically versioned package. A package that declares
+`dynamic = ["version"]` and keeps the value in a file -- hatch's `__about__.py`, setuptools'
+`{ attr = ... }` or `{ file = ... }`, pdm's file source -- has that file rewritten instead, and its
+`pyproject.toml` is left completely alone. Only the version text moves: comments, imports, other
+assignments and the file's own line endings all survive byte-for-byte.
+
+A package whose version comes from a **git tag** (setuptools-scm, hatch-vcs, versioningit) is named
+in a warning and skipped -- molt cannot yet create the tag that would realize a new version. A
+package that declares its version dynamic and gives molt no way to find it is named the same way.
+Either way the rest of the release goes ahead, and a changeset that *names* such a package still
+fails the run. See [Dynamic versions](/ecosystems/dynamic-versions).
+
 ### Prereleases and snapshots
 
 - `--pre {a,b,rc,dev}` produces a PEP 440 prerelease (`1.1.0rc0`, `1.1.0a1`, `1.1.0.dev3`). It is **stateless** -- there is no pre-mode and no `pre.json`. Run it again and the counter increments (`rc0` to `rc1`); run plain `molt version` to finalize to the stable version. See [Prerelease control](/cli/pre) and [Prerelease mode](/concepts/prerelease).

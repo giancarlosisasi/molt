@@ -161,24 +161,45 @@ class ProjectBuilder:
     def add_package(
         self,
         name: str,
-        version: str = "0.1.0",
+        version: str | None = "0.1.0",
         deps: Sequence[str] | None = None,
         dev_deps: Sequence[str] | None = None,
         optional_deps: Mapping[str, Sequence[str]] | None = None,
         private: bool = False,
+        *,
+        dynamic_version: bool = False,
+        version_source: Mapping[str, Any] | None = None,
+        tool_tables: Mapping[str, Any] | None = None,
+        build_requires: Sequence[str] | None = None,
     ) -> Self:
         """Write ``packages/<name>/pyproject.toml``. ``deps`` are PEP 508 strings (a list).
 
         ``private=True`` marks the package unpublishable with the ``Private :: Do Not Upload``
         classifier -- the Python analogue of npm's ``"private": true`` (research doc 02 section
         12.1). Private packages are exempt from the skip-tree config rule and from publishing.
+
+        The four keyword-only arguments describe a **dynamically versioned** member and are all
+        additive -- every existing call site keeps working unchanged and no existing fixture's bytes
+        move:
+
+        * ``version=None`` writes no ``[project].version`` at all;
+        * ``dynamic_version=True`` writes ``dynamic = ["version"]`` (PEP 621);
+        * ``version_source`` writes ``[tool.molt.version_source]`` -- the explicit declaration molt
+          reads from a member's **own** manifest;
+        * ``tool_tables`` writes arbitrary ``[tool.<x>]`` tables, which is how a fixture spells
+          ``[tool.hatch.version] path = ...`` or ``[tool.setuptools.dynamic]``;
+        * ``build_requires`` writes ``[build-system].requires``, which is how a fixture spells an
+          scm plugin.
         """
         pkg_dir = self.root / "packages" / name
         pkg_dir.mkdir(parents=True, exist_ok=True)
         doc = self._toml.document()
         project = self._toml.table()
         project["name"] = name
-        project["version"] = version
+        if version is not None:
+            project["version"] = version
+        if dynamic_version:
+            project["dynamic"] = ["version"]
         project["dependencies"] = list(deps) if deps else []
         if private:
             project["classifiers"] = ["Private :: Do Not Upload"]
@@ -192,8 +213,50 @@ class ProjectBuilder:
             groups = self._toml.table()
             groups["dev"] = list(dev_deps)
             doc["dependency-groups"] = groups
+        if build_requires:
+            build_system = self._toml.table()
+            build_system["requires"] = list(build_requires)
+            build_system["build-backend"] = "hatchling.build"
+            doc["build-system"] = build_system
+        tables = dict(tool_tables or {})
+        if version_source is not None:
+            molt_table = dict(tables.get("molt", {}))
+            molt_table["version_source"] = dict(version_source)
+            tables["molt"] = molt_table
+        if tables:
+            tool = self._toml.table()
+            for tool_name, body in tables.items():
+                tool[tool_name] = self._nested(body)
+            doc["tool"] = tool
         (pkg_dir / "pyproject.toml").write_bytes(self._toml.dumps(doc).encode("utf-8"))
         return self
+
+    def _nested(self, value: Any) -> Any:
+        """A mapping as a tomlkit table, recursively; anything else passes through.
+
+        Built explicitly rather than handed to ``tomlkit`` as a plain ``dict`` so a nested table
+        renders as ``[tool.hatch.version]`` rather than as an inline table -- which is what a real
+        manifest looks like, and therefore what the fixtures must produce.
+        """
+        if isinstance(value, Mapping):
+            table = self._toml.table()
+            for key, member in value.items():
+                table[key] = self._nested(member)
+            return table
+        return value
+
+    def write_file(self, relative_path: str, text: str) -> Path:
+        """Write ``text`` at ``relative_path`` under the workspace root, creating parents.
+
+        Exists so a fixture can drop an ``__about__.py`` beside a member. ``write_bytes``, like
+        everything else this builder writes: ``Path.write_text`` translates newlines, and a version
+        file whose line endings differ by platform is exactly what the ``file`` version source's
+        splice must never depend on.
+        """
+        path = self.root / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(text.encode("utf-8"))
+        return path
 
     def write_changeset(
         self,

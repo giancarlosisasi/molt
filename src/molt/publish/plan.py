@@ -203,18 +203,28 @@ def build_publish_plan(
     """
     from pathlib import Path as _Path
 
-    from molt.ecosystem import discover_workspace, find_workspace_root
+    from molt.ecosystem import discover_workspace, find_workspace_root, resolve_workspace_versions
 
     root = find_workspace_root(_Path(cwd))
     config = _resolve_config(root, console=console)
     workspace = discover_workspace(root, config.ecosystem)
+    # Version-sources design D1: one resolution pass, so a member whose version lives in a file is
+    # a publish candidate at its real version rather than being skipped for having none.
+    resolution = resolve_workspace_versions(workspace)
 
     candidates = _selected_packages(workspace, config, filter)
     public_index = targets_public_pypi(repository)
     # Design D1: before any registry read, and before the output file is opened.
-    _refuse_snapshots(candidates, public_index=public_index)
+    _refuse_snapshots(candidates, public_index=public_index, resolution=resolution)
 
-    entries = _classify(candidates, workspace, git=git, public_index=public_index, console=console)
+    entries = _classify(
+        candidates,
+        workspace,
+        git=git,
+        public_index=public_index,
+        console=console,
+        resolution=resolution,
+    )
     plan = chunk_entries(entries, workspace, config, console=console)
 
     if output is not None:
@@ -310,7 +320,16 @@ def _selected_packages(
     ]
 
 
-def _refuse_snapshots(candidates: Iterable[Package], *, public_index: bool) -> None:
+def _version_of(package: Package, resolution: Any = None) -> str | None:
+    """``package``'s version -- declared, or resolved by its version source (design D10)."""
+    if package.version is not None:
+        return package.version
+    return None if resolution is None else resolution.version_of(package.name)
+
+
+def _refuse_snapshots(
+    candidates: Iterable[Package], *, public_index: bool, resolution: Any = None
+) -> None:
     """Refuse a snapshot-shaped release aimed at the public index (design D1).
 
     Raised before the first registry read and before the output file is written, so a refused run
@@ -320,9 +339,9 @@ def _refuse_snapshots(candidates: Iterable[Package], *, public_index: bool) -> N
     if not public_index:
         return
     offenders = [
-        f"{package.name} {package.version}"
+        f"{package.name} {_version_of(package, resolution)}"
         for package in candidates
-        if is_snapshot_version(package.version)
+        if is_snapshot_version(_version_of(package, resolution))
     ]
     if not offenders:
         return
@@ -347,6 +366,7 @@ def _classify(
     git: Any,
     public_index: bool,
     console: Any,
+    resolution: Any = None,
 ) -> list[PlanEntry]:
     """Turn selected packages into plan entries, in workspace order.
 
@@ -364,10 +384,11 @@ def _classify(
 
     entries: list[PlanEntry] = []
     for package in candidates:
-        version = package.version
+        version = _version_of(package, resolution)
         if version is None:
-            # A dynamically-versioned member has no version to compare or to tag; the version-source
-            # abstraction that would resolve it is still owed (research doc 02 section 12.5).
+            # molt has no version for this member -- either it declares none at all, or it declares
+            # one dynamic and no version source could resolve it (version-sources design D7). There
+            # is nothing to compare against the index and nothing to tag, so it is left out.
             continue
         directory = _relative_directory(package, workspace)
         if package.private:

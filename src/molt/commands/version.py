@@ -66,12 +66,12 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Callable, Iterator, Sequence
     from datetime import datetime
     from pathlib import Path
 
     from molt.config.models import Config
-    from molt.ecosystem import Workspace
+    from molt.ecosystem import VersionResolution, VersionWrite, Workspace
     from molt.engine import PlanView
 
 __all__ = ["PRE_PHASES", "run"]
@@ -138,7 +138,7 @@ def run(
     from pathlib import Path
 
     from molt.changeset import CHANGESET_DIR, read_changesets
-    from molt.ecosystem import discover_workspace, find_workspace_root
+    from molt.ecosystem import discover_workspace, find_workspace_root, resolve_workspace_versions
     from molt.errors import ExitError
 
     if console is None:
@@ -150,8 +150,16 @@ def run(
         root = find_workspace_root(Path(cwd) if cwd is not None else Path.cwd())
         config = _resolve_config(root, console=console)
         workspace = discover_workspace(root, config.ecosystem)
+        # The version-source resolution pass, run **once** for the whole command and threaded
+        # everywhere a version is read (version-sources design D1). Doing it here rather than per
+        # step is what makes the plan, the changelog, the manifest edits and the report agree on
+        # one value for every package.
+        resolution = resolve_workspace_versions(workspace)
+        _warn_unresolved(resolution, console=console)
 
-        failures = _validate(workspace, config, ignore=ignore, snapshot=snapshot, pre=pre)
+        failures = _validate(
+            workspace, config, ignore=ignore, snapshot=snapshot, pre=pre, resolution=resolution
+        )
         if failures:
             # One block, one call (design D2). Reporting per failure is what turns a
             # misconfiguration into a series of round trips.
@@ -167,7 +175,7 @@ def run(
             console.warn(_NO_CHANGESETS)
             raise ExitError(1)
 
-        unversionable = _unversionable_releases(changesets, workspace)
+        unversionable = _unversionable_releases(changesets, workspace, resolution)
         if unversionable:
             console.error("\n".join(unversionable))
             raise ExitError(1)
@@ -183,6 +191,7 @@ def run(
             pre=pre,
             git=git,
             root=root,
+            resolution=resolution,
         )
         if snapshot is not None:
             _warn_if_not_uploadable(view, console=console)
@@ -195,7 +204,14 @@ def run(
             return view
 
         touched = _apply(
-            plan, workspace, effective, root=root, snapshot=snapshot, pre=pre, forge=forge
+            plan,
+            workspace,
+            effective,
+            root=root,
+            snapshot=snapshot,
+            pre=pre,
+            forge=forge,
+            resolution=resolution,
         )
         _refresh_lockfile(root, console=console)
         _commit(effective, view, touched, root=root, git=git, console=console, snapshot=snapshot)
@@ -264,6 +280,25 @@ def _resolve_config(root: Path, *, console: Any) -> Config:
 # ======================================================================================
 
 
+def _warn_unresolved(resolution: VersionResolution, *, console: Any) -> None:
+    """Name every member whose dynamic version molt could not resolve. One line each, once.
+
+    Design D7's third bucket, and it is deliberately noisy. A package declaring
+    ``dynamic = ["version"]`` is by definition a distribution somebody intends to build, and the
+    silence it used to get is the defect this seam exists to remove. The **second** bucket -- a
+    member with no version and no ``dynamic`` declaration, i.e. an application, a docs site or a
+    workspace-only root -- prints nothing at all, because a warning per run about a package nobody
+    intends to release is noise that trains people to ignore warnings.
+
+    Warn and carry on, by owner ruling 2026-08-01 (session 6): failing the run was the stricter
+    alternative and was declined, because one unreleasable package must not block every other
+    release. molt still stops when a changeset *names* such a package --
+    :func:`_unversionable_releases`.
+    """
+    for entry in resolution.unresolved:
+        console.warn(f"{entry.reason} It is skipped; the rest of the release is unaffected.")
+
+
 def _validate(
     workspace: Workspace,
     config: Config,
@@ -271,6 +306,7 @@ def _validate(
     ignore: Sequence[str] | None,
     snapshot: str | bool | None,
     pre: str | None,
+    resolution: VersionResolution | None = None,
 ) -> list[str]:
     """Every reason this invocation cannot proceed, in report order.
 
@@ -298,7 +334,7 @@ def _validate(
             "PyPI would reject or silently renormalize it."
         )
     effective = config if ignore is None else config.model_copy(update={"ignore": tuple(ignore)})
-    failures.extend(_unskipped_dependents(workspace, effective))
+    failures.extend(_unskipped_dependents(workspace, effective, resolution))
     return failures
 
 
@@ -318,7 +354,9 @@ def _unknown_ignore_names(workspace: Workspace, ignore: Sequence[str] | None) ->
     ]
 
 
-def _unskipped_dependents(workspace: Workspace, config: Config) -> list[str]:
+def _unskipped_dependents(
+    workspace: Workspace, config: Config, resolution: VersionResolution | None = None
+) -> list[str]:
     """Skipped packages whose published dependents are not also skipped (``index.ts:182-235``).
 
     Publishing a package whose dependency is frozen ships a broken constraint, so molt refuses and
@@ -337,11 +375,13 @@ def _unskipped_dependents(workspace: Workspace, config: Config) -> list[str]:
     from molt.engine import to_engine_packages as to_packages
     from molt.names import normalize_name
 
-    skipped = skipped_package_names(workspace, config)
+    skipped = skipped_package_names(workspace, config, resolution)
     if not skipped:
         return []
     graph, _valid, _errors = get_dependents_graph(
-        to_packages(workspace), to_engine_config(config, workspace), ignore_dev=True
+        to_packages(workspace, resolution=resolution),
+        to_engine_config(config, workspace, resolution),
+        ignore_dev=True,
     )
     dependents = {normalize_name(name): names for name, names in graph.items()}
     exempt = {normalize_name(name) for name in skipped}
@@ -359,35 +399,55 @@ def _unskipped_dependents(workspace: Workspace, config: Config) -> list[str]:
     return failures
 
 
-def _unversionable_releases(changesets: Sequence[Any], workspace: Workspace) -> list[str]:
-    """Changesets that ask to release a package which declares no version. One failure each.
+def _unversionable_releases(
+    changesets: Sequence[Any], workspace: Workspace, resolution: VersionResolution | None = None
+) -> list[str]:
+    """Changesets that ask to release a package molt has no version for. One failure each.
 
     The command-level face of ``RPE-4``, and the reason folding versionless packages into the skip
-    list does not quietly become "molt skips dynamic versions". Two different situations share one
-    representation (``Package.version is None``) and need opposite answers:
+    list does not quietly become "molt skips dynamic versions". A package with no version reaches
+    here for one of three reasons (version-sources design D7) and they need different answers:
 
-    * a versionless package **nobody asked to release** -- an app, a docs site -- must not fail the
-      run. It is skipped, exactly as ``molt add`` already refuses to offer it;
-    * a versionless package **a changeset names** is a request molt cannot satisfy, and answering it
-      with silence is the "silently drop half a repo" failure the whole `RPE-4` refusal exists to
-      prevent. Without this check the changeset is neither applied nor consumed and nothing says
-      why, because by then the package is indistinguishable from an ignored one.
+    * it is **not a versioned distribution** at all -- no version, no ``dynamic`` -- an app or a
+      docs site. Skipped silently when nobody asks for it;
+    * it declares a dynamic version molt **could not resolve**. Skipped with a warning naming it
+      (:func:`_warn_unresolved`);
+    * it declares a dynamic version molt **did** resolve. Not skipped at all -- it is released like
+      any statically versioned package.
+
+    In the first two cases a changeset that *names* the package is a request molt cannot satisfy,
+    and answering it with silence is the "silently drop half a repo" failure the whole ``RPE-4``
+    refusal exists to prevent. The message repeats the resolution's own reason when there is one,
+    so the user sees why rather than only that.
 
     Asked after the changesets are read, so it is not part of the pre-read validation block; it is
     the same phase upstream validates changeset contents in (``index.ts:235-284``). A name the
     workspace does not contain is left alone -- the engine reports that one, with its own message.
     """
+    reasons: dict[str, str] = (
+        {} if resolution is None else {entry.name: entry.reason for entry in resolution.unresolved}
+    )
     failures: list[str] = []
     for changeset in changesets:
         for release in changeset.releases:
             package = workspace.get(release.name)
-            if package is not None and package.version is None:
-                failures.append(
-                    f'Changeset {changeset.id} asks to release "{release.name}", which declares no '
-                    "[project].version (or declares it dynamic). molt cannot yet resolve a dynamic "
-                    "version source, so it cannot compute a release for that package. Give it a "
-                    "static version, or remove it from the changeset."
+            if package is None:
+                continue
+            if resolution is not None and resolution.version_of(release.name) is not None:
+                continue
+            if resolution is None and package.version is not None:
+                continue
+            detail = reasons.get(package.name)
+            failures.append(
+                f'Changeset {changeset.id} asks to release "{release.name}", which molt has no '
+                f"version for, so it cannot compute a release for that package. "
+                + (
+                    detail
+                    if detail is not None
+                    else "Give it a static [project].version, declare where its version lives with "
+                    "[tool.molt.version_source], or remove it from the changeset."
                 )
+            )
     return failures
 
 
@@ -405,6 +465,7 @@ def _assemble(
     pre: str | None,
     git: Any,
     root: Path,
+    resolution: VersionResolution | None = None,
 ) -> tuple[Any, PlanView]:
     """Compute the release plan, and its reportable view.
 
@@ -426,8 +487,10 @@ def _assemble(
         changesets,
         # Every versionless member is already in the effective `ignore`, so the placeholder is
         # never a version molt plans from -- see `to_engine_packages`.
-        to_engine_packages(workspace, placeholder_version=UNVERSIONED_PLACEHOLDER),
-        to_engine_config(config, workspace),
+        to_engine_packages(
+            workspace, placeholder_version=UNVERSIONED_PLACEHOLDER, resolution=resolution
+        ),
+        to_engine_config(config, workspace, resolution),
         pre=_pre_phase(pre),
         snapshot=_snapshot_params(snapshot, config, git=git, root=root),
     )
@@ -515,6 +578,7 @@ def _apply(
     snapshot: str | bool | None,
     pre: str | None,
     forge: Any,
+    resolution: VersionResolution | None = None,
 ) -> list[Path]:
     """Write the plan, and return every path that changed.
 
@@ -522,21 +586,49 @@ def _apply(
     configuration or network work that a pure writer must not do: the template is read off disk
     (gap ``CT-3``), the date is one timestamp for the whole run, and the forge is **one** instance
     for the whole release so its attribution cache survives across packages (forge design D2).
+
+    The ``version_writer`` is the fourth: apply must not learn where a version lives, so it asks
+    the resolved source instead (version-sources design D9).
     """
     from molt.apply import apply_release_plan, to_apply_packages
     from molt.engine import to_engine_config
 
     return apply_release_plan(
         plan,
-        to_apply_packages(workspace),
-        to_engine_config(config, workspace),
+        to_apply_packages(workspace, resolution=resolution),
+        to_engine_config(config, workspace, resolution),
         cwd=root,
         snapshot=snapshot,
         pre=pre,
         forge=forge if forge is not None else _forge(config),
         changelog_template=_changelog_template(root, config),
         date=_release_date(config),
+        version_writer=_version_writer(resolution),
     )
+
+
+def _version_writer(
+    resolution: VersionResolution | None,
+) -> Callable[[str, str], Sequence[VersionWrite] | None] | None:
+    """Turn a resolution into :func:`molt.apply.apply_release_plan`'s ``version_writer`` seam.
+
+    ``None`` in, ``None`` out: a caller with no resolution leaves apply on exactly the code path it
+    was on before the seam existed (version-sources design D10).
+
+    The returned writer answers with whatever the package's own source says, and ``None`` for a
+    package the resolution does not know -- which is design D9's "apply does its own
+    ``[project].version`` edit". A statically versioned package therefore takes the byte-identical
+    old path even in a run that resolved everything, because
+    :meth:`molt.ecosystem.version_sources.static.StaticVersionSource.plan_write` returns ``None``.
+    """
+    if resolution is None:
+        return None
+
+    def writer(name: str, new_version: str) -> Sequence[VersionWrite] | None:
+        source = resolution.source_of(name)
+        return None if source is None else source.plan_write(new_version)
+
+    return writer
 
 
 def _changelog_template(root: Path, config: Config) -> str | None:

@@ -439,3 +439,33 @@ def test_output_events_are_json_objects_one_per_line(
         event("pkg-a@1.0.0", "pkg-a"),
         event("pkg-b@1.0.0", "pkg-b"),
     ]
+
+
+def test_a_file_sourced_package_is_tagged_at_its_resolved_version(
+    tmp_path: Path, console: RecordingConsole, fake_git: FakeGit
+) -> None:
+    """Net-new (``implement-version-sources``): the tag carries the version the plan named.
+
+    ``GTC-1`` recorded a package with no ``[project].version`` as *silently excluded* from tagging,
+    the same shape as ``VC-1`` and ``RPE-4``, and owed it to whoever built the version-source
+    abstraction. This is that: a member whose version lives in a file is tagged, and only a member
+    molt genuinely has no version for stays excluded. The tag shape itself is unchanged --
+    ``<pep503-name>@<version>`` in a workspace.
+    """
+    root = make_workspace(tmp_path / "project", [Pkg("pkg-b")])
+    write_lf(
+        root / "packages" / "pkg-a" / "pyproject.toml",
+        "[project]\n"
+        'name = "pkg-a"\n'
+        'dynamic = ["version"]\n'
+        "dependencies = []\n"
+        "\n"
+        "[tool.molt.version_source]\n"
+        'kind = "file"\n'
+        'path = "about.py"\n',
+    )
+    write_lf(root / "packages" / "pkg-a" / "about.py", '__version__ = "2.5.0"\n')
+
+    run(cwd=root, console=console, git=fake_git)
+
+    assert sorted(fake_git.tags) == ["pkg-a@2.5.0", "pkg-b@1.0.0"]

@@ -37,7 +37,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from molt.ecosystem import discover_workspace, find_workspace_root, read_toml
+from molt.ecosystem import (
+    discover_workspace,
+    find_workspace_root,
+    read_toml,
+    resolve_workspace_versions,
+)
 from molt.errors import ExitError, MoltError
 
 if TYPE_CHECKING:
@@ -173,11 +178,12 @@ def run_version(
     before = _versions_by_directory(discover_workspace(workspace_root))
     _require_success(_run_script(script, cwd=root))
     after = discover_workspace(workspace_root)
+    after_versions = _versions_by_directory(after)
 
     changed = tuple(
         _changed_package(package, workspace_root)
         for package in after.packages
-        if before.get(package.directory) != package.version
+        if before.get(package.directory) != after_versions.get(package.directory)
     )
 
     if not seam.is_clean():
@@ -290,8 +296,21 @@ def _versions_by_directory(workspace: Workspace) -> dict[Path, str | None]:
     Keyed on the directory rather than the name because a release may **rename** nothing but a
     workspace can gain a package mid-run; a directory that was not there before has no previous
     version, so the package reads as changed, which is the answer a pull-request body wants.
+
+    The version is read through :func:`molt.ecosystem.resolve_workspace_versions`, not off
+    ``[project].version``. A package whose version lives in a ``__about__.py`` reads as ``None``
+    from the manifest **both** before and after the script, so a manifest-only diff would report it
+    as unchanged and it would be missing from the release pull request that just bumped it -- silent
+    in exactly the case the version-source seam exists to make visible. Resolution never raises, so
+    a member it cannot resolve simply keeps its manifest answer.
     """
-    return {package.directory: package.version for package in workspace.packages}
+    resolution = resolve_workspace_versions(workspace)
+    return {
+        package.directory: (
+            package.version if package.version is not None else resolution.version_of(package.name)
+        )
+        for package in workspace.packages
+    }
 
 
 def _changed_package(package: Package, workspace_root: Path) -> ChangedPackage:

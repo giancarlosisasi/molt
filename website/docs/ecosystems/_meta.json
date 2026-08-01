@@ -1,6 +1,19 @@
 [
-  { "type": "file", "name": "overview", "label": "Overview" },
-  { "type": "file", "name": "uv", "label": "uv" },
+  {
+    "type": "file",
+    "name": "overview",
+    "label": "Overview"
+  },
+  {
+    "type": "file",
+    "name": "uv",
+    "label": "uv"
+  },
+  {
+    "type": "file",
+    "name": "dynamic-versions",
+    "label": "Dynamic versions"
+  },
   {
     "type": "file",
     "name": "poetry-hatch-pdm-setuptools",

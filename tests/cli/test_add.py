@@ -1836,3 +1836,61 @@ def test_the_flag_path_issues_no_detection_warning(tmp_project: ProjectBuilder) 
     assert git.refs == [], "no detection runs on the flag path"
     assert console.warnings == []
     assert read_only_changeset(root).releases == [("pkg-a", "patch")]
+
+
+# --------------------------------------------------------------------------------------
+# Version sources -- what `molt add` may name, and why it refuses what it refuses
+# --------------------------------------------------------------------------------------
+
+
+def test_a_file_sourced_package_is_offered_for_selection(
+    tmp_project: ProjectBuilder, seeded_ids: SeededIds, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Net-new (``implement-version-sources``): a resolved dynamic version is an ordinary package.
+
+    Before the seam, ``shouldSkipPackage``'s "no version" arm dropped this package from the offer
+    list with no explanation -- a library using hatch's ``__about__.py`` idiom was simply invisible
+    to ``molt add``. It is now selectable on exactly the same terms as a statically versioned one.
+    """
+    seed_changeset_ids(monkeypatch, seeded_ids)
+    tmp_project.add_package(
+        "pkg-a",
+        version=None,
+        dynamic_version=True,
+        version_source={"kind": "file", "path": "about.py"},
+    )
+    tmp_project.add_package("pkg-b", "1.0.0")
+    tmp_project.write_file("packages/pkg-a/about.py", '__version__ = "1.2.3"\n')
+    (tmp_project.root / ".changeset").mkdir(parents=True, exist_ok=True)
+
+    add_changeset(tmp_project.root, patch=["pkg-a"], message=SUMMARY)
+
+    assert read_only_changeset(tmp_project.root).releases == [("pkg-a", "patch")]
+
+
+def test_an_unresolvable_dynamic_package_is_refused_by_its_reason(
+    tmp_project: ProjectBuilder,
+) -> None:
+    """``AC-4``'s message gets sharper: the reason names the version source, not "versionless".
+
+    A name that resolves to a discovered-but-excluded package is reported with its reason class
+    rather than as a typo (owner ruling ``AC-4``, 2026-07-30). "versionless" was true and useless
+    for a package that plainly declares a version -- dynamically. The refusal now says molt could
+    not work out **where** the version comes from, and names the table that would answer it.
+    """
+    tmp_project.add_package("pkg-a", version=None, dynamic_version=True)
+    tmp_project.add_package("pkg-b", "1.0.0")
+    (tmp_project.root / ".changeset").mkdir(parents=True, exist_ok=True)
+    console = RecordingConsole()
+
+    with pytest.raises(ExitError) as excinfo:
+        add_changeset(tmp_project.root, console=console, patch=["pkg-a"], message=SUMMARY)
+
+    assert excinfo.value.code == 1
+    message = "\n".join(console.errors)
+    assert "pkg-a" in message
+    assert "[tool.molt.version_source]" in message, message
+    assert "versionless" not in message, (
+        "a package that declares dynamic = ['version'] is not versionless; saying so sends the "
+        "user looking for a version key that should not be there"
+    )

@@ -154,6 +154,70 @@
         'title': 'SnapshotOptions',
         'type': 'object',
       }),
+      'VersionSourceConfig': dict({
+        'additionalProperties': False,
+        'description': '''
+          Where the package declared by **this** manifest keeps its version.
+          
+          molt-native: changesets has no counterpart at all, because in JavaScript a version only ever
+          lives in ``package.json`` (research doc 02 section 12.5; research README section 5 item 1). So
+          there is no ``camelCase`` migration alias on any member -- the same reasoning
+          :attr:`ChangelogOptions.template` uses.
+          
+          The key is scoped to **one package on purpose**: where a version lives is a property of a
+          package, not of a workspace, so :mod:`molt.ecosystem` reads it from each member's own manifest.
+          A workspace-level default was put to the owner and declined for the precedence rule it would
+          add (ruling 2026-08-01, session 6). It is nonetheless a fully declared, validated field here
+          because in a **single-package** repository the root manifest *is* the member manifest, so the
+          table sits in the very ``[tool.molt]`` section this model parses -- and with configuration
+          strict everywhere, an undeclared key there would make a correct configuration fail to load.
+          Declaring it also puts it in the generated JSON Schema, which is where a user discovers it.
+          
+          ``kind`` is a free string rather than a ``Literal`` because an installed distribution may supply
+          a fourth source through the ``molt.version_source`` entry-point group. The names molt ships are
+          in the field's description, so schema-driven autocomplete still shows them, and an unresolvable
+          kind fails at *use* with a message naming what is available -- the same arrangement
+          ``changelog``'s generator reference already uses.
+        ''',
+        'properties': dict({
+          'kind': dict({
+            'description': "Where this package's version lives: 'static' ([project].version), 'file' (a version literal in a named file), 'tag' (derived from a git tag; detected but not yet releasable), or a source supplied by an installed plugin.",
+            'title': 'Kind',
+            'type': 'string',
+          }),
+          'path': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': "File holding the version, relative to this package's own directory. Required for kind = 'file'.",
+            'title': 'Path',
+          }),
+          'pattern': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': "Regular expression locating the version inside that file. It must capture a group named 'version'; only that group is replaced when molt writes a new version.",
+            'title': 'Pattern',
+          }),
+        }),
+        'required': list([
+          'kind',
+        ]),
+        'title': 'VersionSourceConfig',
+        'type': 'object',
+      }),
     }),
     'additionalProperties': False,
     'description': '''
@@ -376,6 +440,18 @@
         ]),
         'title': 'Update Internal Dependents',
         'type': 'string',
+      }),
+      'version_source': dict({
+        'anyOf': list([
+          dict({
+            '$ref': '#/$defs/VersionSourceConfig',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'description': "Where THIS package keeps its version. Absent means molt detects it from the build-tool tables. Declared in the package's own pyproject.toml, not the workspace root's.",
       }),
     }),
     'title': 'Config',

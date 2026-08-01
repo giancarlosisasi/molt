@@ -127,6 +127,10 @@ MOLT_KEY_ORDER: tuple[str, ...] = (
     "bump_workspace_sources_only",
     "ecosystem",
     "forge",
+    # molt-NEW (`implement-version-sources`): where a package keeps its version. Its default is
+    # `None` and TOML has no null, so `init` orders it here but never writes it -- the absence is
+    # what "detect the source" means.
+    "version_source",
 )
 
 
@@ -561,20 +565,34 @@ def test_detects_a_single_package_project(tmp_path: Path, console: RecordingCons
 
 
 def test_every_supported_option_is_written(tmp_path: Path, console: RecordingConsole) -> None:
-    """``IC-3``, ruled 2026-07-31 -- all 15 keys, not upstream's 8.
+    """``IC-3``, ruled 2026-07-31 -- every option that HAS a default, not upstream's 8.
 
     A TOML table has no ``$schema`` affordance, so an editor cannot offer the options that are
     missing from the file: the file *is* the discovery surface, and it used to hide two thirds of
     the tool. The mirror of the existing programmatic cross-check on ``MOLT_KEY_ORDER``, and the
     row that fails when a field is added to ``Config`` and forgotten here.
+
+    **Amended by ``implement-version-sources``.** The row used to assert exact equality with
+    ``Config.model_fields``. ``version_source`` is the first top-level field whose default is
+    ``None``, and TOML has no null -- so writing it is impossible, and writing a *placeholder*
+    would change what the file means (an absent ``version_source`` is precisely what tells molt to
+    detect the source). The expectation is therefore derived from the defaults rather than from the
+    field list, which keeps the guarantee the row was written for: a field added to ``Config`` and
+    forgotten in ``init`` still fails here. The ``None``-omission rule itself is held by
+    ``test_the_written_config_round_trips_to_the_defaults`` below, which loads the file back.
     """
-    from molt.config.models import Config
+    from molt.config.models import Config, default_config
 
     root = make_project(tmp_path / "project")
 
     run(cwd=root, console=console, prompts=default_prompts())
 
-    assert set(molt_table(root)) == set(Config.model_fields)
+    defaults = default_config()
+    expected = {name for name in Config.model_fields if getattr(defaults, name) is not None}
+    assert set(molt_table(root)) == expected
+    assert "version_source" not in molt_table(root), (
+        "a field whose default is None has no TOML spelling; its absence is the setting"
+    )
 
 
 def test_the_written_config_round_trips_to_the_defaults(

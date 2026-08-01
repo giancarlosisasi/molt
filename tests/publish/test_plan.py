@@ -988,3 +988,33 @@ def test_the_envelope_version_guard_lives_in_the_plan_reader(
         f"the refusal names the file it refuses, or an operator holding three plan files cannot "
         f"tell which one is wrong ({why})"
     )
+
+
+def test_a_file_sourced_package_is_a_publish_candidate_at_its_resolved_version(
+    tmp_project: ProjectBuilder, pypi_registry: PyPIRegistry
+) -> None:
+    """Net-new (``implement-version-sources``): a dynamic version reaches the publish plan.
+
+    ``_classify`` used to ``continue`` past any member with ``version is None``, with a comment
+    saying the version-source abstraction that would resolve it was still owed. It is owed no
+    longer for a file-backed source: the member is classified, queried under its PEP 503 name and
+    planned at the version its version file holds. A member molt still cannot resolve keeps the
+    old behaviour and is left out.
+    """
+    tmp_project.add_package(
+        "pkg-a",
+        version=None,
+        dynamic_version=True,
+        version_source={"kind": "file", "path": "about.py"},
+    )
+    tmp_project.write_file("packages/pkg-a/about.py", '__version__ = "1.2.3"\n')
+    tmp_project.add_package("pkg-b", version=None, dynamic_version=True)
+    console, git = RecordingConsole(), FakeGit()
+
+    plan = build_publish_plan(cwd=tmp_project.root, console=console, git=git)
+
+    assert plan == [[publish_entry("pkg-a", "1.2.3")]], (
+        "pkg-a is planned at the version its version file holds; pkg-b, which molt cannot "
+        "resolve, is left out exactly as a versionless member always was"
+    )
+    assert "pkg-a" in pypi_reads(pypi_registry), "and it is queried under its own name"

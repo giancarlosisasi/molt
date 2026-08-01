@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from molt.ecosystem import Package, Workspace
+    from molt.ecosystem import Package, VersionResolution, Workspace
 
 __all__ = ["ApplyPackage", "ApplyPackages", "to_apply_packages"]
 
@@ -65,23 +65,35 @@ class ApplyPackages:
     packages: tuple[ApplyPackage, ...]
 
 
-def to_apply_packages(workspace: Workspace) -> ApplyPackages:
+def to_apply_packages(
+    workspace: Workspace, *, resolution: VersionResolution | None = None
+) -> ApplyPackages:
     """Adapt a discovered :class:`molt.ecosystem.Workspace` for the apply layer's input shape.
 
     Discovery order is preserved: it is the order manifests are visited and therefore the order
     they are flushed in, which ``tests/apply/test_apply.py::EXPECTED_FLUSH_ORDER`` observes.
+
+    ``resolution`` supplies the current version of a member that keeps it outside
+    ``[project].version`` (version-sources design D10). Apply compares that value against the
+    planned one to decide whether a version write is needed at all, so a resolved member with an
+    unchanged version is still a no-op. ``None`` keeps the pre-seam behaviour exactly.
     """
     return ApplyPackages(
         root_dir=workspace.root,
-        root_package=None if workspace.root_package is None else _package(workspace.root_package),
-        packages=tuple(_package(package) for package in workspace.packages),
+        root_package=(
+            None if workspace.root_package is None else _package(workspace.root_package, resolution)
+        ),
+        packages=tuple(_package(package, resolution) for package in workspace.packages),
     )
 
 
-def _package(package: Package) -> ApplyPackage:
+def _package(package: Package, resolution: VersionResolution | None = None) -> ApplyPackage:
+    version = package.version
+    if version is None and resolution is not None:
+        version = resolution.version_of(package.name)
     return ApplyPackage(
         name=package.name,
-        version=package.version if package.version is not None else NO_DECLARED_VERSION,
+        version=version if version is not None else NO_DECLARED_VERSION,
         dir=package.directory,
         manifest_path=package.manifest_path,
     )

@@ -75,6 +75,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
     from datetime import datetime
 
+    from molt.ecosystem import VersionWrite
+
 __all__ = ["CHANGELOG_ESCAPE_LINES", "SIDE_EFFECT_ORDER", "apply_release_plan"]
 
 _LOGGER = logging.getLogger("molt.apply")
@@ -82,6 +84,12 @@ _LOGGER = logging.getLogger("molt.apply")
 #: The flush order, stated once so it is reviewable rather than emerging from call order
 #: (design D3). ``tests/apply/test_apply.py::test_side_effects_are_flushed_in_the_documented_order``
 #: pins it by observing real writes.
+#:
+#: ``"manifests"`` is the **version-and-pins** phase, not literally "``pyproject.toml`` files": a
+#: package whose version lives in a ``__about__.py`` has that file written here too, because it is
+#: the same edit -- the version write -- reaching a different destination (version-sources design
+#: D9). Whatever a ``version_writer`` returns is buffered in this phase, after the manifests whose
+#: dependency pins moved, and flushed with them.
 SIDE_EFFECT_ORDER: Final = (
     "manifests",
     "changelogs",
@@ -326,6 +334,7 @@ def apply_release_plan(
     forge: object | None = None,
     changelog_template: str | None = None,
     date: datetime | None = None,
+    version_writer: Callable[[str, str], Sequence[VersionWrite] | None] | None = None,
 ) -> list[Path]:
     """Apply ``plan`` to the working tree and return every path it touched.
 
@@ -344,6 +353,25 @@ def apply_release_plan(
     caller's job (gap ``CT-3``); and ``date`` is the single per-run timestamp a dated template
     renders. Supplying either of the last two switches entry assembly from
     :func:`molt.changelog.get_changelog_entry` to :func:`molt.changelog.render_changelog`.
+
+    ``version_writer`` is the version-source seam (version-sources design D9). It is called with
+    ``(package name, new version)`` for every released package and answers with **one of three**
+    things:
+
+    ==========================  ===========================================================
+    ``None``                    apply does its own ``edit_toml(("project", "version"))``
+                                edit -- byte-identical to a run with no writer at all
+    a sequence of writes        apply does **no** manifest version edit and buffers exactly
+                                these instead
+    an empty sequence           there is nothing to write on disk for this package
+    ==========================  ===========================================================
+
+    ``None`` rather than an empty sequence as the "not supplied" default is what keeps every
+    existing caller -- and ``tests/apply``'s pinned rows -- on exactly the code path they were on
+    before the seam existed. Everything the writer returns joins the **same** buffer as manifests,
+    changelogs and consumed changesets and is flushed with them, so atomicity is preserved by
+    construction rather than by a second mechanism. The writer runs during planning, not during the
+    flush.
 
     The returned list is the caller's ``git add`` argument -- ``molt version`` stages exactly these
     paths (``cli/src/commands/version/index.ts:132-138``) -- so it includes **deleted** changeset
@@ -370,15 +398,17 @@ def apply_release_plan(
 
     operations: list[_Operation] = []
 
-    _plan_manifest_edits(
+    version_files = _plan_manifest_edits(
         matched,
         live=live,
         packages=packages,
         config=config,
         manifests=manifests,
         snapshot=snapshot is not None and snapshot is not False,
+        version_writer=version_writer,
     )
     operations.extend(_Write(path, text.encode("utf-8")) for path, text in manifests.pending())
+    operations.extend(version_files)
     operations.extend(
         _plan_changelogs(
             live,
@@ -506,7 +536,8 @@ def _plan_manifest_edits(
     config: ApplyConfigLike,
     manifests: _Manifests,
     snapshot: bool,
-) -> None:
+    version_writer: Callable[[str, str], Sequence[VersionWrite] | None] | None = None,
+) -> list[_Write]:
     """Buffer the version and dependency-range edits for every manifest ``apply`` may rewrite.
 
     Which manifests those are is a closed set: the packages **in the release plan**, plus the
@@ -529,17 +560,28 @@ def _plan_manifest_edits(
     The root is visited last and **never versioned** -- it takes dependency edits only. When the
     root *is* the single package of a non-workspace repository it is already in ``live`` and its
     version moves like any other member's.
+
+    Returns the writes a ``version_writer`` asked for, so the caller can buffer them in the
+    manifests phase of :data:`SIDE_EFFECT_ORDER` -- they *are* the version write, only landing
+    somewhere other than ``[project].version`` (version-sources design D9).
     """
     versions = {normalize_name(release.name): release for release, _ in live}
     frozen = {normalize_name(release.name) for release, _ in matched} - set(versions)
     member_dirs = _member_dirs(packages)
+    version_files: list[_Write] = []
     for release, package in matched:
         written = str(release.new_version)
         if normalize_name(release.name) not in frozen and written != package.version:
-            manifests.set(
-                package.manifest_path,
-                edit_toml(manifests.text(package.manifest_path), _PROJECT_VERSION_PATH, written),
-            )
+            planned = None if version_writer is None else version_writer(release.name, written)
+            if planned is None:
+                manifests.set(
+                    package.manifest_path,
+                    edit_toml(
+                        manifests.text(package.manifest_path), _PROJECT_VERSION_PATH, written
+                    ),
+                )
+            else:
+                version_files.extend(_Write(write.path, write.data) for write in planned)
         _rewrite_dependencies(
             package,
             versions=versions,
@@ -561,6 +603,7 @@ def _plan_manifest_edits(
             snapshot=snapshot,
             member_dirs=member_dirs,
         )
+    return version_files
 
 
 def _rewrite_dependencies(

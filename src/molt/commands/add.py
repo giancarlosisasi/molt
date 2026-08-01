@@ -230,7 +230,7 @@ def run(
 
     from molt.changeset import CHANGESET_DIR
     from molt.config import load_config
-    from molt.ecosystem import discover_workspace, find_workspace_root
+    from molt.ecosystem import discover_workspace, find_workspace_root, resolve_workspace_versions
     from molt.errors import ExitError
 
     if console is None:
@@ -252,7 +252,11 @@ def run(
 
     config = _load_config(root, console, load_config)
     workspace = discover_workspace(root, config.ecosystem)
-    versionable = _versionable_packages(workspace, config)
+    # One version-source resolution pass for the whole command (version-sources design D1). It is
+    # what lets `add` offer a package whose version lives in a `__about__.py`, and what lets the
+    # refusal for one molt cannot resolve name the reason instead of saying "versionless".
+    resolution = resolve_workspace_versions(workspace)
+    versionable = _versionable_packages(workspace, config, resolution)
     if not versionable:
         console.error(_NO_VERSIONABLE_PACKAGES)
         raise ExitError(1)
@@ -266,6 +270,7 @@ def run(
             config=config,
             workspace=workspace,
             versionable=versionable,
+            resolution=resolution,
             empty=empty,
             since=since,
             message=message,
@@ -339,7 +344,9 @@ def _selectable_packages(workspace: Workspace) -> list[Package]:
     return [pkg for pkg in workspace.packages if pkg.directory != root_package.directory]
 
 
-def _versionable_packages(workspace: Workspace, config: Config) -> list[Package]:
+def _versionable_packages(
+    workspace: Workspace, config: Config, resolution: Any = None
+) -> list[Package]:
     """The packages a changeset may name, sorted by normalized name.
 
     Ports ``shouldSkipPackage`` (``should-skip-package/src/index.ts:13-22``) minus its npm half:
@@ -348,8 +355,10 @@ def _versionable_packages(workspace: Workspace, config: Config) -> list[Package]
       membership is literal, never a second glob match. Both sides still go through PEP 503
       normalization (research README section 4.5): one forgotten call site is a package that
       silently never matches its own entry.
-    - **no version** -- a manifest with no ``[project].version``. In Python that also covers
-      ``dynamic = ["version"]``, which :class:`molt.ecosystem.Package` represents as ``None``.
+    - **no version** -- with no ``resolution`` this is a manifest with no ``[project].version``;
+      with one it is a package **no version source resolved** (version-sources design D10). That is
+      what puts a package whose version lives in a ``__about__.py`` back on the list, while one
+      whose dynamic source molt could not resolve stays off it.
     - **private** -- the ``Private :: Do Not Upload`` classifier, withheld only when
       ``private_packages.version`` is off. It defaults to **on**, because a private application is
       still versioned so its internal pins stay correct.
@@ -361,11 +370,18 @@ def _versionable_packages(workspace: Workspace, config: Config) -> list[Package]
     keep = [
         pkg
         for pkg in _selectable_packages(workspace)
-        if pkg.version is not None
+        if _has_version(pkg, resolution)
         and pkg.normalized_name not in ignored
         and (version_private or not pkg.private)
     ]
     return sorted(keep, key=lambda pkg: pkg.normalized_name)
+
+
+def _has_version(package: Package, resolution: Any) -> bool:
+    """Whether molt has a version for ``package`` -- declared, or resolved by a version source."""
+    if resolution is None:
+        return package.version is not None
+    return resolution.version_of(package.name) is not None
 
 
 # ======================================================================================
@@ -382,6 +398,7 @@ def _resolve(
     config: Config,
     workspace: Workspace,
     versionable: list[Package],
+    resolution: Any,
     empty: bool,
     since: str | Sequence[str] | None,
     message: str | None,
@@ -424,7 +441,12 @@ def _resolve(
 
     if supplied is not None:
         selection = _validate(
-            supplied.requests, versionable, console, workspace=workspace, config=config
+            supplied.requests,
+            versionable,
+            console,
+            workspace=workspace,
+            config=config,
+            resolution=resolution,
         )
         selection = _confirm_first_majors(selection, prompts, non_interactive=non_interactive)
     else:
@@ -632,7 +654,9 @@ def _stdin_payload(console: Any) -> dict[str, Any]:
 # ======================================================================================
 
 
-def _not_releasable_message(request: _Request, package: Package | None, config: Config) -> str:
+def _not_releasable_message(
+    request: _Request, package: Package | None, config: Config, resolution: Any = None
+) -> str:
     """The message for one request naming a package outside the versionable set.
 
     Owner ruling AC-4 (2026-07-30): a name matching **nothing** discovered in the project reports
@@ -648,11 +672,11 @@ def _not_releasable_message(request: _Request, package: Package | None, config: 
         )
     return (
         f"The package {request.name} is passed to the `{request.source}` option "
-        f"but it is {_unreleasable_reason(package, config)} and cannot be released."
+        f"but it is {_unreleasable_reason(package, config, resolution)} and cannot be released."
     )
 
 
-def _unreleasable_reason(package: Package, config: Config) -> str:
+def _unreleasable_reason(package: Package, config: Config, resolution: Any = None) -> str:
     """Which of :func:`_versionable_packages`'s three rules excludes ``package``.
 
     Re-applies the same three checks, in the same order, rather than inventing a second
@@ -663,14 +687,35 @@ def _unreleasable_reason(package: Package, config: Config) -> str:
     """
     from molt.names import normalize_name
 
-    if package.version is None:
-        return "versionless (it declares no `version` in its pyproject.toml)"
+    if not _has_version(package, resolution):
+        return _no_version_reason(package, resolution)
     ignored = {normalize_name(name) for name in config.ignore}
     if package.normalized_name in ignored:
         return "ignored (listed in this project's `ignore` configuration)"
     if package.private and not config.private_packages.version:
         return "private, and `private_packages.version` is disabled for this project"
     return "not releasable"  # pragma: no cover - defensive; see docstring
+
+
+def _no_version_reason(package: Package, resolution: Any) -> str:
+    """Why molt has no version for ``package`` -- naming the version source when it knows one.
+
+    Owner ruling ``AC-4`` (2026-07-30) says a discovered-but-excluded package is named with its
+    reason class rather than reported as a typo. Version sources make that reason sharper: "molt
+    could not work out where its version comes from" is actionable where "versionless" was not,
+    and a package that simply has no version at all keeps the older wording because that *is* the
+    whole story for it.
+    """
+    if resolution is not None:
+        for entry in resolution.unresolved:
+            if entry.name == package.name:
+                return f"not releasable -- {entry.reason}"
+    if package.dynamic_version:
+        return (
+            "dynamically versioned, and molt could not work out where its version comes from "
+            "(declare it with `[tool.molt.version_source]`)"
+        )
+    return "versionless (it declares no `version` in its pyproject.toml)"
 
 
 def _validate(
@@ -680,6 +725,7 @@ def _validate(
     *,
     workspace: Workspace,
     config: Config,
+    resolution: Any = None,
 ) -> list[tuple[Package, BumpType]]:
     """Resolve every request to a package, in a **fixed order: existence, then duplication**.
 
@@ -705,7 +751,9 @@ def _validate(
     discovered = {pkg.normalized_name: pkg for pkg in _selectable_packages(workspace)}
 
     unknown = [
-        _not_releasable_message(request, discovered.get(normalize_name(request.name)), config)
+        _not_releasable_message(
+            request, discovered.get(normalize_name(request.name)), config, resolution
+        )
         for request in requests
         if normalize_name(request.name) not in known
     ]

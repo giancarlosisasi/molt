@@ -767,3 +767,43 @@ def test_a_non_json_output_value_is_refused(git_repo: GitRepo, console: Recordin
 
     assert "json" in str(excinfo.value)
     assert not (git_repo.root / "plan.json").exists()
+
+
+# --------------------------------------------------------------------------------------
+# Version sources -- the preview and the release it previews must agree
+# --------------------------------------------------------------------------------------
+
+
+def test_a_file_sourced_package_appears_in_the_plan_at_its_resolved_version(
+    git_repo: GitRepo, console: RecordingConsole
+) -> None:
+    """Net-new (``implement-version-sources``): a dynamic version resolves before the plan is built.
+
+    ``status`` and ``version`` drive the engine from *identical* inputs -- that is why the adapters
+    are shared rather than per command -- so the resolution pass has to run here too. Without it
+    this package would be missing from the preview and then released by ``molt version``, which is
+    the worst of both answers.
+    """
+    write_lf(
+        git_repo.root / "packages" / "pkg-a" / "pyproject.toml",
+        "[project]\n"
+        'name = "pkg-a"\n'
+        'dynamic = ["version"]\n'
+        "dependencies = []\n"
+        "\n"
+        "[tool.molt.version_source]\n"
+        'kind = "file"\n'
+        'path = "about.py"\n',
+    )
+    write_lf(git_repo.root / "pyproject.toml", ROOT_PYPROJECT)
+    write_lf(git_repo.root / ".changeset" / "README.md", CHANGESET_README)
+    write_lf(git_repo.root / "packages" / "pkg-a" / "about.py", '__version__ = "1.2.3"\n')
+    branch_off(git_repo)
+    write_changeset(git_repo.root, "tidy-eels-return", {"pkg-a": "minor"})
+    commit_all(git_repo, "feat: changeset for a file-sourced package")
+
+    plan = run(cwd=git_repo.root, since="main", console=console)
+
+    assert release_tuples(plan) == [
+        ("pkg-a", BumpType.MINOR, "1.2.3", "1.3.0", ["tidy-eels-return"])
+    ]

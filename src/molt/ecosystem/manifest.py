@@ -6,6 +6,13 @@ towards a protocol only uv can satisfy (design D9).
 
 Read with ``tomllib`` (stdlib on the 3.11 floor). The **write** path is a different module and uses
 tomlkit, because ``tomli-w`` destroys user comments (research doc 02 section 12.5).
+
+**Discovery is a pure manifest read, and must stay one** (version-sources design D1). This module
+records *that* a version is declared dynamic and *what* version source the manifest names; it does
+**not** open a version file, run git, or resolve which source applies. Reading a version file would
+mean a second file per member and a future tag source would mean a subprocess, while discovery runs
+on every command -- so resolution is an explicit second pass a caller drives
+(:func:`molt.ecosystem.resolve_workspace_versions`). Do not "helpfully" resolve here.
 """
 
 from __future__ import annotations
@@ -15,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from molt.ecosystem.protocol import PRIVATE_CLASSIFIER, Package
+from molt.ecosystem.version_sources.declaration import parse_version_source_options
 from molt.errors import MoltParseError
 
 __all__ = ["is_private", "read_manifest", "read_toml"]
@@ -53,6 +61,11 @@ def read_manifest(manifest_path: Path) -> Package | None:
     the directory name**, always: the two disagree often enough in real repos (``packages/core``
     holding ``acme-core``) that inferring from the path is a silent-wrong-package bug waiting for a
     release to expose it.
+
+    This is the **only** place ``[project].dynamic`` and ``[tool.molt.version_source]`` are read.
+    Both backends share this function precisely so ``uv.py`` and ``single.py`` cannot disagree
+    about what a manifest says (spec ``ecosystem-backend``, "Version-source reading is shared, not
+    per backend"): ``[project]`` is PEP 621 and belongs to no tool.
     """
     if not manifest_path.is_file():
         return None
@@ -75,7 +88,33 @@ def read_manifest(manifest_path: Path) -> Package | None:
         optional_dependencies=_flatten(optional),
         dev_dependencies=_flatten(groups),
         private=is_private([c for c in project.get("classifiers", []) if isinstance(c, str)]),
+        dynamic_version=_declares_dynamic_version(project.get("dynamic")),
+        version_source=parse_version_source_options(_version_source_table(document)),
     )
+
+
+def _declares_dynamic_version(value: object) -> bool:
+    """Whether ``[project].dynamic`` names ``version`` (PEP 621's list of build-computed fields).
+
+    Anything that is not a list of strings reads as ``False``: a malformed ``dynamic`` is the build
+    backend's error to report, and guessing at it here would mark a package dynamic on the strength
+    of a typo.
+    """
+    if not isinstance(value, list):
+        return False
+    return any(entry == "version" for entry in value if isinstance(entry, str))
+
+
+def _version_source_table(document: dict[str, Any]) -> dict[str, Any] | None:
+    """``[tool.molt.version_source]`` of ``document``, or ``None`` when it is absent."""
+    tool = document.get("tool")
+    if not isinstance(tool, dict):
+        return None
+    molt = tool.get("molt")
+    if not isinstance(molt, dict):
+        return None
+    table = molt.get("version_source")
+    return table if isinstance(table, dict) else None
 
 
 def _requirements(value: object) -> tuple[str, ...]:

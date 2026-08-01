@@ -72,9 +72,14 @@ What is still owed
   names the engine conformance suite uses; the real ``Config`` nests ``snapshot`` and
   ``private_packages``. The same adapter debt :mod:`molt.engine.graph` records for
   ``molt.ecosystem.Workspace``.
-- **Dynamically-versioned packages.** ``version is None`` means ``dynamic = ["version"]``; there is
-  nothing to bump until the version-source abstraction lands (research doc 02 section 12.5), so it
-  is refused loudly rather than skipped silently.
+- **Packages with no version in the ported shape.** ``version is None`` here means the *caller*
+  supplied no version -- there is nothing to bump, so it is refused loudly rather than skipped
+  silently. Since ``implement-version-sources`` that is no longer the same thing as
+  ``dynamic = ["version"]``: :func:`molt.ecosystem.resolve_workspace_versions` reads a
+  file-backed dynamic version and :func:`molt.engine.to_engine_packages` substitutes it, so a
+  resolved package arrives here with a real version. What still reaches this refusal is a
+  package molt genuinely has no version for -- and the tag-derived case, which is refused a
+  layer earlier by name (version-sources design D6).
 """
 
 from __future__ import annotations
@@ -394,9 +399,11 @@ def _member(package: PackageLike, root_dir: str) -> _Member:
 def _on_disk_version(manifest: ManifestLike) -> Version:
     """Parse a member's declared version, refusing the two cases that cannot be bumped.
 
-    ``None`` means ``dynamic = ["version"]``. Upstream's ``shouldSkipPackage`` would silently skip
-    such a package; in Python that would drop half a repository from the plan, so it is an error
-    until the version-source abstraction lands (research doc 02 section 12.5).
+    ``None`` means the caller supplied no version for this member. Upstream's ``shouldSkipPackage``
+    would silently skip such a package; in Python that would drop half a repository from the plan,
+    so it is an error. It no longer means ``dynamic = ["version"]``: a dynamic version that
+    :func:`molt.ecosystem.resolve_workspace_versions` could resolve is substituted before the plan
+    is assembled, so what reaches here is a member molt has no version for at all.
     """
     raw = manifest.version
     if raw is None:

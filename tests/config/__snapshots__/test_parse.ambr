@@ -29,5 +29,6 @@
     }),
     'update_internal_dependencies': 'patch',
     'update_internal_dependents': 'out-of-range',
+    'version_source': None,
   })
 # ---

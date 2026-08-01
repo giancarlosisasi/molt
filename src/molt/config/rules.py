@@ -37,13 +37,21 @@ if TYPE_CHECKING:
 
 __all__ = [
     "SNAPSHOT_PLACEHOLDERS",
+    "VERSION_PATTERN_GROUP",
     "check_changelog_coherent",
     "check_dependents_of_ignored",
     "check_fixed_and_linked_disjoint",
     "check_snapshot_placeholders",
+    "check_version_source",
     "expand_groups",
     "expand_ignore",
 ]
+
+#: The named group a ``version_source.pattern`` must capture. It is the span molt replaces when it
+#: writes a new version (version-sources design D4), so a pattern without it locates a line molt
+#: could not edit -- which is a configuration that cannot mean anything, and therefore an error
+#: rather than a discovery-time surprise.
+VERSION_PATTERN_GROUP = "version"
 
 #: The closed set of placeholders ``snapshot.prerelease_template`` understands (research doc 01
 #: section 11.1).
@@ -226,6 +234,67 @@ def check_snapshot_placeholders(config: Config) -> list[ConfigIssue]:
     return errors
 
 
+def check_version_source(config: Config) -> list[ConfigIssue]:
+    """Refuse a ``version_source`` table molt could not act on, naming the fix.
+
+    Two combinations cannot mean anything, and both are hard errors rather than warnings for the
+    reason the 2026-07-31 (session 6) strictness ruling gives: a version source molt half
+    understands would write a version into the wrong place, and a version an index has stored is
+    permanent.
+
+    * ``kind = "file"`` with no ``path`` -- there is no file to read or splice.
+    * a ``pattern`` that does not compile, or that compiles without a group named ``version`` --
+      the group **is** the span molt replaces, so a pattern lacking it has located a line molt
+      cannot edit.
+
+    A missing ``kind`` is pydantic's own required-field error and is not restated here; two
+    messages for one mistake is exactly what the pre-pass exists to avoid.
+    """
+    source = config.version_source
+    if source is None:
+        return []
+    errors: list[ConfigIssue] = []
+    if source.kind == "file" and not source.path:
+        errors.append(
+            ConfigIssue(
+                ("version_source", "path"),
+                'version_source sets kind = "file" but names no path, so molt has no file to read '
+                'the version from. Add path = "src/<package>/__about__.py" (or wherever the '
+                "version literal lives), relative to this package's own directory.",
+            )
+        )
+    errors.extend(_check_version_pattern(source.pattern))
+    return errors
+
+
+def _check_version_pattern(pattern: str | None) -> list[ConfigIssue]:
+    """The two ways a ``version_source.pattern`` can be unusable, each with its own sentence."""
+    if not pattern:
+        return []
+    location = ("version_source", "pattern")
+    try:
+        compiled = re.compile(pattern)
+    except re.error as error:
+        return [
+            ConfigIssue(
+                location,
+                f"version_source.pattern is not a valid regular expression ({error}). Fix the "
+                f"expression, or remove the line to use molt's default pattern.",
+            )
+        ]
+    if VERSION_PATTERN_GROUP not in compiled.groupindex:
+        return [
+            ConfigIssue(
+                location,
+                f"version_source.pattern must capture a group named "
+                f'"{VERSION_PATTERN_GROUP}" -- that group is the text molt replaces when it '
+                f"writes a new version, so without it molt cannot edit the file. Write "
+                f'something like __version__ = "(?P<{VERSION_PATTERN_GROUP}>[^"]+)".',
+            )
+        ]
+    return []
+
+
 def check_dependents_of_ignored(config: Config, workspace: Workspace) -> list[ConfigIssue]:
     """``alsoSkipDependentsOfSkipped`` (``rules.ts:124-172``) -- the trickiest rule upstream has.
 
@@ -249,17 +318,28 @@ def check_dependents_of_ignored(config: Config, workspace: Workspace) -> list[Co
     ignored = {normalize_name(name) for name in config.ignore}
 
     def is_skipped(package: Package) -> bool:
-        """``shouldSkipPackage`` (``should-skip-package/src/index.ts:3-22``).
+        """``shouldSkipPackage`` (``should-skip-package/src/index.ts:3-22``), read off the manifest.
 
         The third clause -- a package with no version is always skipped -- is upstream's, and it is
-        why the version-source abstraction matters for Python: ``dynamic = ["version"]`` is common
-        here and unrepresentable there.
+        the one ``implement-version-sources`` had to narrow. ``molt.config`` runs **before** any
+        version source does and may not drive one (it is a lazy facade, and resolution opens a file
+        per member), so this rule can only ask the manifest. A package that declares
+        ``dynamic = ["version"]`` is therefore treated as **not** skipped: the version may well
+        resolve, and refusing to load the configuration of a workspace whose members use hatch's
+        ``__about__.py`` idiom would make a correct project unusable.
+
+        The accurate check still happens, one layer up and with a real resolution:
+        ``molt.commands.version._unskipped_dependents`` asks
+        :func:`molt.engine.skipped_package_names` the same question against
+        :func:`molt.ecosystem.resolve_workspace_versions`'s answer, and refuses there. So a dynamic
+        package molt genuinely cannot resolve is still caught -- at the point where molt knows it,
+        rather than guessed at here.
         """
         if package.normalized_name in ignored:
             return True
         if package.private and not version_private:
             return True
-        return package.version is None
+        return package.version is None and not package.dynamic_version
 
     errors: list[ConfigIssue] = []
     for package in workspace.packages:

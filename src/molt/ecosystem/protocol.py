@@ -28,6 +28,8 @@ from molt.names import normalize_name
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from molt.ecosystem.version_sources.declaration import VersionSourceOptions
+
 __all__ = [
     "PRIVATE_CLASSIFIER",
     "EcosystemBackend",
@@ -49,10 +51,18 @@ class Package:
     ``normalized_name`` is the PEP 503 form every comparison goes through (design D5). Keeping both
     is research doc 02 section 12.4's instruction to "preserve the original spelling for display".
 
-    ``version`` is ``None`` for a dynamically-versioned distribution (``dynamic = ["version"]``).
-    Upstream's ``shouldSkipPackage`` treats a missing version as "skip" silently; for Python that
-    would quietly drop half a repo, so the absence is represented rather than collapsed and the
-    version-source abstraction that fills it in is a later change.
+    ``version`` is ``None`` when the manifest declares **no static** ``[project].version``.  That is
+    two different situations, and :attr:`dynamic_version` is what tells them apart: ``True`` means
+    the manifest declared ``dynamic = ["version"]`` and the version is computed at build time,
+    ``False`` means there is simply no version -- an application, a docs site, a workspace-only
+    root. *(Before ``implement-version-sources`` this field's absence meant "dynamic" on its own,
+    which collapsed the two; upstream's ``shouldSkipPackage`` skips both silently, and for Python
+    that quietly drops half a repo.)* Which source actually holds a dynamic version is resolved by
+    :func:`molt.ecosystem.resolve_workspace_versions`, in a **second pass** -- never here.
+
+    ``version_source`` is the ``[tool.molt.version_source]`` table this manifest declared, recorded
+    unparsed and unresolved. It is read from the package's **own** manifest, because where a
+    version lives is a property of a package rather than of a workspace (design D5).
 
     ``workspace_sources`` carries the **normalized** form of the tool-specific source table that
     redirects a dependency at another member of this workspace -- ``[tool.uv.sources]`` for uv.
@@ -73,6 +83,8 @@ class Package:
     dev_dependencies: tuple[str, ...] = ()
     private: bool = False
     workspace_sources: tuple[tuple[str, str], ...] = ()
+    dynamic_version: bool = False
+    version_source: VersionSourceOptions | None = None
 
     @property
     def normalized_name(self) -> str:

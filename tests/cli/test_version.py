@@ -2851,3 +2851,150 @@ def test_the_version_exit_code_contract(
     with pytest.raises(ExitError) as excinfo:
         run_version(tmp_project.root, console, fake_git, **options)
     assert excinfo.value.code == code, why
+
+
+# ======================================================================================
+# Version sources -- a package whose version does not live in `[project].version`
+#
+# Net-new (`implement-version-sources`); no upstream counterpart, because in JavaScript a version
+# only ever lives in `package.json`. `tests/ecosystem/test_version_sources.py` owns the seam in
+# depth -- detection, the splice, the buckets; what these rows own is the *command* wiring: did
+# `molt version` resolve the source, write the new version where the source says, and leave the
+# manifest alone.
+# ======================================================================================
+
+
+def file_sourced_workspace(project: ProjectBuilder, version: str = "1.0.0") -> Path:
+    """A ``pkg-a`` whose version lives in ``about.py``, beside a statically versioned ``pkg-b``."""
+    project.add_package(
+        "pkg-a",
+        version=None,
+        dynamic_version=True,
+        version_source={"kind": "file", "path": "about.py"},
+    )
+    project.add_package("pkg-b", "1.0.0")
+    return project.write_file("packages/pkg-a/about.py", f'__version__ = "{version}"\n')
+
+
+def test_a_file_sourced_package_is_released_and_its_manifest_is_untouched(
+    tmp_project: ProjectBuilder, console: RecordingConsole, fake_git: FakeGit
+) -> None:
+    """The headline: a library whose version lives in a file is released like any other.
+
+    Before the version-source seam this package was invisible -- not planned, not changelogged, and
+    silent about why. Now it is planned at its real current version, its version file carries the
+    new one, and its ``pyproject.toml`` is byte-identical because nothing there describes a
+    version (version-sources design D9: the source decides what the write is).
+    """
+    about = file_sourced_workspace(tmp_project)
+    manifest = manifest_path(tmp_project.root, "pkg-a")
+    before = manifest.read_bytes()
+    tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "a very useful summary")
+
+    run_version(tmp_project.root, console, fake_git)
+
+    assert about.read_bytes() == b'__version__ = "1.1.0"\n', "the version file carries the release"
+    assert manifest.read_bytes() == before, "and the manifest is not edited at all"
+    changelog = read_changelog(tmp_project.root, "pkg-a")
+    assert changelog is not None and "a very useful summary" in changelog
+
+
+def test_an_unresolvable_dynamic_package_is_skipped_and_named(
+    tmp_project: ProjectBuilder, console: RecordingConsole, fake_git: FakeGit
+) -> None:
+    """Design D7's third bucket, end to end: skipped, named once, and the run carries on.
+
+    Warn and carry on is an owner ruling (2026-08-01, session 6). Failing the whole run was the
+    stricter alternative and was declined: one unreleasable package must not block every other
+    release in the workspace.
+    """
+    tmp_project.add_package("pkg-a", version=None, dynamic_version=True)
+    tmp_project.add_package("pkg-b", "1.0.0")
+    tmp_project.write_changeset("some-id-0", {"pkg-b": "patch"}, "a very useful summary")
+
+    run_version(tmp_project.root, console, fake_git)
+
+    assert versions(tmp_project.root) == {"pkg-a": None, "pkg-b": "1.0.1"}, "the release happened"
+    warned = "\n".join(console.warnings)
+    assert "pkg-a" in warned, "the unresolvable package is named"
+    assert "[tool.molt.version_source]" in warned, "with the configuration that would fix it"
+
+
+def test_a_package_with_no_version_and_no_dynamic_marker_prints_nothing(
+    tmp_project: ProjectBuilder, console: RecordingConsole, fake_git: FakeGit
+) -> None:
+    """Design D7's middle bucket: an application is skipped **silently**, exactly as before.
+
+    The discriminator for the whole distinction. Collapsing ``dynamic = ["version"]`` back into
+    "no version at all" makes this row noisy and the previous one silent, and both are wrong.
+    """
+    tmp_project.add_package("pkg-a", version=None)
+    tmp_project.add_package("pkg-b", "1.0.0")
+    tmp_project.write_changeset("some-id-0", {"pkg-b": "patch"}, "a very useful summary")
+
+    run_version(tmp_project.root, console, fake_git)
+
+    assert versions(tmp_project.root) == {"pkg-a": None, "pkg-b": "1.0.1"}
+    assert not any("pkg-a" in message for message in console.warnings), (
+        "an application that never declared a version is not a problem to report"
+    )
+
+
+def test_a_changeset_naming_an_unresolvable_package_exits_1_naming_both(
+    tmp_project: ProjectBuilder, console: RecordingConsole, fake_git: FakeGit
+) -> None:
+    """Skipping is a convenience; dropping a package somebody *asked* to release is not.
+
+    The same boundary ``test_a_changeset_naming_a_version_less_package_is_refused`` pins, now for a
+    package that declares its version dynamic. The message repeats the resolution's own reason, so
+    the user sees why rather than only that.
+    """
+    tmp_project.add_package("pkg-a", "1.0.0")
+    tmp_project.add_package("pkg-b", version=None, dynamic_version=True)
+    tmp_project.write_changeset("some-id-0", {"pkg-b": "minor"}, "This is a summary")
+
+    with pytest.raises(ExitError) as excinfo:
+        run_version(tmp_project.root, console, fake_git)
+
+    assert excinfo.value.code == 1
+    message = "\n".join(console.errors)
+    assert "pkg-b" in message and "some-id-0" in message, message
+    assert versions(tmp_project.root)["pkg-a"] == "1.0.0", "nothing is written"
+    assert changeset_ids(tmp_project.root) == ["some-id-0"], "and the changeset survives"
+
+
+def test_a_snapshot_run_writes_the_snapshot_version_into_the_version_file(
+    tmp_project: ProjectBuilder,
+    console: RecordingConsole,
+    fake_git: FakeGit,
+    frozen_clock: FrozenClock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Snapshots compose unchanged: the composed version lands where the source says.
+
+    ``--snapshot`` never commits (``index.ts:56``), and that is unchanged too -- a snapshot burns a
+    throwaway version on a throwaway checkout.
+    """
+    about = file_sourced_workspace(tmp_project)
+    frozen_clock.freeze(monkeypatch)
+    tmp_project.set_config(commit=True)
+    tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "a very useful summary")
+
+    run_version(tmp_project.root, console, fake_git, snapshot=True)
+
+    written = about.read_bytes().decode("utf-8")
+    assert f"0.0.0.dev{FROZEN_DATETIME_TOKEN}" in written, written
+    assert not fake_git.commits, "a snapshot never commits, even with commit configured"
+
+
+def test_a_pre_run_writes_the_prerelease_version_into_the_version_file(
+    tmp_project: ProjectBuilder, console: RecordingConsole, fake_git: FakeGit
+) -> None:
+    """``--pre`` composes unchanged too, and still leaves the changesets on disk."""
+    about = file_sourced_workspace(tmp_project)
+    tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "a very useful summary")
+
+    run_version(tmp_project.root, console, fake_git, pre="rc")
+
+    assert about.read_bytes() == b'__version__ = "1.1.0rc0"\n'
+    assert changeset_ids(tmp_project.root) == ["some-id-0"], "a --pre run keeps them"

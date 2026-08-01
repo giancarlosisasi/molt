@@ -11,6 +11,12 @@ Backend selection follows the ``ecosystem`` config option:
   absence selects single-package (design D8).
 - an explicit name selects that backend with **no** detection, so a repository can be pinned.
 
+The **version-source** seam is re-exported from here for the same reason -- ``resolve_workspace
+_versions`` and the source protocol are part of the ecosystem layer's public face, and a command
+that reached into ``molt.ecosystem.version_sources.file`` would be coupling itself to one source.
+Resolution is deliberately a **second pass**: ``discover_workspace`` reads manifests and nothing
+else (version-sources design D1).
+
 Poetry, Hatch, PDM and setuptools are scheduled after the 0.1 MVP. The config layer rejects them at
 parse time, so they normally never reach here; the guard below is the second line of defence for a
 caller that built a ``Config`` by hand. It raises rather than falling back to single-package,
@@ -25,19 +31,43 @@ from molt.ecosystem.manifest import is_private, read_manifest, read_toml
 from molt.ecosystem.protocol import EcosystemBackend, Package, Workspace
 from molt.ecosystem.single import SingleBackend
 from molt.ecosystem.uv import MANIFEST_NAME, UvBackend, workspace_table
+from molt.ecosystem.version_sources import (
+    DEFAULT_VERSION_PATTERN,
+    VERSION_SOURCE_GROUP,
+    ResolvedVersion,
+    UnresolvedVersion,
+    VersionResolution,
+    VersionSource,
+    VersionSourceOptions,
+    VersionWrite,
+    detect_version_source,
+    resolve_version_source,
+    resolve_workspace_versions,
+)
 from molt.errors import MoltError
 
 __all__ = [
     "AUTO",
+    "DEFAULT_VERSION_PATTERN",
+    "VERSION_SOURCE_GROUP",
     "EcosystemBackend",
     "Package",
+    "ResolvedVersion",
+    "UnresolvedVersion",
+    "VersionResolution",
+    "VersionSource",
+    "VersionSourceOptions",
+    "VersionWrite",
     "Workspace",
+    "detect_version_source",
     "discover_workspace",
     "find_workspace_root",
     "is_private",
     "read_manifest",
     "read_toml",
     "resolve_backend",
+    "resolve_version_source",
+    "resolve_workspace_versions",
 ]
 
 #: The default ``ecosystem`` value -- detect rather than assume.

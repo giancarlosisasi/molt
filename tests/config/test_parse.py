@@ -461,6 +461,32 @@ VALID_CASES: list[tuple[dict[str, Any], list[str], dict[str, Any], int | None, s
         0,
         "false inside the table means what `changelog = false` means: write no CHANGELOG.md",
     ),
+    # ------------------------------------------------------------------------------
+    # `version_source` -- molt-native, no changesets counterpart at all (research doc 02
+    # section 12.5). Declared in the package's OWN manifest, which in a single-package
+    # repository is the very `[tool.molt]` table this parser reads; being a declared field
+    # is what keeps such a configuration valid under strict parsing.
+    # ------------------------------------------------------------------------------
+    (
+        {"version_source": {"kind": "file", "path": "src/pkg_a/__about__.py"}},
+        DEFAULT_PKGS,
+        {
+            "version_source": {
+                "kind": "file",
+                "path": "src/pkg_a/__about__.py",
+                "pattern": None,
+            }
+        },
+        0,
+        "a file source carries its path; the pattern defaults to molt's own",
+    ),
+    (
+        {"version_source": {"kind": "static"}},
+        DEFAULT_PKGS,
+        {"version_source": {"kind": "static", "path": None, "pattern": None}},
+        0,
+        "the static source needs nothing but its kind",
+    ),
 ]
 
 
@@ -909,6 +935,26 @@ INVALID_SHAPE_CASES: list[tuple[dict[str, Any], tuple[Any, ...], str]] = [
         ("update_internal_dependents",),
         "molt-native: the promoted option keeps the always|out-of-range enum",
     ),
+    (
+        {"version_source": {"path": "about.py"}},
+        ("version_source", "kind"),
+        "molt-native: `kind` is required -- molt will not guess where a version lives",
+    ),
+    (
+        {"version_source": {"kind": "file"}},
+        ("version_source", "path"),
+        "molt-native: a file source with no path has no file to read or splice",
+    ),
+    (
+        {"version_source": {"kind": "file", "path": "a.py", "pattern": r"v = \"(.+)\""}},
+        ("version_source", "pattern"),
+        "molt-native: the pattern must capture the `version` group molt replaces",
+    ),
+    (
+        {"version_source": {"kind": "file", "path": "a.py", "pattern": "unclosed ("}},
+        ("version_source", "pattern"),
+        "molt-native: a pattern that does not compile is refused where it is written",
+    ),
 ]
 
 
@@ -1276,6 +1322,41 @@ def test_a_public_dependent_of_an_ignored_package_is_an_error(
 
 
 @pytest.mark.functional
+def test_a_dynamically_versioned_dependency_is_not_assumed_skipped(
+    tmp_project: ProjectBuilder,
+) -> None:
+    """A defect ``implement-version-sources`` found and fixed, not a new feature.
+
+    ``alsoSkipDependentsOfSkipped``'s third clause -- "a package with no version is skipped" -- read
+    a ``dynamic = ["version"]`` member as frozen, so a workspace with *any* non-empty ``ignore``
+    and a hatch-style member refused to load at all: ``pkg-a depends on the skipped package
+    pkg-b``. It is only reachable with a non-empty ``ignore`` (or private versioning off), which is
+    why nothing caught it before.
+
+    ``molt.config`` cannot resolve a version source -- it runs first, and resolution opens a file
+    per member -- so the rule stops guessing here and the accurate check stays in
+    ``molt.commands.version._unskipped_dependents``, which has a real resolution to ask.
+    """
+    (
+        tmp_project.add_package("pkg-a", version="1.0.0", deps=["pkg-b==1.2.3"])
+        .add_package(
+            "pkg-b",
+            version=None,
+            dynamic_version=True,
+            version_source={"kind": "file", "path": "about.py"},
+        )
+        .add_package("pkg-c", version="1.0.0")
+        .set_config(ignore=["pkg-c"])
+    )
+    tmp_project.write_file("packages/pkg-b/about.py", '__version__ = "1.2.3"\n')
+
+    config, _warnings, errors = load_config(tmp_project.root)
+
+    assert list(errors) == [], "a dynamically versioned dependency is not a frozen one"
+    assert config is not None
+
+
+@pytest.mark.functional
 def test_a_private_dependent_of_an_ignored_package_is_exempt(
     tmp_project: ProjectBuilder,
 ) -> None:
@@ -1497,6 +1578,27 @@ def test_an_unknown_member_of_a_nested_table_is_a_hard_error(table: str, member:
     assert config is None
     assert error_locs(errors) == [(table, member)]
     assert member in joined(errors)
+    assert list(warnings) == []
+
+
+@pytest.mark.unit
+def test_an_unknown_member_of_the_version_source_table_is_a_hard_error() -> None:
+    """Strictness reaches the newest table too, and the suggestion comes with it.
+
+    ``version_source`` has its own row rather than joining the parametrized nested-table one above
+    because ``kind`` is **required**: a document carrying only the unknown member also fails the
+    required-field check, so the exact-``loc`` assertion those two rows make would not fit. The
+    guarantee is the same one -- an unknown key is an error at any depth (owner ruling 2026-07-31,
+    session 6) -- and a typo in ``pattern`` silently leaving molt on its default pattern is exactly
+    the impossible state that ruling removes.
+    """
+    config, warnings, errors = parse_config(
+        {"version_source": {"kind": "file", "path": "a.py", "patern": "x"}},
+        package_names=DEFAULT_PKGS,
+    )
+    assert config is None
+    assert error_locs(errors) == [("version_source", "patern")]
+    assert 'Did you mean "pattern"?' in joined(errors)
     assert list(warnings) == []
 
 

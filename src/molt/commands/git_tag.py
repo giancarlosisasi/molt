@@ -79,9 +79,11 @@ def run(
 
     Returns the list of NDJSON event dicts -- the same value written to ``output``, if given -- so a
     caller can inspect the outcome without re-reading the file. Skips packages whose tag already
-    exists (idempotent re-runs) and packages with no known version (``dynamic = ["version"]``; the
-    version-source abstraction that would resolve one is a later change -- CLAUDE.md's shared-
-    primitives table).
+    exists (idempotent re-runs) and packages molt has **no** version for. That last set is narrower
+    than it used to be: a member whose version lives in a file is resolved by
+    :func:`molt.ecosystem.resolve_workspace_versions` and tagged at the resolved version, and only
+    a member molt cannot resolve at all -- a tag-derived version, or a dynamic one with no
+    detectable source -- stays excluded.
 
     ``console`` and ``git`` are injectable seams. ``console`` defaults to the module-level
     :data:`molt.ui.console.console`; ``git`` defaults to a :class:`molt.git.Git` bound to the
@@ -95,7 +97,7 @@ def run(
 
     from pathlib import Path as _Path
 
-    from molt.ecosystem import discover_workspace, find_workspace_root
+    from molt.ecosystem import discover_workspace, find_workspace_root, resolve_workspace_versions
 
     if console is None:
         from molt.ui.console import console as console_
@@ -111,7 +113,9 @@ def run(
 
         git = Git(root)
 
-    plan = _plan(workspace)
+    # Version-sources design D1: one resolution pass, so a package whose version lives in a file
+    # is tagged at the version `molt version` just wrote there rather than being silently skipped.
+    plan = _plan(workspace, resolve_workspace_versions(workspace))
     existing = git.get_all_tags()
     to_create = [item for item in plan if item.tag not in existing]
 
@@ -159,26 +163,39 @@ def _resolve_config(root: Path, *, console: Any) -> Any:
 # ======================================================================================
 
 
-def _plan(workspace: Workspace) -> list[_TagItem]:
+def _plan(workspace: Workspace, resolution: Any = None) -> list[_TagItem]:
     """Every package this run would tag, in workspace discovery order."""
     return [
-        _TagItem(tag=_tag_name(package, workspace), package_name=package.name)
-        for package in _taggable_packages(workspace)
+        _TagItem(
+            tag=_tag_name(package, workspace, _version_of(package, resolution)),
+            package_name=package.name,
+        )
+        for package in _taggable_packages(workspace, resolution)
     ]
 
 
-def _taggable_packages(workspace: Workspace) -> list[Package]:
+def _version_of(package: Package, resolution: Any = None) -> str | None:
+    """``package``'s version -- declared, or resolved by its version source (design D10)."""
+    if package.version is not None:
+        return package.version
+    return None if resolution is None else resolution.version_of(package.name)
+
+
+def _taggable_packages(workspace: Workspace, resolution: Any = None) -> list[Package]:
     """Workspace packages eligible for a tag: versioned, and not an excluded root (design D4).
 
-    A package with no known version (``dynamic = ["version"]``) is skipped -- there is nothing yet
-    to compose a tag name from. The workspace root is excluded unconditionally when the project is a
-    genuine workspace (it is the workspace declaration, not a release); in a single-package project
-    the root *is* the only candidate, so there only its own privacy excludes it.
+    A package molt has **no** version for is skipped -- there is nothing to compose a tag name
+    from. With a ``resolution`` that is narrower than it used to be: a dynamically-versioned
+    package whose source molt resolved is tagged at the resolved version, and only a package whose
+    version molt genuinely cannot find stays excluded (version-sources design D10). The workspace
+    root is excluded unconditionally when the project is a genuine workspace (it is the workspace
+    declaration, not a release); in a single-package project the root *is* the only candidate, so
+    there only its own privacy excludes it.
     """
     root = workspace.root_package
     packages: list[Package] = []
     for package in workspace.packages:
-        if package.version is None:
+        if _version_of(package, resolution) is None:
             continue
         is_root = root is not None and package.normalized_name == root.normalized_name
         if is_root:
@@ -190,7 +207,7 @@ def _taggable_packages(workspace: Workspace) -> list[Package]:
     return packages
 
 
-def _tag_name(package: Package, workspace: Workspace) -> str:
+def _tag_name(package: Package, workspace: Workspace, version: str | None = None) -> str:
     """The tag name for ``package``, shaped by the workspace's detected ecosystem (design D2/D3).
 
     A single-package project's tag carries no name at all -- there is only one candidate, so the
@@ -200,9 +217,10 @@ def _tag_name(package: Package, workspace: Workspace) -> str:
     """
     from molt.names import normalize_name
 
+    resolved = package.version if version is None else version
     if workspace.backend == "single":
-        return f"v{package.version}"
-    return f"{normalize_name(package.name)}@{package.version}"
+        return f"v{resolved}"
+    return f"{normalize_name(package.name)}@{resolved}"
 
 
 # ======================================================================================

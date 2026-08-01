@@ -2546,3 +2546,102 @@ def test_a_failed_flush_does_not_consume_the_changesets(
     assert _version(root, "pkg-a") == "1.0.0"
     assert _version(root, "pkg-b") == "1.0.0"
     assert not (root / "packages" / "pkg-a" / "CHANGELOG.md").exists()
+
+
+# ======================================================================================
+# The `version_writer` seam (`implement-version-sources` design D9)
+#
+# Net-new; no upstream counterpart. `apply` must not learn where a version lives -- it asks the
+# package's version source instead, and the answer is THREE-VALUED. These rows pin all three arms,
+# because the default arm is what keeps every row above this line on exactly the code path it was
+# written against.
+# ======================================================================================
+
+
+def test_no_version_writer_keeps_the_flush_byte_identical(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The design D9 guard: a run with no writer is the run this file has always tested.
+
+    Reusing :data:`EXPECTED_FLUSH_ORDER` rather than restating it is the point -- if the default
+    arm ever stops being "apply does its own ``[project].version`` edit", this row fails on the
+    order and every byte assertion above it fails too.
+    """
+    root, plan_builder, _, _ = _atomicity_fixture(tmp_path / "ws")
+
+    failer = _WriteFailer(root)
+    with monkeypatch.context() as patched:
+        failer.install(patched)
+        _apply(root, plan_builder.plan(), plan_builder.config)
+
+    assert failer.order == EXPECTED_FLUSH_ORDER
+    assert _version(root, "pkg-b") == "2.0.0", "the manifest version edit still happens"
+
+
+def test_a_writer_returning_writes_replaces_the_manifest_version_edit(tmp_path: Path) -> None:
+    """Arm two: a returned tuple **replaces** the manifest edit and joins the same buffer.
+
+    Both halves matter. The version file has to be written *and* ``[project].version`` has to be
+    left alone -- a run that did both would publish one version and record another. The writes
+    land in the manifests phase of :data:`molt.apply.SIDE_EFFECT_ORDER`, because they *are* the
+    version write, only reaching a different destination.
+    """
+    from molt.ecosystem import VersionWrite
+
+    root, plan_builder, _, _ = _atomicity_fixture(tmp_path / "ws")
+    about = root / "packages" / "pkg-b" / "about.py"
+    about.write_bytes(b'__version__ = "1.0.0"\n')
+    seen: list[tuple[str, str]] = []
+
+    def writer(name: str, new_version: str) -> tuple[VersionWrite, ...] | None:
+        seen.append((name, new_version))
+        if name != "pkg-b":
+            # `None` for every other package, so this row drives BOTH arms in one run: the mixed
+            # case is the one a real workspace is in, and it is where a wrong implementation
+            # either skips the manifest edit for everybody or writes both.
+            return None
+        return (VersionWrite(path=about, data=f'__version__ = "{new_version}"\n'.encode()),)
+
+    touched = _apply(root, plan_builder.plan(), plan_builder.config, version_writer=writer)
+
+    assert seen == [("pkg-a", "1.1.0"), ("pkg-b", "2.0.0")], (
+        "the writer is asked once per released package, in plan order"
+    )
+    assert about.read_bytes() == b'__version__ = "2.0.0"\n'
+    assert _version(root, "pkg-b") == "1.0.0", "pkg-b's manifest version is NOT edited"
+    assert _version(root, "pkg-a") == "1.1.0", "and the None arm still edits pkg-a's"
+    assert about in touched, "the write is reported, so `molt version` stages it"
+    # The returned list is the flush sequence (`molt version` stages it in this order), so it
+    # observes the phase without touching `_WriteFailer.COUNTED_NAMES`, which is frozen
+    # infrastructure the pinned flush-order row above depends on.
+    assert touched.index(about) < touched.index(root / "packages" / "pkg-a" / "CHANGELOG.md"), (
+        "a version write belongs to the manifests phase, before the changelogs"
+    )
+
+
+def test_a_writer_returning_an_empty_tuple_writes_no_version_anywhere(
+    tmp_path: Path,
+) -> None:
+    """Arm three: an empty tuple means "there is nothing to write on disk".
+
+    Reserved for a future tag source, whose version is realized by a tag rather than by a file. The
+    discriminator is that it must **not** fall back to the ``[project].version`` edit: a fallback
+    would make the empty tuple indistinguishable from ``None``, which is the one thing the
+    three-valued contract exists to keep apart.
+    """
+    from molt.ecosystem import VersionWrite
+
+    root, plan_builder, _, _ = _atomicity_fixture(tmp_path / "ws")
+
+    def writer(name: str, new_version: str) -> tuple[VersionWrite, ...]:
+        del name, new_version
+        return ()
+
+    touched = _apply(root, plan_builder.plan(), plan_builder.config, version_writer=writer)
+
+    assert _version(root, "pkg-b") == "1.0.0", "no manifest version edit, and no fallback to one"
+    assert _version(root, "pkg-a") == "1.0.0", "for every released package, not only one of them"
+    assert not any(path.name == "about.py" for path in touched)
+    assert (root / "packages" / "pkg-b" / "CHANGELOG.md").exists(), (
+        "the rest of the release still happens; only the version write is empty"
+    )

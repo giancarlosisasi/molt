@@ -27,13 +27,23 @@ Python-only concept. The one place the two differ is the mixed-changeset diagnos
 ``## Open gaps`` section of this change's ``design.md``.
 
 The **versionless** half of that fold is what makes a repository with an app in it releasable at
-all: ``[project]`` with no ``version`` (or ``dynamic = ["version"]``) reads as
-``Package.version is None``, and :func:`molt.engine.assemble_release_plan` refuses such a package
-loudly rather than skipping it silently (``RPE-4``). That refusal is right for a package somebody
-asked to *release*; it is wrong as a reason to fail a whole run because an unrelated docs site has
-no version. Folding them into the skip list is the same answer ``molt add`` already gives
+all: ``[project]`` with no ``version`` reads as ``Package.version is None``, and
+:func:`molt.engine.assemble_release_plan` refuses such a package loudly rather than skipping it
+silently (``RPE-4``). That refusal is right for a package somebody asked to *release*; it is wrong
+as a reason to fail a whole run because an unrelated docs site has no version. Folding them into
+the skip list is the same answer ``molt add`` already gives
 (``molt.commands.add._versionable_packages``), and it keeps ``RPE-4`` intact for the case it exists
-for -- nothing here resolves a dynamic version, and nothing here writes one back.
+for.
+
+**A version resolution changes which members that fold covers, and it is optional** (version-sources
+design D10). Every function below takes ``resolution: VersionResolution | None = None``; ``None``
+means "no resolution ran" and each behaves exactly as it did before the version-source seam existed,
+which is what keeps ``tests/engine``'s pinned suites green with no edit. With a resolution supplied,
+"versionless" stops meaning ``Package.version is None`` and starts meaning *not in*
+``resolution.resolved``: a package whose version lives in a ``__about__.py`` is resolved, is not
+skipped, and gets its real current version substituted into the ported shape. So this module does
+now see a resolved dynamic version -- what it still never does is *write* one back, which is
+:mod:`molt.apply`'s job through its ``version_writer`` seam.
 
 **A workspace source arrives already normalized.** ``[tool.uv.sources]`` is read by
 :mod:`molt.ecosystem.uv`, which records ``workspace:*`` / ``workspace:<relpath>`` on
@@ -62,7 +72,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
 
     from molt.config.models import Config
-    from molt.ecosystem import Package, Workspace
+    from molt.ecosystem import Package, VersionResolution, Workspace
 
 __all__ = [
     "UNVERSIONED_PLACEHOLDER",
@@ -141,7 +151,10 @@ class EnginePackages:
 
 
 def to_engine_packages(
-    workspace: Workspace, *, placeholder_version: str | None = None
+    workspace: Workspace,
+    *,
+    placeholder_version: str | None = None,
+    resolution: VersionResolution | None = None,
 ) -> EnginePackages:
     """Adapt a discovered :class:`molt.ecosystem.Workspace` to the engine's input shape.
 
@@ -149,8 +162,13 @@ def to_engine_packages(
     does it on both sides of every comparison. Discovery order is preserved -- it reaches the
     release plan and then the changelog, so re-sorting here would churn changelog diffs.
 
-    ``placeholder_version`` substitutes a version for a member that declares none, so the engine can
-    index the workspace at all: it parses every member's version up front
+    ``resolution`` supplies the version of a member that declares none in its manifest but keeps one
+    in a file (version-sources design D10). It is consulted **before** ``placeholder_version``, so a
+    resolved dynamic member reaches the engine with its real current version and is planned like any
+    other package.
+
+    ``placeholder_version`` substitutes a version for a member that is still unversioned after that,
+    so the engine can index the workspace at all: it parses every member's version up front
     (``molt.engine.assemble._index_workspace``) and refuses ``None``. Pass
     :data:`UNVERSIONED_PLACEHOLDER` **only** together with a configuration whose ``ignore`` already
     covers those members -- which is what :func:`to_engine_config` produces -- or the placeholder
@@ -158,17 +176,25 @@ def to_engine_packages(
     """
     root = workspace.root.as_posix()
     packages = tuple(
-        _engine_package(package, placeholder_version) for package in workspace.packages
+        _engine_package(package, placeholder_version, resolution) for package in workspace.packages
     )
     root_package = None
     if workspace.root_package is not None:
-        root_package = _engine_package(workspace.root_package, placeholder_version)
+        root_package = _engine_package(workspace.root_package, placeholder_version, resolution)
     return EnginePackages(root_package=root_package, root_dir=root, packages=packages)
 
 
-def _engine_package(package: Package, placeholder_version: str | None) -> EnginePackage:
+def _engine_package(
+    package: Package,
+    placeholder_version: str | None,
+    resolution: VersionResolution | None = None,
+) -> EnginePackage:
     sources = {normalize_name(name): marker for name, marker in package.workspace_sources}
-    version = package.version if package.version is not None else placeholder_version
+    version = package.version
+    if version is None and resolution is not None:
+        version = resolution.version_of(package.name)
+    if version is None:
+        version = placeholder_version
     return EnginePackage(
         manifest=EngineManifest(
             name=package.name,
@@ -270,14 +296,19 @@ class EngineConfig:
     changed_file_patterns: tuple[str, ...] = ("**",)
 
 
-def to_engine_config(config: Config, workspace: Workspace) -> EngineConfig:
+def to_engine_config(
+    config: Config, workspace: Workspace, resolution: VersionResolution | None = None
+) -> EngineConfig:
     """Flatten ``config`` for the engine, folding the private-package skip into ``ignore``.
 
     ``workspace`` is required for exactly that fold: privacy is a property of a manifest, not of
     the configuration, and the ported ``Packages`` shape the engine reads cannot carry it.
+
+    ``resolution`` is passed straight through to :func:`skipped_package_names`; ``None`` keeps
+    today's behaviour exactly (version-sources design D10).
     """
     return EngineConfig(
-        ignore=skipped_package_names(workspace, config),
+        ignore=skipped_package_names(workspace, config, resolution),
         fixed=tuple(tuple(group) for group in config.fixed),
         linked=tuple(tuple(group) for group in config.linked),
         bump_workspace_sources_only=config.bump_workspace_sources_only,
@@ -294,7 +325,9 @@ def to_engine_config(config: Config, workspace: Workspace) -> EngineConfig:
     )
 
 
-def skipped_package_names(workspace: Workspace, config: Config) -> tuple[str, ...]:
+def skipped_package_names(
+    workspace: Workspace, config: Config, resolution: VersionResolution | None = None
+) -> tuple[str, ...]:
     """Every package the release must not version: ``ignore``, versionless ones, and private ones.
 
     Configured entries come first and in their configured order -- they are already expanded to
@@ -302,8 +335,15 @@ def skipped_package_names(workspace: Workspace, config: Config) -> tuple[str, ..
     is what produced upstream's ``matchFixedConstraint`` bug). The two derived groups follow in
     workspace discovery order. Duplicates are removed under PEP 503 folding, keeping first
     appearance.
+
+    With a ``resolution``, "versionless" means *not resolved* rather than
+    ``Package.version is None``: a member whose version lives in a file is released like any other,
+    while one whose dynamic source molt could not resolve stays skipped (version-sources design
+    D7's third bucket). ``None`` keeps the pre-seam behaviour exactly (design D10).
     """
-    unversioned = (package.name for package in workspace.packages if package.version is None)
+    unversioned = (
+        package.name for package in workspace.packages if not _has_version(package, resolution)
+    )
     private: Iterable[str] = ()
     if not config.private_packages.version:
         private = (package.name for package in workspace.packages if package.private)
@@ -317,16 +357,32 @@ def skipped_package_names(workspace: Workspace, config: Config) -> tuple[str, ..
     return tuple(ordered)
 
 
-def is_versionable(package: Package, config: Config) -> bool:
+def is_versionable(
+    package: Package, config: Config, resolution: VersionResolution | None = None
+) -> bool:
     """Whether ``package`` is a package this configuration releases at all.
 
-    The Python reading of upstream's ``shouldSkipPackage``: not ignored, declares a version, and not
+    The Python reading of upstream's ``shouldSkipPackage``: not ignored, has a version, and not
     private while ``private_packages.version`` is false. Used by ``molt status``'s CI gate, which
     asks the question about a *changed* package rather than about a planned release.
+
+    "Has a version" is ``Package.version is not None`` with no ``resolution``, and "was resolved by
+    a version source" with one (version-sources design D10).
     """
-    if package.version is None:
+    if not _has_version(package, resolution):
         return False
     if package.private and not config.private_packages.version:
         return False
     key = normalize_name(package.name)
     return all(key != normalize_name(entry) for entry in config.ignore)
+
+
+def _has_version(package: Package, resolution: VersionResolution | None) -> bool:
+    """Whether ``package`` has a version molt can release it at, under this resolution.
+
+    The **one** place the two code paths design D10 creates are written down, so they cannot drift
+    into disagreeing about what "versionless" means at three call sites.
+    """
+    if resolution is None:
+        return package.version is not None
+    return resolution.version_of(package.name) is not None

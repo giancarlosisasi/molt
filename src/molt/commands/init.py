@@ -93,16 +93,21 @@ _README_BODY = (
 
 #: The full set of ``Config`` fields (``molt/config/models.py``), in the order they are written
 #: (design D2). The first eight positions mirror upstream's fixed generator order
-#: (``init/index.ts:59-70``) with ``$schema`` and ``access`` dropped; the remaining seven follow in
-#: the order ``Config`` declares them. **All fifteen are written**, at their defaults, since the
-#: 2026-07-31 ruling closing ``IC-3`` -- the first eight were the whole file before it.
-#: Cross-checked programmatically against ``Config.model_fields``: both are this exact 15-name set,
-#: and the key set ``run`` writes is derived from that model rather than from this tuple, so a new
-#: field appears in the written file whether or not somebody remembers to order it here. It was 17
-#: between ``implement-version-command``, which added flat ``changelog_template`` /
+#: (``init/index.ts:59-70``) with ``$schema`` and ``access`` dropped; the remaining eight follow in
+#: the order ``Config`` declares them. Every field that **has** a default value is written, at that
+#: default, since the 2026-07-31 ruling closing ``IC-3`` -- the first eight were the whole file
+#: before it. Cross-checked programmatically against ``Config.model_fields``: both are this exact
+#: 16-name set, and the key set ``run`` writes is derived from that model rather than from this
+#: tuple, so a new field appears in the written file whether or not somebody remembers to order it
+#: here. It was 17 between ``implement-version-command``, which added flat ``changelog_template`` /
 #: ``changelog_dates`` keys, and the 2026-07-30 ruling closing ``VC-4``, which folded both into the
 #: ``changelog`` table -- so the entry-template seam still has a position here, it is just
 #: ``changelog``'s.
+#:
+#: ``version_source`` (added by ``implement-version-sources``) takes the list to 16 and is the
+#: first field whose default is ``None``, so it is **not** written: TOML has no null, and the
+#: absence is what "detect the source" means. That is the same rule the nested members already
+#: follow -- see :func:`_toml_value` -- lifted to the top level.
 MOLT_KEY_ORDER: tuple[str, ...] = (
     # Upstream's generator order (`init/index.ts:59-70`), minus `$schema` and `access`.
     "base_branch",
@@ -121,6 +126,7 @@ MOLT_KEY_ORDER: tuple[str, ...] = (
     "bump_workspace_sources_only",
     "ecosystem",
     "forge",
+    "version_source",
 )
 
 
@@ -312,8 +318,15 @@ def _default_values(defaults: Config) -> dict[str, Any]:
     ``IC-3``), so a field added to :class:`molt.config.Config` later reaches the written template
     with no edit here -- only a position in :data:`MOLT_KEY_ORDER`, which is cross-checked against
     the same model.
+
+    A field whose default is ``None`` is **omitted**, because TOML has no null -- the same rule
+    :func:`_toml_value` already applies to a nested member, lifted to the top level when
+    ``version_source`` became the first top-level field with that default. Writing a placeholder
+    instead would change what the file means: an absent ``version_source`` is what tells molt to
+    detect the source.
     """
-    return {name: _toml_value(getattr(defaults, name)) for name in type(defaults).model_fields}
+    values = {name: getattr(defaults, name) for name in type(defaults).model_fields}
+    return {name: _toml_value(value) for name, value in values.items() if value is not None}
 
 
 def _toml_value(value: Any) -> Any:

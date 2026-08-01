@@ -111,7 +111,7 @@ def run(
     from pathlib import Path
 
     from molt.changeset import read_changesets
-    from molt.ecosystem import discover_workspace, find_workspace_root
+    from molt.ecosystem import discover_workspace, find_workspace_root, resolve_workspace_versions
     from molt.engine import (
         assemble_release_plan,
         plan_view,
@@ -128,6 +128,12 @@ def run(
     root = find_workspace_root(Path(cwd) if cwd is not None else Path.cwd())
     config = _resolve_config(root, console=console)
     workspace = discover_workspace(root, config.ecosystem)
+    # One resolution pass for the whole command (version-sources design D1), so a package whose
+    # version lives in a file is previewed at its **real** current version. `status` and `version`
+    # must drive the engine from identical inputs or the preview and the release disagree.
+    resolution = resolve_workspace_versions(workspace)
+    for entry in resolution.unresolved:
+        console.warn(f"{entry.reason} It is skipped; the rest of the plan is unaffected.")
 
     # `--since` filters the changesets; its absence means "every pending changeset", which is
     # upstream's shape (`getReleasePlan(cwd, since, config)`, `status/index.ts`) and not the same
@@ -135,8 +141,8 @@ def run(
     changesets = read_changesets(root, since_ref=since)
     plan = assemble_release_plan(
         changesets,
-        to_engine_packages(workspace),
-        to_engine_config(config, workspace),
+        to_engine_packages(workspace, resolution=resolution),
+        to_engine_config(config, workspace, resolution),
     )
     view = plan_view(plan)
 
@@ -146,7 +152,9 @@ def run(
     else:
         _emit_json(view, output)
 
-    changed = _changed_versionable_packages(workspace, config, since=since, git=git, root=root)
+    changed = _changed_versionable_packages(
+        workspace, config, since=since, git=git, root=root, resolution=resolution
+    )
     if changed and not view.changesets:
         console.error(_GATE_GUIDANCE)
         console.error(_GATE_EMPTY_HINT)
@@ -265,6 +273,7 @@ def _changed_versionable_packages(
     since: str | None,
     git: Any,
     root: Path,
+    resolution: Any = None,
 ) -> list[str]:
     """The packages that changed since the comparison ref **and** that this configuration releases.
 
@@ -287,15 +296,25 @@ def _changed_versionable_packages(
         changed_file_patterns=list(config.changed_file_patterns),
         ecosystem=config.ecosystem,
     )
-    return [name for name in changed if _versionable(workspace, config, name, is_versionable)]
+    return [
+        name
+        for name in changed
+        if _versionable(workspace, config, name, is_versionable, resolution)
+    ]
 
 
-def _versionable(workspace: Any, config: Any, name: str, is_versionable: Any) -> bool:
+def _versionable(
+    workspace: Any, config: Any, name: str, is_versionable: Any, resolution: Any = None
+) -> bool:
     """Whether the changed package ``name`` is one this configuration would release.
 
     ``Workspace.get`` is PEP 503-aware, so a name spelled differently by discovery and by
     configuration still resolves to one package. A name discovery cannot resolve is treated as
     versionable: it changed, molt cannot prove it is exempt, and the gate's job is to fail loudly.
+
+    ``resolution`` is what makes a file-sourced package count as versionable here: without it the
+    gate would report "no changeset for pkg-a" and then ``molt version`` would refuse to release
+    pkg-a, which is the worst of both answers.
     """
     package = workspace.get(name)
-    return True if package is None else is_versionable(package, config)
+    return True if package is None else is_versionable(package, config, resolution)

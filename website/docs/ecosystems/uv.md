@@ -28,6 +28,13 @@ version = "1.4.0"
 
 These are the packages [`molt add`](/cli/add) offers you, that [`molt version`](/cli/version) bumps, and that [`molt publish`](/cli/publish) uploads.
 
+A member does not have to write its version in `[project].version`. One that declares
+`dynamic = ["version"]` and keeps the value in a file -- hatch's `__about__.py` idiom and its
+setuptools and pdm equivalents -- is discovered, planned, released and tagged exactly like the
+member above; molt reads the version from that file and writes the new one back into it. See
+[Dynamic versions](/ecosystems/dynamic-versions) for what molt detects, how to tell it directly, and
+why a version derived from a git tag is not releasable yet.
+
 ## Intra-repo dependencies via `[tool.uv.sources]`
 
 Within a workspace, one package depends on another the uv way: a normal dependency requirement in `[project].dependencies`, plus a `[tool.uv.sources]` entry marking it as a workspace source.

@@ -39,6 +39,7 @@ from molt.config.models import (
     Config,
     PrivatePackages,
     SnapshotOptions,
+    VersionSourceConfig,
     field_aliases,
 )
 from molt.config.result import ConfigIssue, ConfigResult
@@ -47,6 +48,7 @@ from molt.config.rules import (
     check_dependents_of_ignored,
     check_fixed_and_linked_disjoint,
     check_snapshot_placeholders,
+    check_version_source,
     expand_groups,
     expand_ignore,
 )
@@ -115,6 +117,7 @@ _NESTED_MODELS = {
     "changelog": ChangelogOptions,
     "snapshot": SnapshotOptions,
     "private_packages": PrivatePackages,
+    "version_source": VersionSourceConfig,
 }
 
 #: Backends molt recognizes but cannot run yet; scheduled after the 0.1 MVP.
@@ -525,6 +528,7 @@ def _apply_rules(
     """
     errors.extend(check_changelog_coherent(config))
     errors.extend(check_snapshot_placeholders(config))
+    errors.extend(check_version_source(config))
 
     updated = config.model_copy(update=resolved)
     if workspace is not None:

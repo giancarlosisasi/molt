@@ -121,6 +121,27 @@ github = "molt.changelog.github:generator"
 # name either and get the same bytes.
 default = "molt.changelog.git:generator"
 
+[project.entry-points."molt.version_source"]
+# Where a package's version lives -- molt's three built-in sources, registered through the *same*
+# mechanism a third-party source uses (version-sources design D8, the rule `molt.changelog` above
+# already follows). A source molt does not ship becomes usable by installing it and naming its kind
+# in `[tool.molt.version_source]`; naming one that is not installed fails with a message listing
+# the ones that are.
+#
+# Each value names the module, whose `build(*, name, directory, version, options)` callable is what
+# `molt.ecosystem.version_sources.resolve` looks for.
+#
+# Requires `uv sync` (or `uv sync --reinstall-package molt-cli`) after this edit before
+# `importlib.metadata.entry_points(group="molt.version_source")` sees it -- importlib reads
+# INSTALLED distribution metadata, not this file.
+static = "molt.ecosystem.version_sources.static"
+file = "molt.ecosystem.version_sources.file"
+# Detected and REFUSED, not released: there is nothing on disk to write, because the tag *is* the
+# version. The change that lifts the refusal is named and committed --
+# `implement-tag-version-injection` (owner ruling 2026-08-01) -- and its design starts from this
+# change's design D6, which is in `molt/ecosystem/version_sources/tag.py`'s docstring.
+tag = "molt.ecosystem.version_sources.tag"
+
 [project.urls]
 Homepage = "https://github.com/giancarlosisasi/molt"
 Repository = "https://github.com/giancarlosisasi/molt"

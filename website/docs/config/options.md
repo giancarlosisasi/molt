@@ -189,6 +189,47 @@ If your repo has no uv workspace, you do not need this option at all — a singl
 
 See [Ecosystems](/ecosystems/overview). `forge` selects the release-automation backend; GitHub ships first, but the seam exists from day one -- see [Forges](/forges/overview).
 
+## Where a package keeps its version (molt-native)
+
+| Option | Type | Default | Meaning |
+|---|---|---|---|
+| `version_source` | `table` | absent | Where **this** package's version lives. Absent means molt detects it. |
+| `version_source.kind` | `string` | *required* | `"static"`, `"file"`, `"tag"`, or a source an installed plugin registers. |
+| `version_source.path` | `string` | absent | The file holding the version, relative to this package's own directory. Required for `kind = "file"`. |
+| `version_source.pattern` | `string` | absent | A regular expression locating the version inside that file. It must capture a group named `version`. |
+
+```toml
+# packages/acme-core/pyproject.toml -- NOT the workspace root's
+[project]
+name = "acme-core"
+dynamic = ["version"]
+
+[tool.molt.version_source]
+kind = "file"
+path = "src/acme_core/__about__.py"
+```
+
+**This option is declared in the package's own manifest, and that is deliberate.** Where a version
+lives is a property of a package, not of a workspace. A root-level table would need a
+name-to-source map that duplicates what discovery already knows, breaks the moment a package is
+renamed, and puts one package's build detail in another package's file. There is no workspace-level
+default and none is planned.
+
+In a single-package repository the root manifest *is* the member manifest, so the table sits in the
+very `[tool.molt]` section molt parses -- which is why it is a fully declared, validated option
+rather than a key molt merely tolerates.
+
+Three ways to get this wrong are refused when your configuration loads, each naming the fix: a table
+with no `kind`; `kind = "file"` with no `path`; and a `pattern` that does not compile, or that
+compiles without a group named `version`. That group is the text molt replaces when it writes a new
+version, so a pattern without it locates a line molt could not edit.
+
+`kind` is a free string rather than a fixed list because an installed distribution may register a
+fourth source. Naming one that is not installed fails with a message listing the ones that are.
+
+See [Dynamic versions](/ecosystems/dynamic-versions) for the detection table, what happens to a
+package molt cannot resolve, and why a git-tag-derived version is not releasable yet.
+
 ## Dropped from changesets
 
 Molt deliberately does not carry these changesets options, because they encode npm/JavaScript concepts with no Python analogue. **A configuration that still contains one does not load** -- molt names the key and says why it has no equivalent. Remove `access`, `onlyUpdatePeerDependentsWhenOutOfRange`, `privatePackages.tag`, the `___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH` wrapper (except its `updateInternalDependents` member, which molt promotes to a plain top-level option), and `prettier`, which changesets 3.0 already replaced with `format`.

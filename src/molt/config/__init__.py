@@ -28,6 +28,7 @@ if TYPE_CHECKING:
         Config,
         PrivatePackages,
         SnapshotOptions,
+        VersionSourceConfig,
         default_config,
     )
     from molt.config.parse import parse_config
@@ -40,6 +41,7 @@ __all__ = [
     "ConfigResult",
     "PrivatePackages",
     "SnapshotOptions",
+    "VersionSourceConfig",
     "config_json_schema",
     "default_config",
     "load_config",
@@ -55,6 +57,7 @@ _EXPORTS: dict[str, str] = {
     "ConfigResult": "molt.config.result",
     "PrivatePackages": "molt.config.models",
     "SnapshotOptions": "molt.config.models",
+    "VersionSourceConfig": "molt.config.models",
     "config_json_schema": "molt.config.json_schema",
     "default_config": "molt.config.models",
     "load_config": "molt.config.load",
