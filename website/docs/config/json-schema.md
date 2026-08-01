@@ -10,6 +10,8 @@ Molt ships a JSON Schema for its configuration so your editor can autocomplete a
 
 Molt's config is defined by a pydantic model. That same model generates the JSON Schema for free -- molt does not maintain a schema file by hand, so the schema can never drift out of sync with what the tool actually accepts. When an option is added, renamed, or given a new default, the published schema reflects it in the same release. Both the canonical `snake_case` names and their changesets-compatible `camelCase` aliases appear in the schema, so autocomplete works whichever spelling you use.
 
+The schema declares that **no additional properties are allowed** -- for the document itself and for every nested table it defines -- so your editor flags an unknown key before molt is ever run. That matches what molt does at load time, where an unknown key stops the run. It also declares that `changed_file_patterns` holds at least one entry, for the same reason: an empty list is refused.
+
 ## Referencing it from `.molt/config.json`
 
 Add a `$schema` key pointing at molt's published schema. Editors that understand JSON Schema (VS Code out of the box, plus most others) will then offer completion, inline docs, and validation:

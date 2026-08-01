@@ -24,6 +24,12 @@ A package is considered changed when it has at least one changed file whose pack
 changed_file_patterns = ["src/**", "pyproject.toml"]
 ```
 
+**An empty list is refused.** `changed_file_patterns = []` is not "detect nothing", it is "never report anything": no file inside a package would ever count as a change to it, so the safety net that tells you *these packages changed and have no changeset* could never fire again -- silently, on every run. Molt fails the parse and names the two fixes: remove the key to get the default `["**"]`, or list the patterns that count.
+
+A **non-empty** list is legal even when it matches nothing today, for the same reason an `ignore` glob that matches nothing is. Note the honest limit: molt holds no file list while parsing your configuration, so this case is legal *and* silent -- unlike an unmatched `ignore` entry, which molt can check against the packages it discovered.
+
+`base_branch` must not be empty either. An empty ref cannot resolve to a commit, and without the check it would fail much later inside a `git merge-base` error that never names the option.
+
 ## Versioning and propagation
 
 | Option | Type | Default | Meaning |
@@ -118,12 +124,29 @@ dates = true
 See [Changelog templates](/guides/changelog-templates).
 
 :::warning Migrating from `changelog_template` / `changelog_dates`
-Those two flat keys were removed. Move them into the `changelog` table -- an old configuration still loads, but molt warns that each key was ignored and no entry template is applied until you migrate.
+Those two flat keys were removed, and a configuration that still writes them **does not load**. Move them into the `changelog` table:
+
+```toml
+[tool.molt]
+changelog = { template = "changelog-entry.md.jinja", dates = true }
+```
+
+Molt's error names the replacement for you, one line per key. The `camelCase` spellings `changelogTemplate` / `changelogDates` are refused the same way.
 :::
+
+**`generator = false` beside `template` or `dates` is refused.** Switching the generator off writes no `CHANGELOG.md` at all, so a template beside it is read and then discarded -- you configured an entry template and got no changelog. Remove the template and dates, or name a generator instead of `false`. `changelog = { dates = true }` on its own is fine: the generator is still on, and that means "the built-in generator, dated".
 
 `commit` works the same way: `false` (default) leaves committing to you; `true` uses molt's built-in commit generator; a string or tuple selects a custom one.
 
-`format` exists mainly for parity and taste. Molt emits correct, deterministic Markdown itself -- it does not need a formatter pass to clean up broken blank lines the way changesets does -- so the default is `false`. Set it to `"mdformat"` if you want written files normalized by an external formatter. Changesets' JS-specific `format` values (`"auto"`, `"prettier"`, `"oxfmt"`, `"deno"`, `"dprint"`) are accepted for migration but do not pull in a Node toolchain.
+`format` exists mainly for parity and taste. Molt emits correct, deterministic Markdown itself -- it does not need a formatter pass to clean up broken blank lines the way changesets does -- so the default is `false`. Set it to `"mdformat"` if you want written files normalized by an external formatter.
+
+**A JavaScript formatter is refused.** `"auto"`, `"prettier"`, `"oxfmt"`, `"deno"`, `"dprint"` and `"biome"` are all Node programs, and molt does not shell out to Node. Molt used to accept them, normalize them to `false` and warn; it now fails the parse and names the three things that work instead:
+
+- `format = "mdformat"` -- run the Python formatter;
+- `format = false` -- run none, which is also the default;
+- delete the line.
+
+This one bites migrating users who changed nothing: a stock changesets 3.0 configuration carries `format: "auto"`, and that configuration now fails. Deleting the line is the right answer for almost everybody, because molt's own output does not need a cleanup pass.
 
 ## Snapshots
 
@@ -139,6 +162,8 @@ Snapshots produce throwaway, timestamped builds for testing. Because PyPI versio
 prerelease_template = "{tag}.dev{timestamp}"
 use_calculated_version = true
 ```
+
+**The placeholder set is closed, and an unrecognised `{token}` is refused.** Molt substitutes what it knows and would otherwise write anything else into the version string as literal text -- and a version an index has stored is permanent. So `{brnach}` fails the parse, with an error naming the token and listing the five placeholders molt accepts. The empty string is refused too.
 
 See [Snapshot releases](/concepts/snapshots) for the full model and how it differs from changesets.
 
@@ -166,7 +191,7 @@ See [Ecosystems](/ecosystems/overview). `forge` selects the release-automation b
 
 ## Dropped from changesets
 
-Molt deliberately does not carry these changesets options, because they encode npm/JavaScript concepts with no Python analogue. Configs that still contain them are accepted (the keys are ignored with a warning), so migration does not break.
+Molt deliberately does not carry these changesets options, because they encode npm/JavaScript concepts with no Python analogue. **A configuration that still contains one does not load** -- molt names the key and says why it has no equivalent. Remove `access`, `onlyUpdatePeerDependentsWhenOutOfRange`, `privatePackages.tag`, the `___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH` wrapper (except its `updateInternalDependents` member, which molt promotes to a plain top-level option), and `prettier`, which changesets 3.0 already replaced with `format`.
 
 | Dropped option | Why |
 |---|---|

@@ -24,7 +24,8 @@ changelog-entry template (research README section 5 item 5; gap ``CT-1``). Step 
 as flat ``changelog_template`` / ``changelog_dates`` keys because ``tests/config/test_parse.py``
 row 29 pinned a mapping under ``changelog`` as a hard error, and recorded the shape as gap ``VC-4``.
 **Owner ruling 2026-07-30:** the table is the wanted shape and row 29 may be renegotiated, so the
-three settings collapse into one key and the flat spellings become unknown keys that warn.
+three settings collapse into one key and the flat spellings become unknown keys. They warned until
+the 2026-07-31 (session 6) strictness ruling; they now fail the parse, still naming the replacement.
 
 The generator-reference forms are untouched by that widening -- a bare string still normalizes to
 ``(ref, None)``, ``false`` still disables changelogs, and the ``[ref, options]`` pair still passes
@@ -39,9 +40,10 @@ The template still sees ``config.dates``, exactly as the guide's worked example 
 :mod:`molt.apply` passes it a changelog-scoped view, so a template's ``config`` is the changelog
 scope rather than the whole configuration.
 
-Dropped keys are still *accepted* on input with a warning so a migrating changesets configuration
-loads (see :mod:`molt.config.parse`); tolerated is not the same as supported, which is why they are
-absent here.
+Dropped keys are **refused** on input, with a message naming the key and, where molt knows one, the
+replacement (see :mod:`molt.config.parse`). They were tolerated with a warning until the 2026-07-31
+(session 6) ruling made the configuration strict everywhere; tolerated was never the same as
+supported, which is why they are absent here either way.
 """
 
 from __future__ import annotations
@@ -184,18 +186,27 @@ class ChangelogOptions(BaseModel):
     ``changelog = { dates = true }`` mean "the built-in generator, dated" rather than "no
     generator".
 
+    ``template`` carries ``min_length=1`` for the same reason
+    :attr:`SnapshotOptions.prerelease_template` does: an empty filename cannot resolve to anything,
+    and without the constraint it fails much later, in a "template not found" message pointing at
+    the workspace root directory rather than at the option that is wrong (owner ruling 2026-07-31,
+    session 6).
+
     ``generator = false`` is accepted and means what ``changelog = false`` means -- no
-    ``CHANGELOG.md`` is written. Odd to write beside a ``template``, but refusing it would be a
-    second, differently-shaped rule for one concept.
+    ``CHANGELOG.md`` is written. This docstring used to add that writing it beside a ``template``
+    was odd but accepted, "because refusing it would be a second, differently-shaped rule for one
+    concept". **That reasoning is superseded by the owner ruling of 2026-07-31 (session 6)**, which
+    weighs a second rule against an impossible state and takes the rule: the combination is now
+    refused by ``molt.config.rules.check_changelog_coherent``, and gap ``CFG-3`` closes with it.
     """
 
-    model_config = ConfigDict(extra="ignore", frozen=True, populate_by_name=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
 
     generator: _GeneratorField = Field(
         default=(BUILTIN_CHANGELOG, None),
         description="Changelog generator to run, with optional generator options.",
     )
-    template: str | None = Field(
+    template: Annotated[str, Field(min_length=1)] | None = Field(
         default=None,
         description=(
             "Filename of a Jinja2 changelog-entry template, resolved against the workspace root."
@@ -216,7 +227,7 @@ class PrivatePackages(BaseModel):
     ``"private": true``.
     """
 
-    model_config = ConfigDict(extra="ignore", frozen=True, populate_by_name=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
 
     version: bool = Field(default=True, description="Version private packages alongside the rest.")
 
@@ -229,9 +240,14 @@ class SnapshotOptions(BaseModel):
     ``None`` instead, so absent, ``None`` and unset must stay interchangeable to every consumer.
     The empty string is rejected rather than treated as absent, matching valibot's
     ``minLength(1)``.
+
+    Which ``{placeholders}`` the template may carry is a closed set, and an unrecognised one is
+    refused by ``molt.config.rules.check_snapshot_placeholders`` -- it would otherwise be written
+    into a version string verbatim, and a version an index has stored is permanent (owner ruling
+    2026-07-31, session 6).
     """
 
-    model_config = ConfigDict(extra="ignore", frozen=True, populate_by_name=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
 
     use_calculated_version: bool = Field(
         default=False,
@@ -255,16 +271,34 @@ class Config(BaseModel):
     ``camelCase`` spelling, both landing on the same field, so a changesets configuration migrates
     unchanged. Supplying *both* spellings of one option is an error rather than a silent
     precedence rule -- see :mod:`molt.config.parse`.
+
+    ``base_branch`` carries ``min_length=1``: an empty ref cannot resolve to anything, and without
+    the constraint it fails much later, inside a ``git merge-base`` error that does not name the
+    option (owner ruling 2026-07-31, session 6).
+
+    ``changed_file_patterns`` carries ``min_length=1`` too, but for a different reason and with a
+    different effect. The refusal a user actually meets comes from
+    ``molt.config.parse._check_changed_file_patterns``, which pops the empty list before validation
+    and says what to write instead; the constraint here is **inert at runtime** and exists so the
+    generated JSON Schema carries ``minItems: 1`` and an editor flags the empty list before molt
+    runs. Same arrangement, same reason, as ``extra="forbid"`` below.
     """
 
-    model_config = ConfigDict(extra="ignore", frozen=True, populate_by_name=True)
+    # ``extra="forbid"`` is for the **schema**, not for enforcement (design D4). The pre-pass in
+    # :mod:`molt.config.parse` builds this payload from known field names only, so the model never
+    # sees an unknown key and cannot report one -- which is deliberate, because the pre-pass
+    # produces the better message: it names the key, where the setting moved to, and the nearest
+    # real option. What ``forbid`` changes is ``model_json_schema()``, which gains
+    # ``additionalProperties: false`` here and in every ``$defs`` entry, so an editor flags a typo
+    # before molt is ever run.
+    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
 
-    base_branch: str = Field(
+    base_branch: Annotated[str, Field(min_length=1)] = Field(
         default="main",
         validation_alias=AliasChoices("base_branch", "baseBranch"),
         description='Git ref used as the comparison base for "what changed".',
     )
-    changed_file_patterns: tuple[str, ...] = Field(
+    changed_file_patterns: Annotated[tuple[str, ...], Field(min_length=1)] = Field(
         default=("**",),
         validation_alias=AliasChoices("changed_file_patterns", "changedFilePatterns"),
         description="Which files inside a package directory count as a change for that package.",

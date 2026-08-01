@@ -2169,6 +2169,36 @@ def test_a_missing_changelog_template_is_reported_by_name(
     assert versions(tmp_project.root) == {"pkg-a": "1.0.0"}
 
 
+def test_a_removed_config_key_stops_the_run_naming_its_replacement(
+    tmp_project: ProjectBuilder, console: RecordingConsole, fake_git: FakeGit
+) -> None:
+    """Closes ``CFG-4``: the removed-key migration message is pinned on a real run, not on prose.
+
+    ``CFG-4`` recorded that ``changelog_template`` -- a real molt option until the 2026-07-30 ruling
+    folded it into the ``changelog`` table -- was covered only by a config-layer row asserting the
+    warning's *text*. What that never exercised was ``molt version`` on a project still writing the
+    flat key: that the run completed and wrote an un-templated changelog was inferred from property
+    values, not observed.
+
+    Under the 2026-07-31 (session 6) strictness ruling the effect is much sharper and much easier to
+    pin -- the run does not start. The user gets the replacement to type, exits 1, and no version on
+    disk moves. No product change was needed for this: ``_resolve_config`` already renders both
+    channels and raises.
+    """
+    tmp_project.add_package("pkg-a", "1.0.0")
+    tmp_project.set_config(changelog_template="entry.md.jinja")
+    tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "This is a summary")
+
+    with pytest.raises(ExitError) as excinfo:
+        run_version(tmp_project.root, console, fake_git)
+
+    assert excinfo.value.code == 1
+    message = "\n".join(console.errors)
+    assert "changelog_template" in message, "the key the user wrote"
+    assert "`changelog = { template =" in message, "and where the setting now lives"
+    assert versions(tmp_project.root) == {"pkg-a": "1.0.0"}, "nothing runs on a refused config"
+
+
 def test_a_changeset_naming_a_version_less_package_is_refused(
     tmp_project: ProjectBuilder, console: RecordingConsole, fake_git: FakeGit
 ) -> None:

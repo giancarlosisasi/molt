@@ -59,6 +59,8 @@ import pytest
 pytest.importorskip("molt.config", reason="build step 3 - config not yet implemented (TDD target)")
 
 from molt.config import Config, default_config, load_config, parse_config
+from molt.config.parse import _JS_FORMATTERS
+from molt.config.rules import SNAPSHOT_PLACEHOLDERS
 
 if TYPE_CHECKING:
     from syrupy.assertion import SnapshotAssertion
@@ -309,20 +311,12 @@ VALID_CASES: list[tuple[dict[str, Any], list[str], dict[str, Any], int | None, s
         0,
         "explicitly off, which is also the default",
     ),
-    (
-        {"format": "auto"},
-        DEFAULT_PKGS,
-        {"format": False},
-        1,
-        "changesets' default is an inert migration alias: accepted, warned, normalized to false",
-    ),
-    (
-        {"format": "prettier"},
-        DEFAULT_PKGS,
-        {"format": False},
-        1,
-        "as above for the rest of the JS backend matrix - molt never shells out to Node",
-    ),
+    # The `{"format": "auto"}` and `{"format": "prettier"}` rows lived here until 2026-08-01: they
+    # asserted that a JS backend was accepted, warned about and normalized to false. The owner
+    # ruling of that date (session 6) refuses those values outright, so the rows assert a
+    # normalization that no longer happens and were removed rather than edited. Their successor is
+    # `test_a_javascript_formatter_value_is_refused`, one row per entry in `_JS_FORMATTERS`. The two
+    # `format` rows *above* are the negative controls and must stay green untouched.
     (
         {"fixed": [["pkg-a", "pkg-b"]]},
         DEFAULT_PKGS,
@@ -966,22 +960,26 @@ def test_an_invalid_changelog_table_member_is_located_at_the_member(
 
 
 @pytest.mark.unit
-def test_an_unknown_changelog_table_member_warns_and_never_fails() -> None:
-    """An unknown member of the ``changelog`` table is a warning, exactly like ``snapshot``'s.
+def test_an_unknown_changelog_table_member_is_a_hard_error() -> None:
+    """An unknown member of the ``changelog`` table fails, exactly like an unknown top-level key.
 
-    Deliberate (owner ruling 2026-07-30 closing ``VC-4``; design D3): the standing contract is that
-    unknown keys warn and never fail so a migrating configuration keeps loading, and a sub-table is
-    not an exception to it. The cost is that a typo leaves templating quietly off, which is why the
-    warning carries a suggestion.
+    **Renegotiated 2026-07-31 (session 6).** This row used to assert the opposite -- a warning, on
+    the older "unknown keys never fail" contract that let a migrating configuration keep loading.
+    The ruling reverses it: *"We should avoid impossible-states concepts and fail hard and fast with
+    a good UX message for the user."* The cost the old row named as acceptable is exactly what the
+    ruling refuses to pay: ``templat`` left templating quietly off while the file said it was on.
+
+    Strictness is a property of the document, not of its depth, so this is the same rule the top
+    level gets -- and the suggestion survives the move to the error channel, because naming the
+    option the user meant is what makes the refusal actionable.
     """
     config, warnings, errors = parse_config(
         {"changelog": {"templat": "entry.md.jinja"}}, package_names=DEFAULT_PKGS
     )
-    assert list(errors) == []
-    assert config is not None
-    assert config.changelog_template is None, "an unknown member configures nothing"
-    assert error_locs(warnings) == [("changelog", "templat")]
-    assert 'Did you mean "template"?' in joined(warnings)
+    assert config is None
+    assert error_locs(errors) == [("changelog", "templat")]
+    assert 'Did you mean "template"?' in joined(errors)
+    assert list(warnings) == []
 
 
 @pytest.mark.unit
@@ -992,23 +990,27 @@ def test_an_unknown_changelog_table_member_warns_and_never_fails() -> None:
         {"changelogTemplate": "entry.md.jinja", "changelogDates": True},
     ],
 )
-def test_the_removed_flat_changelog_keys_warn_as_unknown(written: dict[str, Any]) -> None:
-    """The migration story for the keys the ``VC-4`` ruling removed.
+def test_the_removed_flat_changelog_keys_are_hard_errors_naming_the_replacement(
+    written: dict[str, Any],
+) -> None:
+    """The migration story for the keys the ``VC-4`` ruling removed, now told as a refusal.
 
     ``changelog_template`` / ``changelog_dates`` were real options between
     ``implement-version-command`` and the 2026-07-30 ruling that folded them into the ``changelog``
-    table. Failing on them would break the pinned "unknown keys never fail" contract, so an
-    un-migrated configuration still loads -- with a warning per key that says where the setting
-    went, and with no template applied until it is migrated.
+    table. **Renegotiated 2026-07-31 (session 6):** an un-migrated configuration no longer loads
+    with a warning, it fails.
+
+    What must not be lost when the channel changes is the *replacement text*. The dropped-options
+    table exists for that sentence and for nothing else -- "unknown option" tells a user their
+    template stopped being applied, while ``changelog = { template = ... }`` tells them what to
+    type. Both spellings are covered because a migrating file may carry either.
     """
     config, warnings, errors = parse_config(written, package_names=DEFAULT_PKGS)
-    assert list(errors) == []
-    assert config is not None
-    assert config.changelog_template is None
-    assert config.changelog_dates is False
-    assert len(list(warnings)) == 2
-    assert "`changelog = { template =" in joined(warnings)
-    assert "`changelog = { dates = true }`" in joined(warnings)
+    assert config is None
+    assert len(list(errors)) == 2
+    assert "`changelog = { template =" in joined(errors)
+    assert "`changelog = { dates = true }`" in joined(errors)
+    assert list(warnings) == []
 
 
 @pytest.mark.unit
@@ -1416,21 +1418,29 @@ def test_unmatched_ignore_pattern_warns_instead_of_silently_dropping() -> None:
         ),
     ],
 )
-def test_unknown_and_dropped_keys_warn_but_do_not_fail(
+def test_unknown_and_dropped_keys_are_hard_errors(
     written: dict[str, Any], unknown: str, why: str
 ) -> None:
-    """Unknown keys are a warning, never a silent drop and never fatal.
+    """An unknown key fails the parse, and so does a key molt deliberately dropped.
 
-    Dropped changesets options (research README section 4.4) go down the same path so an old
-    ``config.json`` keeps working during migration, while never appearing on ``Config``
-    (website docs ``config/options.md``, "Dropped from changesets").
+    **Renegotiated 2026-07-31 (session 6).** Until that ruling this row asserted the opposite:
+    ``errors == []`` and a warning per key, so that a migrating changesets ``config.json`` kept
+    loading. The ruling weighs that affordance against what it costs -- *"We should avoid
+    impossible-states concepts and fail hard and fast with a good UX message for the user"* -- and
+    drops it. A key molt does not implement means a setting the user believes is configured and
+    molt is ignoring, and molt writes versions into manifests and uploads them to an index, where
+    the mistake is permanent.
+
+    The three parameter sets are the three shapes the rule has to cover: a plain typo, a dropped
+    changesets option (research README section 4.4), and a member of the experimental wrapper that
+    molt did not promote -- the wrapper is a migration alias for exactly one option, not a place to
+    keep settings molt has no concept of.
     """
     config, warnings, errors = parse_config(written, package_names=DEFAULT_PKGS)
-    assert list(errors) == [], why
-    assert len(list(warnings)) >= 1, why
-    assert unknown in joined(warnings), why
-    assert config is not None, why
-    assert unknown not in dump(config), why
+    assert config is None, why
+    assert len(list(errors)) >= 1, why
+    assert unknown in joined(errors), why
+    assert list(warnings) == [], why
 
 
 @pytest.mark.unit
@@ -1446,3 +1456,316 @@ def test_schema_key_is_accepted_and_stripped() -> None:
     assert list(warnings) == []
     assert config is not None
     assert dump(config) == {**defaults(), "base_branch": "release"}
+
+
+# --------------------------------------------------------------------------------------
+# Strict everywhere -- owner rulings 2026-07-31 and 2026-08-01 (session 6).
+#
+# "We should avoid impossible-states concepts and fail hard and fast with a good UX message
+# for the user." The rows above renegotiated by that ruling say so individually; the block
+# below is what it *adds*: refusal at every depth, refusal of combinations that cannot mean
+# anything, and the one thing that is still only a warning.
+# --------------------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_an_unknown_key_still_suggests_the_nearest_real_option() -> None:
+    """The ``difflib`` suggestion survived the move from the warning channel to the error one.
+
+    Worth its own row because the suggestion is the whole reason the pre-pass, rather than
+    pydantic's ``extra="forbid"``, is the enforcement path (design D1): pydantic says *"Extra inputs
+    are not permitted"*, while molt names the option the user meant. Losing it while promoting the
+    channel would leave the strictness in place and take the usability out of it.
+    """
+    _config, _warnings, errors = parse_config({"baseBrnach": "main"}, package_names=DEFAULT_PKGS)
+    assert 'Did you mean "base_branch"?' in joined(errors)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("table", "member"),
+    [("snapshot", "use_calculated_versoin"), ("private_packages", "versoin")],
+)
+def test_an_unknown_member_of_a_nested_table_is_a_hard_error(table: str, member: str) -> None:
+    """ "Every nested table" means every one, not only the ``changelog`` table the ruling names.
+
+    ``changelog`` is covered by ``test_an_unknown_changelog_table_member_is_a_hard_error``; these
+    two are what proves the rule is a property of the document rather than of the one table that
+    prompted it. ``loc`` carries ``(table, member)`` so the report names both.
+    """
+    config, warnings, errors = parse_config({table: {member: True}}, package_names=DEFAULT_PKGS)
+    assert config is None
+    assert error_locs(errors) == [(table, member)]
+    assert member in joined(errors)
+    assert list(warnings) == []
+
+
+@pytest.mark.unit
+def test_every_problem_in_one_document_is_reported_in_one_run() -> None:
+    """Failing hard is about the errors channel, not about stopping early (design D2).
+
+    Three unrelated problems, each found by a different layer: an unknown key (the raw-document
+    pre-pass), a value outside a known option's enum (the model), and a package in two ``fixed``
+    groups (the cross-option rules). Before this change the parser returned as soon as the pre-pass
+    had anything, so the typo would have hidden the other two -- and a release tool that makes you
+    fix one problem per run to discover the next is worse than one that is briefly noisy.
+
+    The group rules therefore run on the raw payload rather than on a validated ``Config``, which is
+    a correction to this change's own design D2: D2 accepted that a type failure anywhere would
+    suppress the group diagnostics, and the delta spec's "Independent problems are reported
+    together" scenario does not.
+
+    Nothing is reported twice, and that holds by construction rather than by de-duplication -- the
+    pre-pass never copies an offending value into the payload, so the model cannot report the same
+    mistake a second time.
+    """
+    written = {
+        "base_brnach": "main",
+        "update_internal_dependencies": "major",
+        "fixed": [["pkg-a"], ["pkg-a"]],
+    }
+    config, _warnings, errors = parse_config(written, package_names=DEFAULT_PKGS)
+    assert config is None
+    messages = texts(errors)
+    assert len(messages) == len(set(messages)), f"a message was reported twice: {messages}"
+    assert "base_brnach" in joined(errors), "the unknown key"
+    assert has_error_at(errors, "update_internal_dependencies"), "the wrong-valued known option"
+    assert has_error_at(errors, "fixed", 1), "the package in two groups"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("table", "why"),
+    [
+        ({"generator": False, "template": "entry.md.jinja"}, "a template nothing will ever read"),
+        ({"generator": False, "dates": True}, "a release date on an entry nothing will write"),
+        (
+            {"generator": False, "template": "entry.md.jinja", "dates": True},
+            "both at once, which is the shape a user actually writes",
+        ),
+    ],
+)
+def test_a_disabled_changelog_generator_with_template_settings_is_refused(
+    table: dict[str, Any], why: str
+) -> None:
+    """``generator = false`` writes no ``CHANGELOG.md``, so a template beside it configures nothing.
+
+    Closes gap ``CFG-3``, which recorded the combination as accepted-and-inert. ``molt.apply``'s
+    changelog planner returns before any entry is assembled, so the template is read off disk by the
+    command and then discarded: the user configured an entry template and got no changelog.
+
+    The message must name a **fix**, not only the problem -- there are two ways out and the user has
+    to choose between them, so both are named.
+    """
+    config, _warnings, errors = parse_config({"changelog": table}, package_names=DEFAULT_PKGS)
+    assert config is None, why
+    assert has_error_at(errors, "changelog"), why
+    text = joined(errors)
+    assert "Remove" in text and "name a generator" in text, f"{why}: the message must name a fix"
+
+
+@pytest.mark.unit
+def test_a_dated_changelog_with_no_template_is_legal() -> None:
+    """The negative control for the row above: it looks like a contradiction and is not.
+
+    ``changelog = { dates = true }`` means the built-in entry template, dated. The difference is the
+    only one that matters -- the generator is **on**, so there is a changelog for the date to appear
+    in (design D3's "legal, and each argued" table).
+    """
+    config, warnings, errors = parse_config(
+        {"changelog": {"dates": True}}, package_names=DEFAULT_PKGS
+    )
+    assert list(errors) == []
+    assert list(warnings) == []
+    assert config is not None
+    assert config.changelog_dates is True
+    assert config.changelog_generator == tuple(BUILTIN_CHANGELOG)
+    assert config.changelog_template is None
+
+
+@pytest.mark.unit
+def test_an_unrecognised_snapshot_placeholder_is_refused() -> None:
+    """An unknown ``{token}`` would be written into a version string verbatim, and that is forever.
+
+    The placeholder set is closed. molt substitutes what it knows and leaves anything else alone, so
+    ``{brnach}`` reaches PEP 440 as literal text inside a version an index then stores permanently.
+    Refusing it at parse time is the same protection the engine's invocation-time checks give,
+    one layer earlier, where the message can name the option instead of the run.
+
+    The negative control lives in this row rather than beside it: every placeholder molt documents,
+    alone, plus the compound spellings ``tests/engine/test_assemble.py::SNAPSHOT_TEMPLATE_CASES``
+    drives end to end. The rule must not refuse a template the engine renders correctly -- two lists
+    that disagree would be worse than the hole being closed (gap ``CFG-7``).
+    """
+    config, _warnings, errors = parse_config(
+        {"snapshot": {"prerelease_template": "{brnach}"}}, package_names=DEFAULT_PKGS
+    )
+    assert config is None
+    assert has_error_at(errors, "snapshot", "prerelease_template")
+    text = joined(errors)
+    assert "{brnach}" in text, "the message must name the offending token"
+    for placeholder in SNAPSHOT_PLACEHOLDERS:
+        assert f"{{{placeholder}}}" in text, "and list every placeholder molt accepts"
+
+    accepted = [f"{{{placeholder}}}" for placeholder in SNAPSHOT_PLACEHOLDERS] + [
+        # The compound spellings of `tests/engine/test_assemble.py::SNAPSHOT_TEMPLATE_CASES`.
+        "{tag}-{tag}",
+        "{tag}.{timestamp}.{commit}",
+        "{tag}.{commit-short}",
+        "{datetime}-{tag}",
+    ]
+    for template in accepted:
+        good, _warns, errs = parse_config(
+            {"snapshot": {"prerelease_template": template}}, package_names=DEFAULT_PKGS
+        )
+        assert list(errs) == [], f"{template} is documented and must parse"
+        assert good is not None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("written", "loc", "why"),
+    [
+        ({"base_branch": ""}, ("base_branch",), "an empty ref cannot resolve to a commit"),
+        (
+            {"changelog": {"template": ""}},
+            ("changelog",),
+            "an empty filename cannot resolve to a file",
+        ),
+    ],
+)
+def test_an_empty_required_string_is_refused(
+    written: dict[str, Any], loc: tuple[Any, ...], why: str
+) -> None:
+    """An empty name where a name is required fails here, not four layers down.
+
+    ``snapshot.prerelease_template`` already carried ``min_length=1``; these two are the same rule,
+    missing. Without them ``base_branch = ""`` fails inside a ``git merge-base`` error and
+    ``changelog.template = ""`` inside a "template not found" message pointing at the workspace root
+    directory -- both true, neither naming the option that is wrong.
+    """
+    config, _warnings, errors = parse_config(written, package_names=DEFAULT_PKGS)
+    assert config is None, why
+    assert has_error_at(errors, *loc), (
+        f"{why}: expected an error at {loc}, got {error_locs(errors)}"
+    )
+
+
+@pytest.mark.unit
+def test_an_ignored_member_of_a_fixed_group_still_parses() -> None:
+    """The single most important finding of this change's audit: it is NOT a contradiction.
+
+    ``fixed`` promises one shared version and ``ignore`` promises no release, which reads like the
+    clearest impossible state on the surface. It is pinned **legal** by a ported row --
+    ``tests/cli/test_version.py::test_ignore_overrides_a_fixed_group_cobump``
+    (``version.test.ts:844-897``, Row 18, Port) -- which requires exactly this combination to work,
+    with ``ignore`` winning and the ignored member's pin still tracking.
+
+    This row exists so nobody re-derives the audit and adds the rule that would turn that Port row
+    red. See ``design.md`` D3.
+    """
+    written = {"fixed": [["pkg-a", "pkg-b"]], "ignore": ["pkg-a"]}
+    config, warnings, errors = parse_config(written, package_names=DEFAULT_PKGS)
+    assert list(errors) == []
+    assert list(warnings) == []
+    assert config is not None
+    assert dump(config)["fixed"] == [["pkg-a", "pkg-b"]]
+    assert dump(config)["ignore"] == ["pkg-a"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("value", _JS_FORMATTERS)
+def test_a_javascript_formatter_value_is_refused(value: str) -> None:
+    """Owner ruling 2026-08-01 (session 6): a Node formatter as the ``format`` value fails.
+
+    This is **not** an unknown key, and the distinction is what a reader will otherwise get wrong:
+    ``format`` is a real option and ``"prettier"`` is a value molt recognizes by name. That is why
+    it is refused by its own check rather than by the unknown-key path, and why the migration guide
+    has to mention it separately -- a stock changesets 3.0 configuration carries ``format: "auto"``
+    and does nothing unusual, and that configuration now fails.
+
+    Until this ruling molt accepted every one of these, normalized it to ``false`` and warned. The
+    ruling calls that the impossible state it is: the user asked for formatting, molt did nothing,
+    and the only trace was a line in a run nobody reads twice. molt has no Node and never will, so
+    nothing about the workspace can ever make the setting come true.
+
+    Parametrized over the product's own tuple, so a backend added there gets a row for free.
+    """
+    config, warnings, errors = parse_config({"format": value}, package_names=DEFAULT_PKGS)
+    assert config is None
+    assert error_locs(errors) == [("format",)]
+    text = joined(errors)
+    assert value in text, "the message must name the value the user wrote"
+    assert "mdformat" in text and "false" in text, "and the settings that work instead"
+    assert list(warnings) == []
+
+
+@pytest.mark.unit
+def test_an_empty_changed_file_patterns_list_is_refused() -> None:
+    """Owner ruling 2026-08-01 (session 6): change detection cannot be switched off silently.
+
+    An empty list means no file inside a package ever counts as a change to that package. Change
+    detection is off for the whole workspace, ``molt status``'s CI gate can never fire again, and
+    nothing says so on any run -- in the one place a release tool exists to be noisy.
+
+    The message, not merely the refusal, is the requirement here. ``min_length=1`` alone would
+    surface as pydantic's *"List should have at least 1 item after validation, not 0"*: true,
+    located, and no help to somebody deciding what to type.
+    """
+    config, warnings, errors = parse_config(
+        {"changed_file_patterns": []}, package_names=DEFAULT_PKGS
+    )
+    assert config is None
+    assert error_locs(errors) == [("changed_file_patterns",)]
+    text = joined(errors)
+    assert "Remove the key" in text and '["**"]' in text, "the fix that restores the default"
+    assert "list the patterns that count" in text, "and the fix that keeps a narrower rule"
+    assert list(warnings) == []
+
+
+@pytest.mark.unit
+def test_a_pattern_list_that_matches_nothing_is_still_legal() -> None:
+    """A **non-empty** ``changed_file_patterns`` list stays legal even when it can never match.
+
+    ``["!src/**"]`` is negation-only, and negation only subtracts from what an earlier pattern
+    already matched (``test_a_leading_negation_is_a_no_op``), so nothing ever passes it. It is still
+    legal, and for the same reason an unmatched ``ignore`` glob is: the empty list can never match
+    *by construction*, while a non-empty one is a statement about what the workspace holds right
+    now. A rule here would also be a fourth place that knows about negation ordering.
+
+    The honest limit, stated because it is easy to mistake for an oversight: this is legal **and
+    silent**. ``changed_file_patterns`` matches file paths and config holds no file list while
+    parsing, so unlike the ``ignore`` case there is nothing for it to warn about, and it does not
+    invent one.
+    """
+    config, warnings, errors = parse_config(
+        {"changed_file_patterns": ["!src/**"]}, package_names=DEFAULT_PKGS
+    )
+    assert list(errors) == []
+    assert list(warnings) == []
+    assert config is not None
+    assert dump(config)["changed_file_patterns"] == ["!src/**"]
+
+
+@pytest.mark.unit
+def test_the_warning_channel_survives_strict_keys() -> None:
+    """After this change the ``warnings`` channel carries exactly one thing, and it is not empty.
+
+    Owner ruling 2026-08-01 (session 6), no longer provisional: *a pattern written for a package
+    that does not exist yet is meaningful.* An ``ignore`` entry naming ``legacy-*`` in a repository
+    that has not created ``legacy-api`` yet is a reasonable thing to write, and refusing it would
+    make a monorepo's configuration a moving target in exactly the repositories molt is for.
+
+    That is the line the strictness stops at: **is this wrong about the document, or wrong about the
+    world right now?** An unknown key will still be wrong after the next commit and no workspace
+    change makes it meaningful, so it fails. A glob that matches nothing today is a statement about
+    this moment, so it warns. A ``format`` value naming a Node program is on the failing side of the
+    same line for the sharpest reason of all -- it is not wrong about the workspace, it is wrong
+    about molt.
+    """
+    config, warnings, errors = parse_config({"ignore": ["legacy-*"]}, package_names=DEFAULT_PKGS)
+    assert list(errors) == []
+    assert config is not None
+    assert len(list(warnings)) == 1
+    assert "legacy-*" in joined(warnings)
+    assert dump(config)["ignore"] == []

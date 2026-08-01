@@ -69,12 +69,18 @@ Molt does not throw an exception the moment it hits a bad config value. Instead,
 | Part | Meaning |
 |---|---|
 | `config` | The fully normalized configuration, or absent if the config could not be resolved. |
-| `warnings` | Non-fatal problems: an `ignore` glob that matches nothing, an unknown key, a `fixed` group member that matches no package. Molt runs anyway. |
-| `errors` | Fatal problems: a value of the wrong type, a package listed in two `fixed` groups, a mistyped enum. Molt reports them and exits non-zero. |
+| `warnings` | Non-fatal problems. There is exactly **one** kind: a pattern that matches no package *today* -- an `ignore` entry, or a `fixed` / `linked` group member. Molt runs anyway. |
+| `errors` | Fatal problems: an unknown key, a value of the wrong type, a package listed in two `fixed` groups, a mistyped enum, and any combination of options that cannot mean anything. Molt reports them and exits non-zero. |
 
-The point is that molt collects **all** the problems in one pass and shows them together, rather than failing on the first one and making you fix issues one reload at a time. Commands like [`molt status`](/guides/status) and [`molt version`](/cli/version) surface the full list up front.
+The point is that molt collects **all** the problems in one pass and shows them together, rather than failing on the first one and making you fix issues one reload at a time. Commands like [`molt status`](/guides/status) and [`molt version`](/cli/version) surface the full list up front. That is still true now that unknown keys are fatal: one typo does not hide the wrong-typed value three lines below it.
 
-Unknown keys are a warning, not a silent drop. If you typo `base_brnach`, molt keeps going on defaults but tells you the key was ignored -- so a typo can never quietly disable a setting you thought you had configured.
+## Unknown keys stop the run
+
+If you write `base_brnach`, molt does not start. The error names the key, suggests `base_branch`, and exits 1 -- and where molt knows a setting has moved, it names the replacement instead of guessing.
+
+Molt used to warn here and carry on, so that a changesets `config.json` kept loading unchanged. That is no longer true, and the reason is what molt does with a configuration: it writes versions into manifests and uploads them to an index, where a wrong release is permanent. A key molt does not recognise is a setting you believe is configured and molt is ignoring, and the gap between those two only shows up after the release. See [migrating from changesets](/guides/migrating-from-changesets) for the keys and values to change.
+
+The line molt draws is **"is this wrong about the document, or wrong about the world right now?"** A key will still be wrong after your next commit, so it fails. A glob that matches nothing today is a statement about what the workspace holds at this moment -- `ignore = ["legacy-*"]` in a repository that has not created `legacy-api` yet is a reasonable thing to write -- so it warns.
 
 ## Where to go next
 

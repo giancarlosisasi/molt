@@ -12,7 +12,7 @@ molt is a faithful port, so the muscle memory carries over: you still `add` a ch
 
 - **Changeset files.** molt reads the same `.changeset/*.md` format -- YAML front matter mapping package names to bump types, then a Markdown summary. Your existing changesets are compatible in spirit; the only substantive change is that names are matched using [PEP 503 normalization](/config/changeset-format) (`Acme_Core` matches `acme-core`), which changesets never needed.
 - **The workflow.** `add` -> `version` -> `publish` is the same loop, with the same "add intent while it is fresh, consume it in a batch" split.
-- **Config keys, in camelCase.** molt's config lives in `[tool.molt]` in `pyproject.toml`, but it accepts your changesets keys via aliasing. `baseBranch`, `updateInternalDependencies`, `fixed`, `linked`, `ignore` are all understood alongside their snake_case spellings (`base_branch`, and so on), so you can port a config table mostly by pasting it. See [The config file](/config/config-file).
+- **Config keys, in camelCase.** molt's config lives in `[tool.molt]` in `pyproject.toml`, but it accepts your changesets keys via aliasing. `baseBranch`, `updateInternalDependencies`, `fixed`, `linked`, `ignore` are all understood alongside their snake_case spellings (`base_branch`, and so on), so you can port most of a config table by pasting it. The keys molt does **not** carry have to be removed first -- see [Your config needs editing before it loads](#your-config-needs-editing-before-it-loads). See also [The config file](/config/config-file).
 - **`fixed` and `linked` groups, `status`, `--since`, dry runs.** All present, with the same semantics.
 
 ## What changed, and why
@@ -59,6 +59,35 @@ changesets renamed `tag` to `git-tag` in v3 because "tag" collided with npm dist
 
 Python has no `peerDependencies`, so molt drops the concept entirely -- along with the experimental `onlyUpdatePeerDependentsWhenOutOfRange` flag. Extras (`foo[bar]`) are the nearest analogue and behave like ordinary dependencies. One whole class of changesets complexity disappears.
 
+### Your config needs editing before it loads
+
+This is the one step of the migration that is not a paste, and it is worth doing first because nothing else runs until it is done. **molt refuses a configuration it cannot fully honour**, naming the key or the value and what to write instead. It does not warn and carry on -- a setting molt silently ignores is a release molt gets wrong, and by the time you read the warning the version is in a manifest and possibly on an index.
+
+Every key a changesets configuration may carry that molt refuses:
+
+| In `.changeset/config.json` | What to write instead |
+|---|---|
+| `access` | Remove it. PyPI has no per-package publish permission; choose an index with `molt publish --repository`. |
+| `prettier` | Remove it. changesets 3.0 already replaced it with `format`, and molt's `format` never names a Node tool. |
+| `onlyUpdatePeerDependentsWhenOutOfRange` | Remove it. Python has no peer dependencies. |
+| `___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH` | Keep only its `updateInternalDependents` member, which molt promotes to a plain top-level option. Remove the wrapper and anything else inside it. |
+| `privatePackages.tag` | Remove it. Tagging is a `molt git-tag` decision per run, not a config option. |
+| `changelogTemplate` / `changelogDates` | `changelog = { template = "...", dates = true }`. These were molt's own keys briefly, so an early molt config needs the same edit. |
+
+And one **value**, which is easy to miss because it is not a key at all:
+
+| Value | What to write instead |
+|---|---|
+| `format: "auto"`, `"prettier"`, `"oxfmt"`, `"deno"`, `"dprint"`, `"biome"` | `format = "mdformat"`, `format = false`, or delete the line. |
+
+That last row catches configurations that did nothing unusual: **a stock changesets 3.0 setup carries `format: "auto"`**, so a straight paste fails. Every one of those backends is a Node program and molt does not shell out to Node, so accepting the value would mean promising formatting and doing nothing. Deleting the line is the right answer for almost everybody -- molt emits correct Markdown directly and never needed a cleanup pass.
+
+`$schema` is unaffected: molt accepts it, strips it, and says nothing. It drives editor autocomplete and is not a setting.
+
+Molt also refuses combinations that cannot mean anything -- `changelog = { generator = false, template = "..." }`, an unrecognised `{placeholder}` in `snapshot.prerelease_template`, an empty `base_branch`, and an empty `changed_file_patterns` list. None of these has a changesets counterpart to migrate; they are listed in the [options reference](/config/options).
+
+What still only **warns** is a glob that matches nothing *today*: an `ignore` entry or a `fixed` / `linked` member naming a package that does not exist yet. That is a fact about your workspace at this moment, not a mistake in the file.
+
 ## What molt does differently, at a glance
 
 | changesets | molt | Why |
@@ -87,7 +116,7 @@ This is a migration aid and nothing more. molt does **not** derive versions from
 
 ## A suggested migration order
 
-1. Move `.changeset/config.json` settings into `[tool.molt]` (camelCase keys are accepted, so this is mostly a paste).
+1. Move `.changeset/config.json` settings into `[tool.molt]` (camelCase keys are accepted, so this is mostly a paste) and remove the keys and the `format` value molt refuses -- see [Your config needs editing before it loads](#your-config-needs-editing-before-it-loads). Run any molt command to check: it names every remaining problem in one pass.
 2. Confirm your [ecosystem backend](/ecosystems/overview) -- uv, Poetry, Hatch, PDM, or setuptools -- discovers your workspace members.
 3. Keep any pending `.changeset/*.md` files; molt reads them as-is.
 4. Replace `pre enter`/`pre exit` habits with `molt version --pre`.

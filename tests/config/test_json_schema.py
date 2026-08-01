@@ -112,6 +112,45 @@ def test_schema_does_not_offer_dropped_changesets_options(option: str) -> None:
 
 
 @pytest.mark.unit
+def test_the_schema_forbids_additional_properties() -> None:
+    """The schema tells the same story the parser does (design D4).
+
+    Owner ruling 2026-07-31 (session 6). ``extra="forbid"`` on the four models is **inert at
+    runtime** -- the pre-pass in ``molt.config.parse`` builds the validated payload from known field
+    names only, so the model never sees an unknown key and never gets to report one, which is
+    deliberate because the pre-pass produces the better message. What ``forbid`` is for is exactly
+    this: ``additionalProperties: false`` in the generated document, so an editor flags a typo
+    **before** molt is run at all.
+
+    The ``$defs`` entries are iterated rather than hand-listed, so a model added later is covered
+    without anybody remembering to add it here.
+    """
+    schema = Config.model_json_schema()
+    assert schema["additionalProperties"] is False, "the configuration document itself"
+
+    defs: dict[str, Any] = schema.get("$defs", {})
+    assert defs, "empty $defs - this assertion must not be vacuous"
+    for name, body in defs.items():
+        if body.get("type") != "object":
+            continue
+        assert body.get("additionalProperties") is False, (
+            f"$defs.{name} accepts unknown members while the parser refuses them"
+        )
+
+
+@pytest.mark.unit
+def test_the_schema_requires_at_least_one_changed_file_pattern() -> None:
+    """``changed_file_patterns = []`` is refused, and the schema says so before molt runs.
+
+    Owner ruling 2026-08-01 (session 6). The refusal a user meets comes from the pre-pass, which
+    names the fix; ``min_length=1`` on the field exists for this line of the schema and is inert at
+    runtime, exactly as ``extra="forbid"`` is. Same arrangement, same reason.
+    """
+    patterns: dict[str, Any] = Config.model_json_schema()["properties"]["changed_file_patterns"]
+    assert patterns.get("minItems") == 1
+
+
+@pytest.mark.unit
 def test_schema_offers_the_molt_native_backend_options() -> None:
     """``ecosystem`` and ``forge`` have no changesets equivalent (research README section 4.5/5).
 

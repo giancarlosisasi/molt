@@ -23,6 +23,7 @@ new surface with no changesets analogue -- npm names carry no punctuation equiva
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
@@ -35,11 +36,38 @@ if TYPE_CHECKING:
     from molt.ecosystem import Package, Workspace
 
 __all__ = [
+    "SNAPSHOT_PLACEHOLDERS",
+    "check_changelog_coherent",
     "check_dependents_of_ignored",
     "check_fixed_and_linked_disjoint",
+    "check_snapshot_placeholders",
     "expand_groups",
     "expand_ignore",
 ]
+
+#: The closed set of placeholders ``snapshot.prerelease_template`` understands (research doc 01
+#: section 11.1).
+#:
+#: **This is a second list**, and that is a known hazard rather than an oversight. The engine spells
+#: the same five names inside a compiled regex, ``molt.engine.assemble._PLACEHOLDERS`` -- a private
+#: pattern, not a shareable constant -- and :mod:`molt.config` must not import :mod:`molt.engine`
+#: anyway: config is the layer the engine is configured *by*, and it is a lazy facade that may not
+#: drag heavy modules in. The two lists disagreeing would refuse a template the engine renders
+#: correctly, which is worse than the hole this rule closes, so they are pinned against each other
+#: by ``tests/config/test_parse.py``'s reuse of ``tests/engine/test_assemble.py``'s template
+#: matrix. Recorded as a gap (``CFG-7``).
+SNAPSHOT_PLACEHOLDERS: tuple[str, ...] = (
+    "tag",
+    "commit",
+    "commit-short",
+    "timestamp",
+    "datetime",
+)
+
+#: Every ``{...}`` token in a template, whether molt knows it or not -- the unknown ones are the
+#: point. Deliberately wider than :data:`SNAPSHOT_PLACEHOLDERS`'s alternation, which only ever
+#: matches what molt already accepts.
+_TOKEN = re.compile(r"\{([^{}]*)\}")
 
 
 def expand_ignore(
@@ -128,6 +156,73 @@ def check_fixed_and_linked_disjoint(
                         f"group. A package can only be either fixed or linked.",
                     )
                 )
+    return errors
+
+
+def check_changelog_coherent(config: Config) -> list[ConfigIssue]:
+    """Refuse a ``changelog`` table that switches the generator off and still configures it.
+
+    Owner ruling 2026-07-31 (session 6), closing gap ``CFG-3``. ``generator = false`` means no
+    ``CHANGELOG.md`` is written at all -- ``molt.apply.apply._plan_changelogs`` returns before any
+    entry is assembled -- so a ``template`` beside it is read off disk by the command and then
+    discarded, and ``dates = true`` decorates an entry that is never rendered. The user configured
+    an entry template and got no changelog, which is precisely the impossible state the ruling
+    removes.
+
+    Molt-native: there is no changesets analogue, because upstream has no entry template at all
+    (research README section 5 item 5).
+    """
+    from molt.config.models import ChangelogOptions
+
+    changelog = config.changelog
+    if not isinstance(changelog, ChangelogOptions) or changelog.generator is not False:
+        return []
+    written = (("template", changelog.template is not None), ("dates", changelog.dates))
+    configured = [name for name, present in written if present]
+    if not configured:
+        return []
+    return [
+        ConfigIssue(
+            ("changelog",),
+            f"changelog sets generator = false, which writes no CHANGELOG.md at all, and also "
+            f"sets {' and '.join(configured)}, which only a written changelog can use. Remove "
+            f"{' and '.join(configured)}, or name a generator instead of false.",
+        )
+    ]
+
+
+def check_snapshot_placeholders(config: Config) -> list[ConfigIssue]:
+    """Refuse a ``{token}`` in ``snapshot.prerelease_template`` that molt cannot substitute.
+
+    Owner ruling 2026-07-31 (session 6). The placeholder set is closed
+    (:data:`SNAPSHOT_PLACEHOLDERS`), and an unrecognised token is rendered as **literal text into a
+    version string** -- which is permanent the moment an index stores it. That is the same class of
+    harm the engine's invocation-time checks exist to prevent, caught one layer earlier, where the
+    message can name the option instead of the run.
+
+    What this rule deliberately does **not** decide is whether the template is coherent with a given
+    *invocation* -- a ``{tag}`` with no ``--snapshot <name>``, or the inverse. That depends on the
+    command line, not on the document, and stays where it is.
+    """
+    template = config.snapshot.prerelease_template
+    if not template:
+        return []
+    accepted = set(SNAPSHOT_PLACEHOLDERS)
+    known = ", ".join(f"{{{name}}}" for name in SNAPSHOT_PLACEHOLDERS)
+    errors: list[ConfigIssue] = []
+    reported: set[str] = set()
+    for match in _TOKEN.finditer(template):
+        token = match.group(1)
+        if token in accepted or token in reported:
+            continue
+        reported.add(token)
+        errors.append(
+            ConfigIssue(
+                ("snapshot", "prerelease_template"),
+                f'snapshot.prerelease_template uses "{{{token}}}", which molt does not recognize '
+                f"and would write into the version verbatim. molt accepts {known}.",
+            )
+        )
     return errors
 
 

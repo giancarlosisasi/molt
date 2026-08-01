@@ -3,6 +3,7 @@
   dict({
     '$defs': dict({
       'ChangelogOptions': dict({
+        'additionalProperties': False,
         'description': '''
           The changelog subsystem written as one table: ``changelog = { generator, template, dates }``.
           
@@ -15,9 +16,18 @@
           ``changelog = { dates = true }`` mean "the built-in generator, dated" rather than "no
           generator".
           
+          ``template`` carries ``min_length=1`` for the same reason
+          :attr:`SnapshotOptions.prerelease_template` does: an empty filename cannot resolve to anything,
+          and without the constraint it fails much later, in a "template not found" message pointing at
+          the workspace root directory rather than at the option that is wrong (owner ruling 2026-07-31,
+          session 6).
+          
           ``generator = false`` is accepted and means what ``changelog = false`` means -- no
-          ``CHANGELOG.md`` is written. Odd to write beside a ``template``, but refusing it would be a
-          second, differently-shaped rule for one concept.
+          ``CHANGELOG.md`` is written. This docstring used to add that writing it beside a ``template``
+          was odd but accepted, "because refusing it would be a second, differently-shaped rule for one
+          concept". **That reasoning is superseded by the owner ruling of 2026-07-31 (session 6)**, which
+          weighs a second rule against an impossible state and takes the rule: the combination is now
+          refused by ``molt.config.rules.check_changelog_coherent``, and gap ``CFG-3`` closes with it.
         ''',
         'properties': dict({
           'dates': dict({
@@ -67,6 +77,7 @@
           'template': dict({
             'anyOf': list([
               dict({
+                'minLength': 1,
                 'type': 'string',
               }),
               dict({
@@ -82,6 +93,7 @@
         'type': 'object',
       }),
       'PrivatePackages': dict({
+        'additionalProperties': False,
         'description': '''
           Whether packages marked unpublishable are still versioned.
           
@@ -102,6 +114,7 @@
         'type': 'object',
       }),
       'SnapshotOptions': dict({
+        'additionalProperties': False,
         'description': '''
           Snapshot-release options (``config.ts:111-134``), reshaped for PEP 440.
           
@@ -110,6 +123,11 @@
           ``None`` instead, so absent, ``None`` and unset must stay interchangeable to every consumer.
           The empty string is rejected rather than treated as absent, matching valibot's
           ``minLength(1)``.
+          
+          Which ``{placeholders}`` the template may carry is a closed set, and an unrecognised one is
+          refused by ``molt.config.rules.check_snapshot_placeholders`` -- it would otherwise be written
+          into a version string verbatim, and a version an index has stored is permanent (owner ruling
+          2026-07-31, session 6).
         ''',
         'properties': dict({
           'prerelease_template': dict({
@@ -137,6 +155,7 @@
         'type': 'object',
       }),
     }),
+    'additionalProperties': False,
     'description': '''
       A fully normalized molt configuration.
       
@@ -144,11 +163,23 @@
       ``camelCase`` spelling, both landing on the same field, so a changesets configuration migrates
       unchanged. Supplying *both* spellings of one option is an error rather than a silent
       precedence rule -- see :mod:`molt.config.parse`.
+      
+      ``base_branch`` carries ``min_length=1``: an empty ref cannot resolve to anything, and without
+      the constraint it fails much later, inside a ``git merge-base`` error that does not name the
+      option (owner ruling 2026-07-31, session 6).
+      
+      ``changed_file_patterns`` carries ``min_length=1`` too, but for a different reason and with a
+      different effect. The refusal a user actually meets comes from
+      ``molt.config.parse._check_changed_file_patterns``, which pops the empty list before validation
+      and says what to write instead; the constraint here is **inert at runtime** and exists so the
+      generated JSON Schema carries ``minItems: 1`` and an editor flags the empty list before molt
+      runs. Same arrangement, same reason, as ``extra="forbid"`` below.
     ''',
     'properties': dict({
       'base_branch': dict({
         'default': 'main',
         'description': 'Git ref used as the comparison base for "what changed".',
+        'minLength': 1,
         'title': 'Base Branch',
         'type': 'string',
       }),
@@ -166,6 +197,7 @@
         'items': dict({
           'type': 'string',
         }),
+        'minItems': 1,
         'title': 'Changed File Patterns',
         'type': 'array',
       }),
