@@ -107,9 +107,12 @@ Ecosystem = Literal["auto", "uv"]
 #: Release-automation backend. The seam exists from day one (research README section 5 item 7).
 Forge = Literal["github", "gitlab"]
 
-#: ``false`` (the default) or the one live formatter backend molt offers. The JS backends are
-#: accepted on input as inert migration aliases and normalized away before validation, so they are
-#: deliberately absent from the type and from the generated schema.
+#: ``false`` (the default) or the one live formatter backend molt offers. A JS backend name is
+#: still *recognized* on input -- see ``_JS_FORMATTERS`` in :mod:`molt.config.parse` -- which is
+#: what lets :func:`molt.config.parse._check_format` refuse it with a message naming a real
+#: alternative, rather than the two literals below. It is refused, not normalized, and stays
+#: deliberately absent from this type and from the generated schema: leaving it in would make
+#: pydantic emit a second, worse message for the same mistake.
 Formatter = Literal["mdformat", False]
 
 #: Minimum bump on a dependency that triggers rewriting a dependent's pin (``config.ts:90-94``).
