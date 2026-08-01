@@ -24,7 +24,7 @@ A forge backend answers a small, host-agnostic set of questions:
 
 - **Attribution.** Given a commit, which pull request introduced it, and who authored it? Given a pull request number, its author and merge commit? This is what lets [changelog templates](/guides/changelog-templates) render `Thanks @author!` and link back to the PR.
 - **Release publication.** Given an existing tag, a name and a changelog body, create a release on the host -- one per released package, with that package's changelog entry as the body. This is implemented today.
-- **Pull request lifecycle.** Find the existing release PR for a branch and update it in place, or open a new one. Not implemented yet.
+- **Pull request lifecycle.** Find the open release PR for a branch and update it in place, or open a new one. This is implemented today.
 
 The engine, the changelog generators, and the CI loop call these; they never assume the host is GitHub.
 
@@ -34,7 +34,15 @@ The engine, the changelog generators, and the CI loop call these; they never ass
 
 **The prerelease flag follows PEP 440, not npm semver.** `1.0.0rc1`, `1.0.0a1`, `1.0.0b2`, `1.0.0.dev1` and every `molt version --snapshot` version are published as prereleases; `1.0.0` and a post-release such as `1.0.0.post1` are not, and neither is a local version such as `1.0.0+local.build`. If you are migrating from changesets, this is a deliberate difference: it marks a release as a prerelease when the version string contains a hyphen, and no PEP 440 prerelease contains one.
 
-Note that molt does not yet *call* this itself. A backend can create a release today; the release loop that will drive it -- one release per package, after the tags are pushed -- is part of the [CI action](/guides/ci-github-action) still being built.
+With the pull-request lifecycle shipped, all three answers a backend must give now exist -- attribution, release publication, and the release pull request.
+
+### Two details of the pull-request lifecycle worth knowing
+
+**The release PR is looked up, not remembered.** Molt keeps no state between runs, so the branch name is the whole identity: the lookup asks the host for the *open* pull request from `changeset-release/<base>` onto `<base>`, and the first match is the one updated. That is why the branch name is fixed rather than configurable.
+
+**Updating a PR also re-opens it.** A force-push onto the release branch can close the pull request, and a closed one is not found by an "open" query. Molt therefore sets the state back to open on every update, so the next run keeps the same pull request -- with its number, its comments and its subscribers -- instead of opening a second one.
+
+The [CI action's](/guides/ci-github-action) release loop calls all three: it finds or opens the release pull request during the version phase, and creates one release per package during the publish phase. What is not delivered yet is the `action.yml` wrapper around that loop.
 
 ## Caching and backoff, done right
 

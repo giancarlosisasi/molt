@@ -254,3 +254,46 @@ class Forge(Protocol):
           rejection is raised.
         """
         ...
+
+    def find_open_pull_request(
+        self, head: str, *, base: str, repo: str | None = None
+    ) -> PullRef | None:
+        """The **open** pull request from ``head`` onto ``base``, or ``None`` if there is none.
+
+        Ports ``changesets/action`` v1.9.0 ``run.ts:347-378``, whose ``octokit.rest.pulls.list``
+        filters on ``state: "open"`` and takes the first result. The release pull request is looked
+        up rather than remembered because molt keeps no state between runs: the branch name is the
+        only identifier, which is why :data:`molt.action.VERSION_BRANCH_PREFIX` is fixed rather
+        than configurable.
+
+        Absence is a value, exactly as it is for :meth:`commit_info`: "no release pull request yet"
+        is the ordinary first run, not a failure.
+        """
+        ...
+
+    def create_pull_request(
+        self, head: str, *, base: str, title: str, body: str, repo: str | None = None
+    ) -> PullRef:
+        """Open a pull request from ``head`` onto ``base`` (``run.ts:363-370``).
+
+        ``head`` is positional because it is the subject; everything else is keyword-only, so a
+        caller cannot transpose ``title`` and ``body`` -- two strings whose order no type checker
+        can police.
+        """
+        ...
+
+    def update_pull_request(
+        self, number: int, *, title: str, body: str, repo: str | None = None
+    ) -> PullRef:
+        """Replace an existing pull request's title and body, and make sure it is open.
+
+        Ports ``run.ts:391-407``. Reusing the pull request rather than opening a second one is the
+        product behavior: the release pull request accumulates changesets over days, and its
+        number, its review comments and its subscribers have to survive every update.
+
+        **Re-opening is part of the contract, not a detail.** Upstream's GraphQL mutation sends
+        ``state: OPEN`` alongside the title and body because a force-push onto the release branch
+        can close the pull request; the next run must bring that same one back rather than orphan
+        its history.
+        """
+        ...

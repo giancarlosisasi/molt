@@ -12,9 +12,10 @@ matching module lands. They port the reference harness described in
 - ``seeded_ids``   -> §4 ``vi.mock("human-id")`` (deterministic changeset ids).
 - ``pypi_registry``-> §5.6 PyPI JSON registry mock with a stale-read knob (doc 07 §"stale").
 - ``forge_api``    -> §5.7 GitHub GraphQL mock capturing the query + auth header (doc 08).
-- ``forge_rest_api``-> the same idea for the one REST endpoint the forge uses: release creation
-  (``changesets/action`` v1.9.0 ``src/run.ts::createRelease``). GitHub's GraphQL schema has no
-  release-creation mutation, so that call cannot go through ``forge_api``'s ``/graphql`` matcher.
+- ``forge_rest_api``-> the same idea for the forge's REST endpoints: release creation
+  (``changesets/action`` v1.9.0 ``src/run.ts::createRelease``) and the pull-request lifecycle
+  (``run.ts:347-407``). GitHub's GraphQL schema has no release-creation mutation, so those calls
+  cannot go through ``forge_api``'s ``/graphql`` matcher.
 
 Downstream test agents rely on the public fixture names verbatim; do not rename them.
 Optional third-party deps (``tomlkit``, ``respx``/``httpx``) are imported lazily inside the
@@ -540,21 +541,38 @@ def forge_api() -> Iterator[ForgeAPI]:
 
 
 class ForgeRestAPI:
-    """Mocks the release-creation endpoint (``POST .../repos/<owner>/<name>/releases``).
+    """Mocks the forge's REST endpoints: release creation and the pull-request lifecycle.
 
     A sibling of :class:`ForgeAPI`, deliberately **beside** it rather than grafted onto it: that
     class matches ``POST .+/graphql/?$`` and every existing forge row depends on that pattern, so
     widening it would change what they intercept. Release creation is the one call that cannot be
     GraphQL -- GitHub's schema has no release-creation mutation, which is why upstream reaches for
-    ``octokit.rest.repos.createRelease`` (``changesets/action`` v1.9.0 ``src/run.ts``).
+    ``octokit.rest.repos.createRelease`` (``changesets/action`` v1.9.0 ``src/run.ts``) -- and the
+    pull-request lifecycle (``run.ts:347-407``) is REST for the same reason.
 
-    Like :class:`ForgeAPI` the URL regex is host-agnostic, so a GitHub Enterprise Server base URL
-    is intercepted too. Unlike it, a row may program the **status** as well as the body: the
-    duplicate-release contract is a 422 carrying an ``already_exists`` error code, and a fixture
-    that could only answer 200 could not express it.
+    Four endpoints, each host-agnostic like :class:`ForgeAPI`'s, so a GitHub Enterprise Server base
+    URL is intercepted too:
+
+    ===================================== ==========================================
+    ``POST .../repos/<o>/<n>/releases``   create a release
+    ``GET  .../repos/<o>/<n>/pulls``      list the open pull requests
+    ``POST .../repos/<o>/<n>/pulls``      open a pull request
+    ``PATCH .../repos/<o>/<n>/pulls/<i>`` update one in place
+    ===================================== ==========================================
+
+    A row may program the **status** as well as the body: the duplicate-release contract is a 422
+    carrying an ``already_exists`` error code, and a fixture that could only answer 200 could not
+    express it. :attr:`requests` records every request across all four endpoints in order, so a row
+    can assert that a lookup happened before a write.
     """
 
     _RELEASES_URL_RE = r".+/repos/.+/releases/?$"
+    #: The collection endpoint. The optional query group is what lets the listing filters
+    #: (``state`` / ``head`` / ``base``) be part of the matched URL rather than defeat the anchor.
+    _PULLS_URL_RE = r".+/repos/.+/pulls(\?.*)?$"
+    #: One numbered pull request -- ``PATCH`` only, and deliberately not matched by the collection
+    #: pattern above, so a mistyped update URL fails to match rather than silently listing.
+    _PULL_URL_RE = r".+/repos/.+/pulls/\d+$"
 
     #: A plausible created-release document, so a row that does not care about the response body
     #: still gets a well-formed 201. ``.invalid`` is reserved by RFC 2606.
@@ -565,22 +583,57 @@ class ForgeRestAPI:
         "name": "v1.0.0",
     }
 
+    #: A plausible pull-request document, in the shape both the collection and the item endpoints
+    #: return. ``html_url`` is the human-facing page; ``url`` is the API endpoint, and a backend
+    #: that read the wrong one would render a link to a JSON document.
+    _DEFAULT_PULL: ClassVar[dict[str, Any]] = {
+        "number": 42,
+        "html_url": "https://forge.invalid/owner/name/pull/42",
+        "url": "https://forge.invalid/api/repos/owner/name/pulls/42",
+        "state": "open",
+    }
+
     def __init__(self, router: respx.MockRouter, httpx_mod: ModuleType) -> None:
         self._router = router
         self._httpx = httpx_mod
         self.requests: list[httpx.Request] = []
         self._status = 201
         self._body: Any = dict(self._DEFAULT_RELEASE)
+        self._listing: Any = []
+        self._pull: Any = dict(self._DEFAULT_PULL)
         router.post(url__regex=self._RELEASES_URL_RE).mock(side_effect=self._handle)
+        router.get(url__regex=self._PULLS_URL_RE).mock(side_effect=self._handle_listing)
+        router.post(url__regex=self._PULLS_URL_RE).mock(side_effect=self._handle_created_pull)
+        router.patch(url__regex=self._PULL_URL_RE).mock(side_effect=self._handle_updated_pull)
 
     def set_response(self, body: Any, *, status: int = 201) -> None:
-        """Program what the next request (and every one after it) is answered with."""
+        """Program what the next release request (and every one after it) is answered with."""
         self._status = status
         self._body = body
+
+    def set_open_pull_requests(self, entries: Any) -> None:
+        """Program the list the pull-request lookup is answered with."""
+        self._listing = entries
+
+    def set_pull_request(self, body: Any) -> None:
+        """Program the document a create or an update is answered with."""
+        self._pull = body
 
     def _handle(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         return self._httpx.Response(self._status, json=self._body)
+
+    def _handle_listing(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        return self._httpx.Response(200, json=self._listing)
+
+    def _handle_created_pull(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        return self._httpx.Response(201, json=self._pull)
+
+    def _handle_updated_pull(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        return self._httpx.Response(200, json=self._pull)
 
     @property
     def last_request(self) -> httpx.Request | None:
@@ -588,9 +641,9 @@ class ForgeRestAPI:
 
     @property
     def last_payload(self) -> dict[str, Any] | None:
-        """The JSON body of the last request, parsed."""
+        """The JSON body of the last request, parsed; ``None`` for a request with no body."""
         request = self.last_request
-        if request is None:
+        if request is None or not request.content:
             return None
         payload = json.loads(request.content)
         return payload if isinstance(payload, dict) else None

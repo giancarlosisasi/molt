@@ -1,10 +1,12 @@
 """The GitHub forge backend: hand-written GraphQL over ``httpx``, with a cache that hits.
 
-Release publication is the one exception to "GraphQL": GitHub's schema has no release-creation
-mutation, so :meth:`GitHubForge.create_release` posts to the REST API instead
-(``changesets/action`` v1.9.0 ``src/run.ts::createRelease`` reaches for
-``octokit.rest.repos.createRelease`` for the same reason). Both transports go through the one
-:meth:`GitHubForge._send` loop, so the second one cannot ship without the resilience the first has.
+**Attribution** is GraphQL; the **write** side is REST. GitHub's schema has no release-creation
+mutation, so :meth:`GitHubForge.create_release` posts to the REST API (``changesets/action`` v1.9.0
+``src/run.ts::createRelease`` reaches for ``octokit.rest.repos.createRelease`` for the same reason),
+and the pull-request lifecycle follows it there: listing and creating a pull request are REST
+upstream too, and molt updates one over REST as well rather than through the GraphQL mutation
+upstream needs only because it also flips draft state (design D2). Every transport goes through the
+one :meth:`GitHubForge._send` loop, so none of them can ship without the resilience the first has.
 
 Ports ``packages/get-github-info`` @ v3.0.0-next.9 -- ``env.ts``, ``utils.ts``, ``dataloader.ts``,
 ``get-commit-info.ts`` and ``get-pull-request-info.ts`` (research doc 08, the two
@@ -104,6 +106,13 @@ GITHUB_API_VERSION = "2022-11-28"
 #: The suffix a GraphQL endpoint carries, stripped to derive the REST base when ``GITHUB_API_URL``
 #: is not set (design D5).
 _GRAPHQL_PATH_SUFFIX = "/graphql"
+
+#: The two headers GitHub's REST API asks a client to pin, sent by every REST call this backend
+#: makes. The GraphQL path sends ``Accept: application/json``, which is right there and wrong here.
+_REST_HEADERS = {
+    "Accept": "application/vnd.github+json",
+    "X-GitHub-Api-Version": GITHUB_API_VERSION,
+}
 
 #: The variables ``env.ts:5-34`` reads, in the order that page documents them, plus
 #: ``GITHUB_API_URL`` -- the REST base, which every GitHub Actions runner exports (GitHub
@@ -318,6 +327,22 @@ def _author_ref(node: Mapping[str, Any] | None) -> AuthorRef | None:
     return AuthorRef(login=login, url=url)
 
 
+def _pull_ref(document: Any) -> PullRef | None:
+    """A REST pull-request document as a :class:`PullRef`, or ``None`` if it is not one.
+
+    ``html_url`` rather than ``url``: the REST API returns both, and ``url`` is the *API* endpoint
+    -- a link a workflow log printed from it would take a human to a JSON document. Read off the
+    response and never built from a base URL, which is the rule that makes GitHub Enterprise Server
+    work with no backend change (design D8).
+    """
+    if not isinstance(document, dict):
+        return None
+    number, url = document.get("number"), document.get("html_url")
+    if not isinstance(number, int) or not isinstance(url, str):
+        return None
+    return PullRef(number=number, url=url)
+
+
 def _merge_key(node: Mapping[str, Any]) -> tuple[bool, str]:
     """Sort key implementing ``get-commit-info.ts:43-51`` -- earliest merge first, nulls last.
 
@@ -442,23 +467,109 @@ class GitHubForge:
         The repository is validated before any socket is opened -- the same guard the attribution
         path keeps, and load-bearing here too, because the slug is interpolated into the URL.
         """
-        owner, _, repository = self._target_repo(repo).partition("/")
         response = self._send(
             "POST",
-            f"{self._rest_url}/repos/{owner}/{repository}/releases",
+            f"{self._repo_url(repo)}/releases",
             json={"tag_name": tag, "name": name, "body": body, "prerelease": prerelease},
-            # The two headers GitHub's REST API asks a client to pin. The GraphQL path sends
-            # `Accept: application/json`, which is right there and wrong here.
-            headers={
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": GITHUB_API_VERSION,
-            },
+            headers=_REST_HEADERS,
         )
         if response.status_code == httpx.codes.CREATED:
             return self._release_info(response, tag=tag, name=name)
         if _is_duplicate_release(response):
             return None
         raise self._http_error(response)
+
+    def find_open_pull_request(
+        self, head: str, *, base: str, repo: str | None = None
+    ) -> PullRef | None:
+        """The open pull request from ``head`` onto ``base``, or ``None`` (``run.ts:347-378``).
+
+        Upstream's ``octokit.rest.pulls.list`` sends ``state: "open"``, ``head:
+        "<owner>:<branch>"`` and ``base``, then takes ``data[0]``. All three filters are
+        load-bearing: without ``state`` a *closed* release pull request would be found and updated
+        into a zombie, and without ``head`` the query returns every open pull request in the
+        repository, whose first element is whatever the host happens to list first.
+
+        The ``head`` filter's owner prefix comes from the target slug rather than from a separate
+        context object -- molt has no ambient GitHub context to read one out of. The consequence is
+        deliberate: a release branch pushed from a fork is not found, which is also true upstream,
+        because the action pushes to the repository it runs in.
+
+        With more than one open match the **first** the host lists wins, faithfully. That needs
+        someone to have opened a second one by hand; the ordering is then the host's, not molt's
+        (``openspec/GAPS.md`` ``AP-9``).
+        """
+        owner, _, _name = self._target_repo(repo).partition("/")
+        response = self._send(
+            "GET",
+            f"{self._repo_url(repo)}/pulls",
+            params={"state": "open", "head": f"{owner}:{head}", "base": base},
+            headers=_REST_HEADERS,
+        )
+        if response.status_code != httpx.codes.OK:
+            raise self._http_error(response)
+        listing = self._json_body(response)
+        if not isinstance(listing, list):
+            raise MoltForgeError(f"The GitHub API returned an unexpected payload: {listing!r}")
+        for entry in listing:
+            pull = _pull_ref(entry)
+            if pull is not None:
+                return pull
+        return None
+
+    def create_pull_request(
+        self, head: str, *, base: str, title: str, body: str, repo: str | None = None
+    ) -> PullRef:
+        """Open the release pull request (``run.ts:363-370``)."""
+        response = self._send(
+            "POST",
+            f"{self._repo_url(repo)}/pulls",
+            json={"base": base, "head": head, "title": title, "body": body},
+            headers=_REST_HEADERS,
+        )
+        if response.status_code != httpx.codes.CREATED:
+            raise self._http_error(response)
+        return self._require_pull_ref(response)
+
+    def update_pull_request(
+        self, number: int, *, title: str, body: str, repo: str | None = None
+    ) -> PullRef:
+        """Replace a pull request's title and body, and re-open it (``run.ts:391-407``).
+
+        **Adapted transport** (design D2): upstream sends a GraphQL ``updatePullRequest`` mutation
+        because the same mutation optionally flips the pull request to draft, which needs the node
+        id. Draft modes are out of scope, so the node id buys nothing and would mean carrying a
+        ``node_id`` field on :class:`~molt.forge.PullRef` that no other caller wants. REST ``PATCH``
+        takes the number the lookup already returned.
+
+        ``state: "open"`` is **ported, not incidental**: a force-push onto the release branch can
+        close the pull request, and the next run must reopen that one rather than open a second.
+        """
+        response = self._send(
+            "PATCH",
+            f"{self._repo_url(repo)}/pulls/{number}",
+            json={"title": title, "body": body, "state": "open"},
+            headers=_REST_HEADERS,
+        )
+        if response.status_code != httpx.codes.OK:
+            raise self._http_error(response)
+        return self._require_pull_ref(response)
+
+    def _require_pull_ref(self, response: httpx.Response) -> PullRef:
+        """Read a pull-request document into a :class:`PullRef`, or fail saying what came back.
+
+        Unlike a created *release* -- whose partial response is reported rather than raised on,
+        because the release exists either way -- a pull request molt cannot identify is useless to
+        the caller: the number is what the next run updates, and the URL is what the workflow
+        prints. Guessing either would strand the release pull request.
+        """
+        pull = _pull_ref(self._json_body(response))
+        if pull is None:
+            raise MoltForgeError(
+                "The GitHub API answered a pull-request call without a number and a URL: "
+                f"{response.text[:200]!r}"
+            )
+        return pull
 
     @staticmethod
     def _release_info(response: httpx.Response, *, tag: str, name: str) -> ReleaseInfo:
@@ -493,6 +604,15 @@ class GitHubForge:
         )
 
     # -- resolution --------------------------------------------------------------------
+
+    def _repo_url(self, repo: str | None) -> str:
+        """``<rest base>/repos/<owner>/<name>`` for this call's repository.
+
+        Every REST call is rooted here, so the slug is validated in exactly one place and can never
+        be interpolated into a URL unvalidated.
+        """
+        owner, _, name = self._target_repo(repo).partition("/")
+        return f"{self._rest_url}/repos/{owner}/{name}"
 
     def _target_repo(self, repo: str | None) -> str:
         """The repository this call is about: the per-call override, else the configured one.
@@ -646,7 +766,8 @@ class GitHubForge:
         method: str,
         url: str,
         *,
-        json: Any,
+        json: Any = None,
+        params: Mapping[str, str] | None = None,
         headers: Mapping[str, str] | None = None,
     ) -> httpx.Response:
         """Send one request, retrying transient failures within a bounded budget.
@@ -666,13 +787,18 @@ class GitHubForge:
         The loop is deliberately explicit about where it stops: it never sleeps after the final
         attempt, and it stops early rather than exceeding the total backoff budget, so the number
         of naps is always one fewer than the number of attempts.
+
+        ``json`` defaults to ``None`` and ``params`` exists because the pull-request lookup is a
+        ``GET`` with a query string and no body -- the first read this backend does over REST. A
+        second, bodyless transport helper would have been a second place for the retry budget to
+        drift out of.
         """
         request_headers = {**self._headers(), **(headers or {})}
         slept = 0.0
         for attempt in range(1, MAX_ATTEMPTS + 1):
             last_attempt = attempt == MAX_ATTEMPTS
             try:
-                response = self._issue(method, url, json, request_headers)
+                response = self._issue(method, url, json, params, request_headers)
             except httpx.TransportError as exc:
                 if last_attempt:
                     raise MoltForgeError(f"Could not reach the GitHub API at {url}: {exc}") from exc
@@ -711,17 +837,45 @@ class GitHubForge:
         return self._read_data(response)
 
     def _issue(
-        self, method: str, url: str, json: Any, headers: Mapping[str, str]
+        self,
+        method: str,
+        url: str,
+        json: Any,
+        params: Mapping[str, str] | None,
+        headers: Mapping[str, str],
     ) -> httpx.Response:
         """One request, with a client per request.
 
         Closed by the context manager: there is no ``close()`` on the forge for a caller to
         forget, and the cache means a release makes a handful of these rather than one per
         changelog line. ``json=`` is what sets ``Content-Type: application/json`` -- and upstream
-        sends a *string* body on the GraphQL path, which ``fetch`` types as ``text/plain``.
+        sends a *string* body on the GraphQL path, which ``fetch`` types as ``text/plain``. A
+        ``None`` body sends no content at all, which is what a ``GET`` needs.
         """
         with httpx.Client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
-            return client.request(method, url, json=json, headers=dict(headers))
+            return client.request(
+                method,
+                url,
+                json=json,
+                params=dict(params) if params is not None else None,
+                headers=dict(headers),
+            )
+
+    @staticmethod
+    def _json_body(response: httpx.Response) -> Any:
+        """The response's parsed JSON, or a :class:`~molt.errors.MoltForgeError` naming the body.
+
+        Shared by every REST reader. A body that is not JSON means the response did not come from
+        the API -- a proxy error page, a captive portal -- and the raw text is echoed (truncated)
+        because that is the only clue the operator gets.
+        """
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise MoltForgeError(
+                f"The GitHub API returned a {response.status_code} that is not JSON: "
+                f"{response.text[:200]!r}"
+            ) from exc
 
     @staticmethod
     def _read_data(response: httpx.Response) -> Mapping[str, Any]:
