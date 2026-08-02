@@ -50,15 +50,6 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     environment:
-      # Create this environment under Settings -> Environments and give it two settings:
-      #
-      #   Required reviewers      -- yourself. The run then stops here and waits for a click, which
-      #                              is the last point at which an unwanted release can be stopped.
-      #   Deployment tag rule     -- `v*.*.*`, the pattern this workflow triggers on. Nothing but a
-      #                              release tag can reach the publisher.
-      #
-      # Required reviewers need a public repository, or GitHub Pro/Team/Enterprise on a private one.
-      # The tag rule works on every plan.
       name: pypi
       url: https://pypi.org/project/molt-release/
     permissions:
