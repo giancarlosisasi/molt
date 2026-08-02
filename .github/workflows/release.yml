@@ -50,9 +50,6 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     environment:
-      # Create this environment under Settings -> Environments and add yourself as a required
-      # reviewer. The run then waits for a click before the upload, which is the only point in the
-      # process where an unwanted release can still be stopped.
       name: pypi
       url: https://pypi.org/project/molt-release/
     permissions:
