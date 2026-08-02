@@ -4,7 +4,13 @@ version = "0.1.0"
 description = "Changeset-driven versioning and changelogs for Python monorepos"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+# PEP 639 spelling: `license` is an SPDX expression, `license-files` names the files that ship
+# inside the sdist AND the wheel (`molt_cli-<v>.dist-info/licenses/LICENSE`). The older
+# `license = { text = "MIT" }` table form is deprecated and ships no licence text at all, which
+# left every downloaded artifact claiming MIT and carrying none. PEP 639 also forbids pairing this
+# with a `License :: OSI Approved :: MIT License` classifier -- do not add one back.
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Giancarlos Isasi" }]
 keywords = ["changesets", "versioning", "monorepo", "changelog", "release", "uv"]
 classifiers = [
@@ -145,10 +151,41 @@ tag = "molt.ecosystem.version_sources.tag"
 [project.urls]
 Homepage = "https://github.com/giancarlosisasi/molt"
 Repository = "https://github.com/giancarlosisasi/molt"
+Documentation = "https://molt.dev"
+Issues = "https://github.com/giancarlosisasi/molt/issues"
 
 [build-system]
-requires = ["hatchling"]
+# >=1.27 is the floor for PEP 639: earlier hatchling rejects the `license = "MIT"` string form and
+# ignores `license-files`. Unpinned, a stale build environment silently falls back to metadata 2.3
+# and the licence never reaches the wheel.
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.sdist]
+# An sdist holds what is needed to rebuild and test the package, and nothing else. Hatchling's
+# default is "everything the VCS does not ignore", and `website/` is not ignored: measured
+# 2026-08-01, the unfiltered sdist was 24.8 MB carrying `website/node_modules` (3,175 files) and
+# `website/doc_build`. This is an allow-list, so a new top-level directory does NOT ship until it
+# is named here.
+#
+# `uv build` builds the wheel FROM the sdist, so anything missing from this list is missing from
+# the wheel too -- `src/molt` is load-bearing, not decorative. `tests` is included so a
+# distro packager can run the suite from the sdist alone; `uv.lock` so the dev environment is
+# reproducible from it; `action.yml` because the composite GitHub Action is part of the product.
+#
+# **Every pattern is anchored with a leading `/`.** These are gitignore-style globs: an unanchored
+# `README.md` matches at ANY depth, which pulled 148 `website/node_modules/**/{README.md,LICENSE}`
+# files back into the sdist even with `website/` unlisted. The leading slash pins each pattern to
+# the project root.
+include = [
+    "/src/molt",
+    "/tests",
+    "/README.md",
+    "/LICENSE",
+    "/pyproject.toml",
+    "/uv.lock",
+    "/action.yml",
+]
 
 [tool.hatch.build.targets.wheel]
 # Hatchling ships every file under this directory, not only the `.py` ones, which is what puts
