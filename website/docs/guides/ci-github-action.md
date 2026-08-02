@@ -10,9 +10,7 @@ Molt ships a composite GitHub Action that installs itself with [uv](/ecosystems/
 
 The Action lives at the root of the molt repository, so you reference it as `uses: giancarlosisasi/molt@v1` -- there is no separate action repository to keep in step with the CLI.
 
-:::warning The `v1` tag is not published yet
-Everything on this page ships: `action.yml`, its eight inputs, its four outputs, and the release loop behind them. What does not exist yet is the moving **`v1` tag** the line below references, because that is release-process work rather than code. Until it is cut, reference a commit (`uses: giancarlosisasi/molt@<sha>`) -- which is what you should do in production anyway -- or drive the same loop yourself with plain `molt` commands (see [Molt is not tied to GitHub Actions](#molt-is-not-tied-to-github-actions)).
-:::
+`v1` is a **moving** reference: it tracks the newest 1.x action, and molt's own release moves it after each successful publish. Pin a commit in production (`uses: giancarlosisasi/molt@<sha>`) if you would rather decide when the action changes under you. Dependabot updates a commit pin; it cannot tell you a moving tag moved.
 
 ## The two-phase loop
 
