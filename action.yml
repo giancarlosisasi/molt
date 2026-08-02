@@ -30,7 +30,7 @@ branding:
 inputs:
   molt-version:
     description: >-
-      The exact molt-cli version to install, for example "0.1.0". Empty installs the latest
+      The exact molt-release version to install, for example "0.1.0". Empty installs the latest
       release. Pinning is recommended: it is what keeps this action and the CLI it runs in
       lockstep between releases.
     required: false
@@ -156,10 +156,10 @@ runs:
         # wins, so a workflow written before the input existed keeps working.
         export GITHUB_TOKEN="${GITHUB_TOKEN:-${MOLT_ACTION_TOKEN_INPUT}}"
 
-        # An empty `molt-version` means "no `==` pin", not `molt-cli==`.
-        requirement="molt-cli"
+        # An empty `molt-version` means "no `==` pin", not `molt-release==`.
+        requirement="molt-release"
         if [ -n "${MOLT_ACTION_VERSION}" ]; then
-          requirement="molt-cli==${MOLT_ACTION_VERSION}"
+          requirement="molt-release==${MOLT_ACTION_VERSION}"
         fi
 
         # `uvx --from` puts the ephemeral environment's bin directory on PATH for the child

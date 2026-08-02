@@ -243,7 +243,7 @@ def test_default_commit_functions_are_registered_as_entry_points() -> None:
     NOTE: like the changelog test this mirrors, ``importlib.metadata`` reads installed
     distribution metadata, not ``pyproject.toml`` directly -- adding the table above does not
     turn this green on its own until the editable install is rebuilt
-    (``uv sync --reinstall-package molt-cli``).
+    (``uv sync --reinstall-package molt-release``).
     """
     entry_points = importlib.metadata.entry_points(group="molt.commit")
     names = {entry_point.name for entry_point in entry_points}

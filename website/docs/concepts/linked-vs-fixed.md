@@ -4,11 +4,9 @@ title: Linked vs fixed packages
 
 # Linked vs fixed packages
 
-`fixed` and `linked` are molt's two mechanisms for making a set of packages share versions. They sound the same and are constantly confused -- so here is the one-line difference: **fixed always releases every member together; linked only aligns the members that were already going to release.**
+`fixed` and `linked` are molt's two mechanisms for making a set of packages share versions. The one-line difference: **fixed always releases every member together; linked only aligns the members that were already going to release.**
 
 Both are configured as groups of package names in [`[tool.molt]`](/config/options), and both are resolved inside the [release plan](/concepts/release-plan)'s fixpoint loop. A package can belong to a `fixed` group or a `linked` group, but never both.
-
-> **Note.** changesets ships these two features with near-identical dictionary definitions ("share a semver categorisation..."), which is why nobody can remember which is which. molt states the distinction sharply and keeps `fixed` and `linked` as genuinely different tools -- see [Why Molt?](/introduction/why-molt) on the vocabulary molt refuses to inherit.
 
 ## fixed: move as one, always
 
@@ -21,7 +19,7 @@ fixed = [["acme-core", "acme-http"]]
 
 Use `fixed` when the packages are, for practical purposes, one product with one version number that you always publish in lockstep (think a framework and its official runtime). The cost is churn: a changeset touching only `acme-core` still forces a fresh `acme-http` release at the new shared version.
 
-## linked: align on release, never force one
+## linked: align on release
 
 A **linked** group keeps versions *consistent among the packages that are releasing anyway*, but it never drags in a member that had no reason to release.
 

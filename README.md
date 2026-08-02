@@ -1,21 +1,20 @@
 # molt
 
-Changeset-driven versioning, changelogs, and publishing for Python packages and monorepos. A
-Python-native port of [`changesets`](https://github.com/changesets/changesets), built on PEP 440
-versions and PEP 508 requirements instead of SemVer and npm.
+Changeset-driven versioning, changelogs, and publishing for Python packages and monorepos. Built on
+PEP 440 versions and PEP 508 requirements, and on the way `pip` and `uv` actually resolve them.
 
 **[Documentation](https://molt.gio-labs.com)**
 
 ## Install
 
-The distribution is `molt-cli`. The command it installs is `molt`.
+The distribution is `molt-release`. The command it installs is `molt`.
 
 ```bash
-uv tool install molt-cli
+uv tool install molt-release
 molt --help
 ```
 
-`pipx install molt-cli` and `pip install molt-cli` work too, and `uvx molt-cli --help` runs it
+`pipx install molt-release` and `pip install molt-release` work too, and `uvx molt-release --help` runs it
 without installing anything. Requires Python 3.11 or newer, on Windows, macOS, or Linux.
 
 ## The release loop
@@ -89,19 +88,20 @@ Full reference: [CLI](https://molt.gio-labs.com/cli/overview).
 
 ## Python specifics
 
-Some behavior differs from changesets because Python's packaging rules force a different answer.
+Python's packaging rules shape several of molt's behaviors.
 
 - **PEP 440 version math**, through `packaging`. Prereleases are `1.0.0rc1`, `1.0.0a2`, or
   `1.0.0.dev3` from a fixed set of spellings, and package names compare under PEP 503
   normalization.
-- **Prerelease is a flag**, not a persistent mode: `molt version --pre rc`. There is no `pre.json`
-  branch state to merge or forget.
-- **`uv.lock` is refreshed** when `molt version` bumps a package. uv workspaces are first-class;
-  other backends sit behind an [ecosystem seam](https://molt.gio-labs.com/ecosystems/overview).
-- **Snapshots target a separate index**, because PyPI versions are immutable and every snapshot
-  would otherwise burn a public version number.
+- **Prerelease is a flag**, not a persistent mode: `molt version --pre rc`. There is no state file
+  to enter, commit, or exit.
+- **`uv.lock` is refreshed** when `molt version` bumps a package, so a `--frozen` or `--locked`
+  install in CI still resolves against the release commit. uv workspaces are first-class; other
+  backends sit behind an [ecosystem seam](https://molt.gio-labs.com/ecosystems/overview).
+- **Snapshots target a separate index.** PyPI versions are permanent, so a snapshot on the public
+  index would burn a version number for good.
 - **A bad release is yanked, not unpublished.** `molt yank` verifies the version, reports whether it
-  is already yanked, and prints the exact steps. PyPI exposes no yank API, so the final click is
+  is already yanked, and prints the exact steps. PyPI publishes no yank API, so the final click is
   yours.
 
 ## Continuous integration
@@ -125,8 +125,8 @@ it anywhere.
 
 ## Documentation
 
-- [What is Molt?](https://molt.gio-labs.com/introduction/what-is-molt) and
-  [Why Molt?](https://molt.gio-labs.com/introduction/why-molt)
+- [Overview](https://molt.gio-labs.com/introduction/what-is-molt) and
+  [The changeset workflow](https://molt.gio-labs.com/introduction/the-changeset-workflow)
 - [Installation](https://molt.gio-labs.com/getting-started/installation),
   [single-package quickstart](https://molt.gio-labs.com/getting-started/quickstart-single-package),
   [monorepo quickstart](https://molt.gio-labs.com/getting-started/quickstart-monorepo)
@@ -135,6 +135,14 @@ it anywhere.
 - [Configuration](https://molt.gio-labs.com/config/config-file) and
   [every option](https://molt.gio-labs.com/config/options)
 - [Migrating from changesets](https://molt.gio-labs.com/guides/migrating-from-changesets)
+
+## Acknowledgements
+
+Molt's workflow comes from [changesets](https://github.com/changesets/changesets), the release tool
+for JavaScript monorepos. Its version math comes from
+[`packaging`](https://packaging.pypa.io), the PyPA reference implementation of PEP 440 and PEP 508.
+Full credits, including the prior work in Python and the related tools worth comparing molt against,
+are on the [Acknowledgements](https://molt.gio-labs.com/reference/acknowledgements) page.
 
 ## License
 

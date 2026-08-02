@@ -86,7 +86,7 @@ Added a `--stream` flag.
 Callers passing `buffer=True` should switch to `stream=False`.
 ```
 
-Lines beginning with `#` survive into the changelog unchanged. This is a deliberate divergence: changesets strips every line starting with `#` during changelog assembly, destroying headings in your descriptions. That is an upstream bug molt does not port (research README section 3.4).
+Lines beginning with `#` survive into the changelog unchanged. Molt treats a summary as literal prose and never post-processes it, so a heading in your description reaches the changelog as a heading. If you are migrating from changesets, note that it strips those lines.
 
 ### Empty changesets
 

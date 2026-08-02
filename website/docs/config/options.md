@@ -26,7 +26,7 @@ changed_file_patterns = ["src/**", "pyproject.toml"]
 
 **An empty list is refused.** `changed_file_patterns = []` is not "detect nothing", it is "never report anything": no file inside a package would ever count as a change to it, so the safety net that tells you *these packages changed and have no changeset* could never fire again -- silently, on every run. Molt fails the parse and names the two fixes: remove the key to get the default `["**"]`, or list the patterns that count.
 
-A **non-empty** list is legal even when it matches nothing today, for the same reason an `ignore` glob that matches nothing is. Note the honest limit: molt holds no file list while parsing your configuration, so this case is legal *and* silent -- unlike an unmatched `ignore` entry, which molt can check against the packages it discovered.
+A **non-empty** list is legal even when it matches nothing today, for the same reason an `ignore` glob that matches nothing is. It is also silent: molt holds no file list while parsing your configuration, so unlike an unmatched `ignore` entry, there is nothing to check the pattern against.
 
 `base_branch` must not be empty either. An empty ref cannot resolve to a commit, and without the check it would fail much later inside a `git merge-base` error that never names the option.
 
@@ -43,7 +43,7 @@ A **non-empty** list is legal even when it matches nothing today, for the same r
 
 `bump_workspace_sources_only` is molt's rename of changesets' `bumpVersionsWithWorkspaceProtocolOnly` (which it still accepts as an alias). The Python analogue of npm's `workspace:` protocol is a dependency backed by `[tool.uv.sources]` with `workspace = true`; when this is on, molt only rewrites the pins of such dependencies and leaves externally-versioned ones untouched.
 
-`ignore` accepts globs and expands them against your package **names** at load time. An `ignore` pattern that matches nothing is a warning, not an error -- molt simply drops it and continues:
+`ignore` accepts globs and expands them against your package **names** at load time. An `ignore` pattern that matches nothing is a warning, not an error; molt drops it and continues:
 
 ```toml
 [tool.molt]
@@ -64,7 +64,7 @@ fixed  = [["acme-core", "acme-runtime"]]
 linked = [["acme-cli", "acme-plugins"]]
 ```
 
-Each group is a list of package names (globs are also accepted). The difference between the two -- and why molt keeps both, unlike changesets' near-identical published definitions -- is explained in [Linked vs fixed](/concepts/linked-vs-fixed).
+Each group is a list of package names; globs are also accepted. The difference between the two is explained in [Linked vs fixed](/concepts/linked-vs-fixed).
 
 ## Private packages
 
@@ -79,7 +79,7 @@ Private packages -- apps and internal tools you version but never upload to PyPI
 private_packages = false
 ```
 
-Molt drops changesets' `privatePackages.tag` sub-option. It gated whether private packages got a **git tag** during `version` -- not an npm dist-tag. Molt decides that with `molt git-tag`, per run, rather than from config, so the option has nothing left to gate (research README section 4.4).
+There is no `privatePackages.tag` sub-option. In changesets it gated whether private packages got a **git tag** during `version`. Molt decides that with `molt git-tag`, per run, so there is nothing for a config key to gate.
 
 ## Changelog and commit
 
@@ -183,9 +183,9 @@ These have no changesets equivalent. They select the pluggable backends that mak
 ecosystem = "uv"
 ```
 
-**`"auto"` and `"uv"` are the only values molt accepts today.** Poetry, Hatch, PDM and setuptools are scheduled after the 0.1 release; naming one is an error that says so, rather than a silent fallback that would discover the wrong set of packages. The backend seam exists from day one precisely so adding them is an implementation, not a redesign.
+**`"auto"` and `"uv"` are the values molt accepts.** Naming Poetry, Hatch, PDM, or setuptools is an error that says so, rather than a silent fallback that would discover the wrong set of packages. See [Ecosystems](/ecosystems/overview) for what a backend answers.
 
-If your repo has no uv workspace, you do not need this option at all — a single-package repo is a first-class case, not a degraded one. Most Python projects are single-package; the ratio is inverted versus JavaScript.
+If your repository has no uv workspace, you do not need this option at all. A single-package repository runs the whole loop, and it is molt's default path.
 
 See [Ecosystems](/ecosystems/overview). `forge` selects the release-automation backend; GitHub ships first, but the seam exists from day one -- see [Forges](/forges/overview).
 
@@ -209,15 +209,13 @@ kind = "file"
 path = "src/acme_core/__about__.py"
 ```
 
-**This option is declared in the package's own manifest, and that is deliberate.** Where a version
-lives is a property of a package, not of a workspace. A root-level table would need a
-name-to-source map that duplicates what discovery already knows, breaks the moment a package is
-renamed, and puts one package's build detail in another package's file. There is no workspace-level
-default and none is planned.
+**This option is declared in the package's own manifest.** Where a version lives is a property of a
+package, not of a workspace. A root-level table would need a name-to-source map that duplicates what
+discovery already knows, breaks the moment a package is renamed, and puts one package's build detail
+in another package's file. There is no workspace-level default.
 
 In a single-package repository the root manifest *is* the member manifest, so the table sits in the
-very `[tool.molt]` section molt parses -- which is why it is a fully declared, validated option
-rather than a key molt merely tolerates.
+same `[tool.molt]` section molt parses, and it is validated like every other option.
 
 Three ways to get this wrong are refused when your configuration loads, each naming the fix: a table
 with no `kind`; `kind = "file"` with no `path`; and a `pattern` that does not compile, or that
@@ -232,7 +230,7 @@ package molt cannot resolve, and why a git-tag-derived version is not releasable
 
 ## Dropped from changesets
 
-Molt deliberately does not carry these changesets options, because they encode npm/JavaScript concepts with no Python analogue. **A configuration that still contains one does not load** -- molt names the key and says why it has no equivalent. Remove `access`, `onlyUpdatePeerDependentsWhenOutOfRange`, `privatePackages.tag`, the `___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH` wrapper (except its `updateInternalDependents` member, which molt promotes to a plain top-level option), and `prettier`, which changesets 3.0 already replaced with `format`.
+These changesets options encode npm concepts with no Python analogue, so molt does not carry them. **A configuration that still contains one does not load**: molt names the key and says why it has no equivalent. Remove `access`, `onlyUpdatePeerDependentsWhenOutOfRange`, `privatePackages.tag`, the `___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH` wrapper (except its `updateInternalDependents` member, which molt promotes to a plain top-level option), and `prettier`, which changesets 3.0 already replaced with `format`.
 
 | Dropped option | Why |
 |---|---|

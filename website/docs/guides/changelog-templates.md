@@ -44,7 +44,7 @@ molt writes the changelog as structured Markdown and emits it correctly on the f
 Two consequences you can rely on:
 
 - **Spacing is right without a formatter.** Blank lines between the heading, sections, and bullets are correct as written, on every platform, with no `format` toolchain to install or configure.
-- **Your summaries are preserved literally.** A summary that contains a `#` heading, a `-` list, or a `$1` keeps its text exactly. changesets strips lines beginning with `#` and once corrupted summaries containing regex replacement patterns; molt treats a summary as literal prose, never as a template. See [Design decisions](/reference/design-decisions) for the upstream bugs molt refuses to inherit.
+- **Your summaries are preserved literally.** A summary that contains a `#` heading, a `-` list, or a `$1` keeps its text exactly. Molt treats a summary as prose, never as a template. See [Design decisions](/reference/design-decisions).
 
 ## Customizing the template
 

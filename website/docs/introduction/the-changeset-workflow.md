@@ -1,0 +1,114 @@
+---
+title: The changeset workflow
+description: How recording intent per change turns into version numbers at release time.
+---
+
+# The changeset workflow
+
+Molt is built on one idea: **you declare the intent of a change when you make it, and a separate
+step turns accumulated intent into concrete releases.** Separating *what changed* from *how the
+version should move* is what makes the workflow predictable.
+
+## A changeset is a record of intent
+
+A changeset is a small Markdown file that answers three questions about a change:
+
+- **Which packages does it affect?**
+- **How significant is it for each one:** a `patch`, a `minor`, or a `major` change?
+- **What should the changelog say?**
+
+You create one with `molt add`, and it lands in the `.changeset/` directory next to your code:
+
+```md
+---
+"acme-core": minor
+"acme-cli": patch
+---
+
+Add streaming support to the export API. The CLI now shows a progress bar
+for large exports.
+```
+
+The front matter maps each affected package to a bump type. The body is the changelog entry, written
+by the person who understands the change. You commit this file in the same pull request as the code,
+where a reviewer can see in one glance that the pull request intends a minor bump to `acme-core` and
+a patch to `acme-cli`.
+
+See [Changesets](/concepts/changesets) for the full file format and [`molt add`](/cli/add) for the
+interactive flow that writes them.
+
+## Two clocks: adding intent and consuming it
+
+There are two independent clocks:
+
+- **Adding intent** happens continuously, once per meaningful change, by whoever wrote it. Ten pull
+  requests over two weeks produce ten changesets sitting in `.changeset/`.
+- **Consuming intent** happens in a batch, whenever you decide to release. `molt version` reads all
+  pending changesets at once, computes the correct version for every affected package, applies the
+  bumps, folds the summaries into each changelog, and deletes the changesets it consumed.
+
+The `.changeset/` directory is the buffer between the two clocks. Contributors keep dropping intent
+into it; the release manager drains it on their own schedule. Nobody has to decide the final version
+number at the moment they open a pull request, because that number depends on everything shipping in
+the release, which is not known until release time.
+
+```bash
+# Two weeks of development produce a pile of intent...
+.changeset/
+  slow-lions-cough.md      # minor: acme-core
+  brave-mugs-sing.md       # patch: acme-cli
+  tidy-eels-return.md      # patch: acme-core
+
+# ...consumed in one deliberate step
+molt version
+```
+
+If `acme-core` has a pending `minor` and a pending `patch`, molt takes the **highest** bump and moves
+it once. Three changesets do not mean three releases. They mean one release that reflects the most
+significant change among them, with all three summaries in the changelog.
+
+## Changesets and commit-derived versioning
+
+The common alternative is to infer versions from commit history: parse `feat:`, `fix:`, and
+`BREAKING CHANGE:` prefixes and let a tool decide the bump. Molt does not do this. The two models
+differ on five points:
+
+- **When the context exists.** The person writing the change knows whether it is breaking. A regex
+  reading `git log` three weeks later does not. A changeset records the decision at the moment the
+  information is freshest.
+- **The unit of work.** A one-character typo fix and a signature-breaking API change are both
+  commits. A changeset lets a person say which is which instead of encoding it in a message prefix.
+- **Who the changelog is for.** A changeset summary is prose written for readers of the changelog.
+  Commit subjects are written for reviewers of the diff.
+- **What contributors have to learn.** No commit-message grammar to memorize, and no CI check that
+  rejects a pull request over a malformed subject line. The changeset is a file, reviewed like any
+  other file.
+- **How intent accumulates.** Many changes pile up and collapse into exactly the right per-package
+  bump, including for packages a change touched only through the
+  [dependency graph](/concepts/release-plan).
+
+Molt does read commit history once, as a [migration aid](/guides/migrating-from-changesets), to
+propose a starting pile of changesets when you adopt it mid-project. That is a bootstrap step, not
+the ongoing model. If commit-derived versioning suits your project better,
+[`python-semantic-release`](https://python-semantic-release.readthedocs.io) implements that model.
+
+## The lifecycle: add, version, publish
+
+Three verbs cover the entire loop:
+
+| Step | Command | What it does |
+|---|---|---|
+| **Add** | [`molt add`](/cli/add) | Record a changeset: affected packages, bump types, and a summary. |
+| **Version** | [`molt version`](/cli/version) | Consume all pending changesets: bump versions, propagate to dependents, write changelogs, update the lockfile. |
+| **Publish** | [`molt publish`](/cli/publish) | Build and upload exactly the packages whose versions changed. |
+
+Two supporting verbs round it out. [`molt status`](/cli/status) shows what a release would contain
+before you run it, and every mutating command accepts `--dry-run` to print its
+[plan](/concepts/release-plan) without touching disk.
+
+## Where to go next
+
+- [Changesets](/concepts/changesets) -- the file format and bump types in detail.
+- [The release plan](/concepts/release-plan) -- how `molt version` turns pending changesets into
+  version numbers, including cross-package propagation.
+- [Adding a changeset](/guides/adding-a-changeset) -- a hands-on walkthrough of `molt add`.

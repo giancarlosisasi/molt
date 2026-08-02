@@ -4,7 +4,7 @@ title: Yanking a release
 
 # Yanking a release
 
-Yanking marks a published version as bad so installers stop selecting it, without breaking the people already pinned to it -- the recovery path PyPI's immutability would otherwise deny you. `molt yank` verifies the version and walks you through it.
+Yanking marks a published version as bad so installers stop selecting it, without breaking the people already pinned to it. `molt yank` verifies the version and walks you through it.
 
 ```bash
 # Check the release and get the exact steps
@@ -13,13 +13,11 @@ molt yank acme-core 1.2.0 --reason "Corrupt wheel; use 1.2.1."
 
 > **The yank itself is a manual step.** PyPI exposes no API for yanking -- it is a web-UI action, `twine` has no yank command, and an upload token would not authorize one. `molt yank` checks that the version exists, tells you whether it is already yanked, and prints the management URL and steps; you finish it in the browser. [`molt yank`](/cli/yank) explains the constraint in full.
 
-## Why yank exists
+## Yanking on PyPI
 
-PyPI has **no unpublish**. Once `1.2.0` is uploaded it is there forever -- you cannot replace it, and you cannot delete it. On npm, changesets can lean on `npm unpublish` and dist-tags to walk back a mistake. Molt has neither, so it uses the mechanism PyPI does provide: **yanking**, standardized in PEP 592.
+PyPI has **no unpublish**. Once `1.2.0` is uploaded it is there forever: you cannot replace it, and you cannot delete it. The mechanism PyPI does provide is **yanking**, standardized in PEP 592, and it is the answer to "the release is broken and I cannot take it back."
 
-Yanking is the honest answer to "the release is broken and I can't take it back." It is not a workaround bolted on after the fact -- it is a first-class verb, because on PyPI it is the only real recovery tool there is.
-
-## What yanking actually does
+## What yanking does
 
 A yanked version stays on the index and stays installable, but resolvers treat it as a last resort:
 
@@ -28,7 +26,7 @@ A yanked version stays on the index and stays installable, but resolvers treat i
 
 That asymmetry is the whole point. You take a bad release out of the default path for everyone going forward, while the environments that already trusted it keep resolving.
 
-## Yank or re-release?
+## Yank, re-release, or both
 
 Yanking removes a version from consideration; it does not ship a fix. In almost every case you do **both**:
 
@@ -56,6 +54,6 @@ Two things to know before you click:
 
 ## See also
 
-- [`molt yank`](/cli/yank) -- flags, why the yank itself is manual, and exit codes.
-- [Publishing](/guides/publishing) -- why PyPI immutability shapes the whole publish flow.
-- [Why Molt?](/introduction/why-molt) -- how PyPI's constraints become a feature changesets structurally cannot offer.
+- [`molt yank`](/cli/yank) -- flags, exit codes, and the reason the yank itself is manual.
+- [Publishing](/guides/publishing) -- how PyPI immutability shapes the whole publish flow.
+- [Snapshot releases](/concepts/snapshots) -- publishing a throwaway build without burning a version.

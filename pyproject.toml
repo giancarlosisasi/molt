@@ -1,11 +1,11 @@
 [project]
-name = "molt-cli"
+name = "molt-release"
 version = "0.1.0"
 description = "Changeset-driven versioning and changelogs for Python monorepos"
 readme = "README.md"
 requires-python = ">=3.11"
 # PEP 639 spelling: `license` is an SPDX expression, `license-files` names the files that ship
-# inside the sdist AND the wheel (`molt_cli-<v>.dist-info/licenses/LICENSE`). The older
+# inside the sdist AND the wheel (`molt_release-<v>.dist-info/licenses/LICENSE`). The older
 # `license = { text = "MIT" }` table form is deprecated and ships no licence text at all, which
 # left every downloaded artifact claiming MIT and carrying none. PEP 639 also forbids pairing this
 # with a `License :: OSI Approved :: MIT License` classifier -- do not add one back.
@@ -86,8 +86,11 @@ dependencies = [
 ]
 
 [project.scripts]
-# The distribution is `molt-cli` (the `molt` name is squatted on PyPI by a dead 2012 project),
-# but the command users type is `molt`. See roadmap/tech-stack.md §1.
+# The distribution is `molt-release` but the command users type is `molt`. Two shorter names are
+# unavailable: `molt` is squatted on PyPI by a dead 2012 project, and `molt-cli` is refused on
+# upload because PyPI deletes `-`, `_` and `.` before comparing names, which collides it with the
+# active `moltcli`. See roadmap/tech-stack.md §1 -- it carries PyPI's comparison function, which is
+# what any future rename must be checked against.
 molt = "molt.cli:main"
 # The CI entry point the composite action runs (`action.yml`). Deliberately a SECOND console
 # script rather than a `molt` verb: `tests/cli/test_cli.py::test_help_lists_every_command_in_the_table`
@@ -103,7 +106,7 @@ molt-action = "molt.action.cli:main"
 # so a project can substitute its own without forking molt -- mirrors the `molt.changelog`
 # generator mechanism. The value names the module itself: `get_add_message` / `get_version_message`
 # module attributes already are the whole plugin surface, so there is no wrapper object to point
-# at. Requires `uv sync` (or `uv sync --reinstall-package molt-cli`) after this edit before
+# at. Requires `uv sync` (or `uv sync --reinstall-package molt-release`) after this edit before
 # `importlib.metadata.entry_points(group="molt.commit")` sees it.
 default = "molt.commit"
 
@@ -114,7 +117,7 @@ default = "molt.commit"
 # the extension seam. Each value names the module-level `generator` object, which is the attribute
 # every resolution form in `molt.apply.generators` looks for.
 #
-# Requires `uv sync` (or `uv sync --reinstall-package molt-cli`) after this edit before
+# Requires `uv sync` (or `uv sync --reinstall-package molt-release`) after this edit before
 # `importlib.metadata.entry_points(group="molt.changelog")` sees it -- importlib reads INSTALLED
 # distribution metadata, not this file.
 git = "molt.changelog.git:generator"
@@ -137,7 +140,7 @@ default = "molt.changelog.git:generator"
 # Each value names the module, whose `build(*, name, directory, version, options)` callable is what
 # `molt.ecosystem.version_sources.resolve` looks for.
 #
-# Requires `uv sync` (or `uv sync --reinstall-package molt-cli`) after this edit before
+# Requires `uv sync` (or `uv sync --reinstall-package molt-release`) after this edit before
 # `importlib.metadata.entry_points(group="molt.version_source")` sees it -- importlib reads
 # INSTALLED distribution metadata, not this file.
 static = "molt.ecosystem.version_sources.static"

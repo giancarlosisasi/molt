@@ -97,7 +97,7 @@ molt version
 - Add a --stream flag to the export API for large datasets.
 ```
 
-**`uv.lock`** -- refreshed so the lockfile matches the new version. Updating the lockfile is a molt feature; changesets leaves it stale, which is cosmetic in npm but load-bearing in Python.
+**`uv.lock`** -- refreshed so the lockfile matches the new version. A `--frozen` install against a stale lock fails, so the refresh happens in the same commit.
 
 **`.changeset/late-mangos-cheer.md`** -- deleted. The intent has been consumed into a concrete release, so the changeset is gone. Re-running `molt version` now would exit with code 1 and "No pending changesets found." -- there is nothing left to do, and molt never double-bumps.
 

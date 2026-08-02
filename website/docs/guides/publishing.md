@@ -73,7 +73,7 @@ If an upload fails, molt **stops** rather than pressing on -- the pre-flight che
 
 ## Publishing a subset with `--filter`
 
-`molt publish --filter` restricts the run to a subset of packages by name or glob. Unlike changesets, whose publish flow is coupled to its GitHub Action, molt's `--filter` works anywhere -- your laptop, a cron job, a non-GitHub CI:
+`molt publish --filter` restricts the run to a subset of packages by name or glob. It works anywhere `molt` runs: your laptop, a cron job, any CI.
 
 ```bash
 # Publish only the core package and anything under the acme- prefix

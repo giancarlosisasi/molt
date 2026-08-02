@@ -8,7 +8,7 @@ Write a changelog generator as a small Python package, register it as a `molt.ch
 
 This is the hands-on companion to [Changelog plugins](/extending/changelog-plugins), which covers the contract and the plugin seam in the abstract. Here we build one from an empty directory to a working `molt version`. The example produces categorized, emoji-prefixed release lines rendered with a small Jinja2 template.
 
-## When you need a generator (and when you do not)
+## When a generator is the right tool
 
 A generator controls the **text of each changelog line** -- how a single changeset's summary becomes a bullet, and how a dependency bump is phrased. You need one when you want to change that text: link to a different forge, add attribution, prefix a category emoji, or reshape the bullet.
 
@@ -99,7 +99,7 @@ A few things this example demonstrates:
 - **molt injects the forge.** `forge` is molt's cached, rate-limited [GitHub](/forges/github) adapter when GitHub is active, and `None` otherwise -- so the same generator degrades gracefully off a forge instead of crashing or opening its own client.
 - **The forge hands back links, not ids.** `forge.commit_info(sha)` returns `None` when the forge has nothing for that commit, and otherwise an object with three parts: `info.commit`, `info.author` and `info.pull`. Each carries `.url` and a ready-made `.markdown_link`, so a generator never builds a URL itself -- that is what keeps the same generator working against a forge other than GitHub. `info.commit` is always present; `info.author` and `info.pull` can be `None`.
 - **You never touch the file.** No reading `CHANGELOG.md`, no regex insertion, no blank-line juggling. You return one bullet's text; molt places it in the right `### Major/Minor/Patch Changes` section, keeps dependency bumps last in the patch section, and clamps the spacing. molt emits correct Markdown directly -- there is no formatter pass to repair it afterward.
-- **Summaries are passed through literally.** molt does not run your changeset summary through a template engine or strip Markdown from it, so a `#` heading or a `$1` in a summary survives intact. (Both are upstream bugs molt refuses to port -- see [Design decisions](/reference/design-decisions).)
+- **Summaries are passed through literally.** molt does not run your changeset summary through a template engine or strip Markdown from it, so a `#` heading or a `$1` in a summary survives intact. See [Design decisions](/reference/design-decisions).
 
 ## 3. Register the entry point
 
@@ -132,14 +132,14 @@ changelog = ["emoji", { repo = "acme/widgets" }]
 
 The options table (`{ repo = "acme/widgets" }`) arrives as the `options` argument, verbatim. The next `molt version` uses your generator with no further wiring.
 
-## Entry points, not shell hooks
+## Entry points as the extension surface
 
-molt extends **only** through named entry points like this one -- never through an arbitrary shell command in config. That is a deliberate refusal, not a missing feature:
+molt extends through named entry points like this one, and not through a shell command named in config. Two reasons:
 
 - A shell `postversion` hook makes dependency-bump and changelog semantics undefined -- molt cannot reason about what the hook did to the tree.
 - Executable config (a `changelog.py` that runs on parse) means no tool can read your settings without running your code -- it breaks static analysis, editor tooling, and any bot that inspects the repo.
 
-A typed, importable generator gives you the same power with none of those costs: it is discoverable, testable in isolation, versioned as a dependency, and inert until molt calls it. See [Why molt](/introduction/why-molt) for the full list of what molt refuses and why.
+A typed, importable generator gives you the same power with none of those costs: it is discoverable, testable in isolation, versioned as a dependency, and inert until molt calls it.
 
 ## Where to go next
 

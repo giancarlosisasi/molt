@@ -39,7 +39,7 @@ Or, equivalently, in `.molt/config.json`:
 
 Both express exactly the same thing. The `$schema` line in the JSON form is optional and drives editor autocomplete -- see [JSON schema](/config/json-schema).
 
-## One source, never merged
+## One source
 
 If molt finds **both** a `[tool.molt]` table and a `.molt/config.json`, it stops with an error:
 
@@ -60,9 +60,9 @@ base_branch = "main"          # canonical
 baseBranch  = "main"          # accepted (changesets-compatible alias)
 ```
 
-This is powered by pydantic's `AliasChoices`, so it is a first-class part of the schema, not a preprocessing hack -- the [JSON schema](/config/json-schema) documents both names. Write snake_case in new configs; paste camelCase from an old changesets setup and it just works. A handful of options were also renamed where changesets' name no longer fits Python; those still accept the old name as an alias, and the [options reference](/config/options) flags each one.
+Both spellings are part of the schema, and the [JSON schema](/config/json-schema) documents both. Write snake_case in new configs; camelCase pasted from a changesets setup is read the same way. A few options carry a different name in molt, where the original no longer describes what it does in Python. Those accept the old name as an alias, and the [options reference](/config/options) flags each one.
 
-## Validation never crashes
+## Validation
 
 Molt does not throw an exception the moment it hits a bad config value. Instead, config loading returns a structured result with three parts:
 

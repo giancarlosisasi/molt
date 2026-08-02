@@ -4,11 +4,11 @@ title: Installation
 
 # Installation
 
-Install `molt-cli` once and you get a `molt` command on your `PATH`; then run `molt init` to set up a project.
+Install `molt-release` once and you get a `molt` command on your `PATH`; then run `molt init` to set up a project.
 
 ## Requirements
 
-- **Python 3.11 or newer.** molt uses the standard-library `tomllib` parser, which landed in 3.11. There is no lower floor on purpose -- a release tool has to run in the CI you already have, and pinning a high interpreter version is an adoption tax with no payoff.
+- **Python 3.11 or newer.** molt reads TOML with the standard-library `tomllib` parser, which landed in 3.11. The floor stops there so molt runs in the CI you already have.
 - **A workspace on any supported ecosystem.** uv is first-class; Poetry, Hatch, PDM, and setuptools are covered through a backend seam. See [Ecosystems](/ecosystems/overview).
 - **Windows, macOS, or Linux.** molt is tested on Windows from the first commit and keeps its output ASCII-clean, so it behaves the same in every runner.
 
@@ -17,13 +17,13 @@ Install `molt-cli` once and you get a `molt` command on your `PATH`; then run `m
 The recommended path is `uv tool install`, which puts molt in its own isolated environment and exposes the `molt` command globally:
 
 ```bash
-uv tool install molt-cli
+uv tool install molt-release
 ```
 
 Prefer not to install anything? Run it straight from the index with `uvx`:
 
 ```bash
-uvx molt-cli --help
+uvx molt-release --help
 ```
 
 Either way, the command you type afterward is always `molt`:
@@ -32,17 +32,17 @@ Either way, the command you type afterward is always `molt`:
 molt --help
 ```
 
-Other installers work too, since `molt-cli` is an ordinary PyPI distribution:
+Other installers work too, since `molt-release` is an ordinary PyPI distribution:
 
 ```bash
-pipx install molt-cli
+pipx install molt-release
 # or, into the current environment
-pip install molt-cli
+pip install molt-release
 ```
 
-## `molt-cli` the package, `molt` the command
+## `molt-release` the package, `molt` the command
 
-You install **`molt-cli`** but you run **`molt`**. The distribution is named `molt-cli` because `molt` is already claimed on PyPI by an unrelated, long-abandoned project. A distribution name and the console script it installs are independent, so `molt-cli` still gives you a `molt` binary. You never type `molt-cli` again after installing. The full story is in [What is Molt?](/introduction/what-is-molt).
+You install **`molt-release`** but you run **`molt`**. The distribution is named `molt-release` because `molt` on PyPI belongs to an unrelated project. A distribution name and the console script it installs are independent, so `molt-release` still gives you a `molt` binary. You never type `molt-release` again after installing. See the [Overview](/introduction/what-is-molt).
 
 ## Verify the install
 

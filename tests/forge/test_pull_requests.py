@@ -79,7 +79,7 @@ HEAD = "changeset-release/main"
 BASE = "main"
 
 TITLE = "Version Packages"
-BODY = "# Releases\n\n## molt-cli@1.4.0\n\n### Minor Changes\n\n- Add a `--pre` flag\n"
+BODY = "# Releases\n\n## molt-release@1.4.0\n\n### Minor Changes\n\n- Add a `--pre` flag\n"
 
 DEFAULT_REST_BASE = "https://api.github.com"
 PULLS_URL_RE = r".+/repos/.+/pulls(\?.*)?$"

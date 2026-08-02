@@ -137,7 +137,7 @@ own piece of design.
 Until then: give the package a static `[project].version`, or point `[tool.molt.version_source]` at
 a file.
 
-## What molt will not do
+## Out of scope
 
 - **Run your build to ask for the version.** A PEP 517 metadata build is correct for every project
   and needs an isolated environment, network access and running arbitrary code out of the repository

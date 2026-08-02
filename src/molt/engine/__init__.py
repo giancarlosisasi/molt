@@ -5,8 +5,7 @@ the edge set. :mod:`molt.engine.assemble` answers *what gets released, and at wh
 the monotone 3-pass fixpoint loop, ``fixed`` / ``linked`` resolution, and PEP 440 snapshot and
 prerelease derivation.
 
-This is the moat. Both abandoned Python ports of changesets died on dependency propagation, and it
-is where a wrong answer is least visible: an edge that should not exist silently suppresses a
+This is where a wrong answer is least visible: an edge that should not exist silently suppresses a
 dependent's release, a missing one silently over-releases, and every output here is a version
 number nobody can eyeball for correctness. Read each module's docstring before changing a rule --
 several of them look like bugs and are not, and several deliberately are not upstream's.

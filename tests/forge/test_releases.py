@@ -80,8 +80,8 @@ SERVER_URL = "https://github.com"
 
 # Upstream passes `name: tagName` -- the same string in both fields. They are asserted as two
 # distinct values here so a backend that transposed them would fail rather than pass by accident.
-TAG = "molt-cli@1.4.0"
-RELEASE_NAME = "molt-cli 1.4.0"
+TAG = "molt-release@1.4.0"
+RELEASE_NAME = "molt-release 1.4.0"
 
 # A realistic changelog section, the shape `molt.action.get_changelog_entry` slices out of a
 # just-written CHANGELOG.md. Markdown, several blank lines, links and a trailing newline: every
@@ -124,7 +124,7 @@ OTHER_422_BODY = {
 # `html_url` must be read off the response (design D8), never built.
 CREATED_BODY = {
     "id": 176938321,
-    "html_url": "https://enterprise.invalid/emotion-js/emotion/releases/tag/molt-cli%401.4.0",
+    "html_url": "https://enterprise.invalid/emotion-js/emotion/releases/tag/molt-release%401.4.0",
     "tag_name": TAG,
     "name": RELEASE_NAME,
 }

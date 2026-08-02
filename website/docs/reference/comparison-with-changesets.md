@@ -1,100 +1,131 @@
 ---
-title: Comparison with changesets
+title: Molt and changesets
+description: A feature-by-feature map of molt and JavaScript changesets, and the ecosystem reasons the two differ.
 ---
 
-# Comparison with changesets
+# Molt and changesets
 
-A precise, non-marketing map of where molt matches JS changesets, where it deliberately diverges, what it adds, and what it refuses to build.
+Molt and [changesets](https://github.com/changesets/changesets) implement the same release model for
+two different packaging ecosystems. If you know one, this page tells you what carries over and what
+does not.
 
-molt is a faithful port of changesets with documented divergences. This page is the technical reference for exactly which is which. It tracks changesets at `3.0.0-next.9` (the v3 line) and follows v3 semantics, not the older v2 behavior that most online material and both abandoned Python ports describe. If you are coming from changesets, pair this with [Migrating from changesets](/guides/migrating-from-changesets).
+Most of the differences below trace to a single fact: npm and PyPI are not the same kind of index,
+and SemVer and PEP 440 are not the same kind of version. A rule that is correct on npm is often
+wrong on PyPI, and the reverse. Where that happens, each tool does the right thing for its own
+ecosystem.
 
-## The v3 baseline
+Molt follows changesets v3 semantics. Material written about v2, which is still most of what you
+will find online, describes older behavior.
 
-molt ports **v3 semantics**. The behaviors below changed between changesets v2 and v3; molt matches the v3 column:
+## Legend
 
-| Behavior | v2 | v3 (what molt follows) |
-|---|---|---|
-| Peer-dependent propagation | major cascade | patch only -- N/A for molt anyway (no peerDependencies) |
-| `version` with no changesets | exit 0 | **exit 1** |
-| `tag` command | `tag` | `git-tag` |
-| Default base branch | `master` | `main` |
-| Legacy v1 changeset format | supported | removed -- molt reads the v2/v3 Markdown format only |
-| Publish pipeline | one `publish` step | `pack` -> `publish` split (build artifacts, then upload) |
-
-## Ported faithfully
-
-These behaviors are the reason changesets works, and molt keeps them intact. Getting any of them wrong produces silently incorrect version numbers, so they are validated against ported test fixtures.
-
-| Behavior | Notes |
+| Mark | Meaning |
 |---|---|
-| Changeset file = Markdown + YAML front matter | Same [format](/config/changeset-format); names matched with PEP 503 normalization |
-| Two-phase [add -> version](/introduction/the-changesets-model) | Record intent while fresh; consume in a batch |
-| Flatten to the **max** bump; changelog keeps the **union** | Three changesets -> one release at the highest bump, every summary preserved |
-| Files on disk -> squash- and rebase-safe | Intent lives in a committed file, not in git history |
-| The 3-pass fixpoint [release plan](/concepts/release-plan) | `determineDependents` -> `matchFixedConstraint` -> `applyLinks`, repeated to a fixpoint; order is observable and load-bearing |
-| Dependent propagation + range rewriting | Over PEP 508 requirements; a dependent is released when the dependency leaves its declared range |
-| Dependency bumps are always a **patch**, rendered **last** in the patch section | Same rule; add a separate changeset for a louder dependent entry |
-| [`fixed` and `linked`](/concepts/linked-vs-fixed) groups | Same semantics (with clearer names) |
-| `status`, `--since`, JSON output | Reports pending releases without mutating |
-| Changelog generator plugins | Two functions per generator; molt owns section layout ([Changelog plugins](/extending/changelog-plugins)) |
-| Topological publish ordering | Publish in dependency order |
-| Trusted publishing via OIDC | 1:1 with changesets' v3 GitHub workflow |
-| Git policy: implicit git = warn, explicit git = fail | Detecting changed packages never hard-fails; `--since main` does |
+| ✅ | Supported |
+| ⬜ | Not supported |
+| ➖ | The concept does not exist in that ecosystem |
+| 🚫 | Out of scope, by decision |
 
-## Deliberately different
+## The workflow
 
-These diverge because Python's packaging rules force a different answer than JavaScript's. Each is intentional and documented in [Design decisions](/reference/design-decisions).
+The core loop is the same in both tools, and the muscle memory transfers.
 
-| Area | changesets | molt |
-|---|---|---|
-| Version + range math | SemVer / node-semver | [PEP 440 + PEP 508](/concepts/versioning-pep440) via `packaging` |
-| Prerelease identifiers | arbitrary tags (`-next.0`) | fixed vocabulary (`aN`/`bN`/`rcN`/`.devN`) |
-| Prerelease range opt-in | scoped to the same release tuple | scoped across the whole specifier set (PEP 440); dependents that opted in are not force-bumped `rc0 -> rc1` |
-| Prerelease mode | `pre.json` repo-global state | [`--pre` invocation flag](/concepts/prerelease); no persistent state |
-| Snapshots | throwaway version + npm dist-tag | `.devN` on a [separate index](/concepts/snapshots); never PyPI by default |
-| Bad release recovery | unpublish / deprecate | [`molt yank`](/cli/yank) (PEP 592, guided -- PyPI has no yank API) |
-| peerDependencies | first-class subsystem | dropped -- no Python analogue |
-| dist-tags / `--tag` | central to prerelease + snapshot flows | gone -- PyPI has no dist-tags |
-| Dependencies | a map in `package.json` | a list of PEP 508 strings in `pyproject.toml`; range rewriting splices the string |
-| Manifest editing | JSON reserialize (no comments to lose) | comment- and format-preserving TOML via `tomlkit` |
-| Lockfile | left stale | [`uv.lock` updated](/ecosystems/uv) during `version` |
-| Workspace model | one `package.json` universe | [ecosystem backend seam](/ecosystems/overview) (uv, Poetry, Hatch, PDM, setuptools) |
-| Forge | hard-wired to GitHub | [forge seam](/forges/overview); GitHub first |
-| Vocabulary | "workspace" = one package; `linked`/`fixed` nearly identical | "workspace" = the repo; clearer group names ([Glossary](/concepts/glossary)) |
+| Capability | molt | changesets | Notes |
+|---|---|---|---|
+| Changeset file: Markdown body, YAML front matter | ✅ | ✅ | Same [format](/config/changeset-format). Molt matches package names under PEP 503 normalization, so `Acme_Core` and `acme-core` are one package |
+| Record intent now, consume it in a batch | ✅ | ✅ | The [two-clock model](/introduction/the-changeset-workflow) |
+| Flatten to the highest bump, keep every summary | ✅ | ✅ | Three changesets become one release at the highest bump |
+| Intent lives in a committed file, not in git history | ✅ | ✅ | Squash- and rebase-safe in both |
+| Empty changeset to satisfy a CI gate | ✅ | ✅ | `molt add --empty` |
+| Interactive prompt to write a changeset | ✅ | ✅ | |
+| Write a changeset with no prompt | ✅ | ⬜ | `molt add --minor acme-core -m "..."`. What makes Dependabot, Renovate, and code generators able to open a complete pull request. See [molt add](/cli/add) |
+| Seed changesets from commit history, once, at adoption | ✅ | ⬜ | A [migration aid](/guides/migrating-from-changesets), not an ongoing mode |
 
-## What molt adds
+## Versions
 
-Capabilities changesets lacks -- most cheap to build fresh, expensive to retrofit, which is why they were never added upstream. Several are the community's longest-standing unmet requests (see the [Roadmap](/reference/roadmap) for the demand history).
+| Capability | molt | changesets | Notes |
+|---|---|---|---|
+| Version and range math | PEP 440 + PEP 508 | SemVer + node-semver | Molt uses [`packaging`](/concepts/versioning-pep440), so its answer matches what `pip` and `uv` resolve |
+| `major` / `minor` / `patch` bump types | ✅ | ✅ | Same three words |
+| Prerelease versions | ✅ | ✅ | Molt: `1.0.0rc1`, `a1`, `b2`, `.dev3`. changesets: any tag, such as `1.0.0-next.0` |
+| Arbitrary prerelease tag names | ➖ | ✅ | PEP 440 defines a closed vocabulary, so `1.0.0-canary.1` has no Python spelling |
+| Prerelease as a persistent repository mode | 🚫 | ✅ | changesets uses `pre enter` / `pre exit` and a `pre.json`. Molt uses [`molt version --pre rc`](/concepts/prerelease) per run, with no state to enter, commit, or exit |
+| Epochs, post-releases, local versions | ✅ | ➖ | PEP 440 shapes with no SemVer equivalent |
+| Snapshot releases | ✅ | ✅ | Different mechanics: see the publishing table |
 
-| Addition | changesets status |
-|---|---|
-| Ecosystem / version-source abstraction | Formally rejected in 2020, re-requested for six years |
-| [Lockfile updates during `version`](/ecosystems/uv) | Absent entirely |
-| Uniform machine-readable plan object on **every** mutating command; `--dry-run` = plan + print | Partial (`publish-plan` only, v3) |
-| [Non-interactive `molt add`](/cli/add) | Not possible today -- unlocks Dependabot/Renovate/codegen |
-| [Real changelog templating](/guides/changelog-templates) (Jinja2, dates, sections) | Open 7 years (#109) |
-| No `pre.json` -- [prerelease as a flag](/concepts/prerelease) | ~15 open issues trace to `pre.json` |
-| [Forge-agnostic](/forges/overview) integration | Open 4 years, zero maintainer comments |
-| Single-package + root-workspace as a first-class path | Degenerate special case upstream |
-| [`molt yank`](/cli/yank) (guided; the yank itself is a browser step) | Impossible on npm |
-| Atomic, resumable `version` (buffer-then-flush) | Double-bumps on a retry after mid-run failure |
-| Correct changelog Markdown, [emitted directly](/guides/changelog-templates) | Needs a formatter pass to repair blank lines |
-| Windows-correct from day one | Windows CI added only in 2026-07 |
-| A package that pins **itself** is left alone | `version-package.ts` has no self-name check, so a faithful port would rewrite the pin. molt refuses to, because a package's own version is not one of its dependencies |
-| One failed host release does not cost the rest | `run.ts` stops at the first release that fails to create. molt creates every remaining release and then fails, naming each failure -- by then the packages are on the index, so the run's job is to tell you which releases are missing |
+## Monorepos
 
-## What molt refuses
+Both tools compute a release plan across a workspace. This is the part that is the same idea and a
+different implementation.
 
-A sharp tool says no. These are deliberate non-goals, not backlog items:
+| Capability | molt | changesets | Notes |
+|---|---|---|---|
+| Dependent propagation to a fixpoint | ✅ | ✅ | The [three-pass loop](/concepts/release-plan). Pass order is observable and load-bearing in both |
+| Rewrite a dependent's constraint on the bumped package | ✅ | ✅ | Molt splices the specifier inside a PEP 508 string; changesets edits a `package.json` field |
+| Release a dependent only when the new version leaves its range | ✅ | ✅ | |
+| Dependency bumps render as a patch, last in the section | ✅ | ✅ | Add a separate changeset if you want a louder entry |
+| [`fixed` and `linked`](/concepts/linked-vs-fixed) groups | ✅ | ✅ | Same semantics, clearer names |
+| [`ignore`](/config/options) list | ✅ | ✅ | |
+| Single-package repository as a first-class path | ✅ | ✅ | Molt makes it the default path, since most Python projects ship one package |
+| `peerDependencies` bump rules | ➖ | ✅ | Python has no peer dependencies. Extras (`foo[bar]`) behave like ordinary dependencies |
+| Lockfile refreshed when versions change | ✅ | ⬜ | A stale `uv.lock` fails any `--frozen` or `--locked` install, so molt runs `uv lock` in the same commit. npm lockfiles do not carry workspace versions the same way |
+| Comment- and format-preserving manifest edits | ✅ | ➖ | `pyproject.toml` is hand-maintained and holds comments. JSON has none to lose |
+| Package discovery behind a swappable backend | ✅ (uv) | ⬜ | Python has five workspace conventions where JavaScript has essentially one, so the seam is worth its cost on one side and not the other. See [Ecosystems](/ecosystems/overview) |
 
-- **Full commit-derived versioning.** It destroys the intent-based model; a commit is not a release intent, and conventional-commit prefixes cannot see breaking changes across package boundaries. molt offers one-time [changeset seeding](/guides/migrating-from-changesets) from commits as a migration aid only.
-- **Executable config.** Config is TOML/JSON so other tools can read it without running your code.
-- **Arbitrary shell hooks as the primary extension point.** Extension happens through Python [entry points](/extending/changelog-plugins).
-- **Per-tool bespoke integrations** (Nx/Turbo-style), one-PR-per-package, chat bots, and config-option creep. Being the best Python release tool beats being a mediocre everything-tool.
+## Publishing
 
-## Where to go next
+| Capability | molt | changesets | Notes |
+|---|---|---|---|
+| Build artifacts, then upload | ✅ | ✅ | `molt build` then `molt publish` |
+| Publish in dependency order | ✅ | ✅ | |
+| Trusted publishing over OIDC | ✅ | ✅ | |
+| Publish a subset | ✅ | ✅ | `molt publish --filter` |
+| Snapshot to a separate index | ✅ | ➖ | PyPI versions are permanent, so molt sends `.devN` snapshots to a wheelhouse, TestPyPI, or a private index by default. See [Snapshots](/concepts/snapshots) |
+| Snapshot hidden behind a dist-tag | ➖ | ✅ | PyPI has no dist-tags. `.devN` in the version string does the same job, and `pip` and `uv` skip dev versions by default |
+| Unpublish a bad release | ➖ | ✅ | npm allows it inside a window. PyPI does not |
+| [Yank a bad release](/cli/yank) | ✅ | ➖ | PEP 592. `molt yank` checks the version, reports whether it is already yanked, and prints the steps. PyPI publishes no yank API, so the last click is yours |
+| Per-package publish access setting | ➖ | ✅ | PyPI has no per-package access flag. Choose an index with `molt publish --repository` |
+| Annotated git tags per released package | ✅ | ✅ | `molt git-tag` |
+
+## Changelogs
+
+| Capability | molt | changesets | Notes |
+|---|---|---|---|
+| One `CHANGELOG.md` per package | ✅ | ✅ | |
+| Pluggable generator | ✅ | ✅ | Molt resolves generators through Python [entry points](/extending/changelog-plugins) |
+| Author and pull-request attribution | ✅ | ✅ | |
+| [Templates](/guides/changelog-templates) for sections, dates, and layout | ✅ | ⬜ | Jinja2. changesets generators return strings, so layout is fixed |
+| Markdown that needs no formatter pass afterwards | ✅ | ⬜ | Molt emits the blank lines correctly rather than repairing them later |
+
+## Automation
+
+| Capability | molt | changesets | Notes |
+|---|---|---|---|
+| A release pull request kept in sync with pending changesets | ✅ | ✅ | |
+| Host releases, one per package | ✅ | ✅ | |
+| Signed commits made through the host API | ✅ | ✅ | [`commit-mode: api`](/guides/ci-github-action#signed-commits) |
+| GitHub | ✅ | ✅ | |
+| GitLab, Gitea, Bitbucket, Azure DevOps | ⬜ | ⬜ | Both tools ship a GitHub backend. Molt keeps host calls behind a [protocol](/forges/overview), so a second host is a backend rather than a rewrite. The core loop already runs on any CI |
+| A machine-readable plan on every mutating command | ✅ | ⬜ | `--dry-run` prints it and writes nothing. See [Dry runs and plans](/guides/dry-run-and-plans) |
+| All-or-nothing `version` | ✅ | ⬜ | Molt buffers every write and flushes them together, so an interrupted run leaves the tree untouched and re-runs safely |
+| Rate-limit handling, retry, and backoff on host calls | ✅ | ⬜ | Molt honors `Retry-After`, retries transient `5xx` with jittered backoff, and reports when a rate limit resets |
+| Windows | ✅ | ✅ | Molt runs its test suite on Windows |
+
+## Out of scope for molt
+
+These are decisions, not gaps:
+
+- **Versions derived from commit messages.** A commit is not a release intent, and a prefix
+  convention cannot see a breaking change that crosses a package boundary. Molt reads commits once,
+  at adoption, to [seed changesets](/guides/migrating-from-changesets).
+- **Executable configuration.** Config is TOML or JSON so any tool can read it without running your
+  code.
+- **Shell hooks as the main extension point.** Extension goes through typed Python
+  [entry points](/extending/changelog-plugins).
+- **One pull request per package**, bespoke per-build-tool integrations, and chat bots.
+
+## See also
 
 - [Migrating from changesets](/guides/migrating-from-changesets) -- the practical port guide.
-- [Design decisions](/reference/design-decisions) -- the rationale behind each divergence.
-- [Roadmap](/reference/roadmap) -- what is shipped, in progress, and planned.
-- [Why molt](/introduction/why-molt) -- the strategic case.
+- [Design decisions](/reference/design-decisions) -- the reasoning behind each divergence.
+- [Acknowledgements](/reference/acknowledgements) -- what molt is built on.

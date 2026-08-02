@@ -6,7 +6,7 @@ title: "Quickstart: monorepo"
 
 Version a uv workspace where one package depends on another, and watch a single changeset cascade to its dependents through the release plan.
 
-This is where molt earns its keep. When you change one package, molt works out which other packages depend on it, decides whether they need a release too, and rewrites their dependency constraints to match. That cross-package reasoning -- the [release plan](/concepts/release-plan) -- is the hard part of the problem, and the reason molt exists.
+When you change one package, molt works out which other packages depend on it, decides whether they need a release too, and rewrites their dependency constraints to match. That cross-package reasoning is the [release plan](/concepts/release-plan).
 
 If you have not read the [single-package quickstart](/getting-started/quickstart-single-package), start there; this page assumes the `init` / `add` / `version` / `publish` loop.
 
@@ -148,7 +148,7 @@ molt publishes exactly the packages whose versions changed -- here, both -- in d
 
 ## Where to go next
 
-- [Dependency propagation](/guides/dependency-propagation) -- the full rules for how bumps cascade, including exact pins, ranges, and transitive dependents. This is the moat.
+- [Dependency propagation](/guides/dependency-propagation) -- the full rules for how bumps cascade, including exact pins, ranges, and transitive dependents.
 - [The release plan](/concepts/release-plan) -- the engine that computes all of the above.
 - [Linked vs fixed packages](/concepts/linked-vs-fixed) -- when you want packages to move together on purpose.
 - [uv workspaces](/ecosystems/uv) -- how molt discovers members and reads internal dependencies.

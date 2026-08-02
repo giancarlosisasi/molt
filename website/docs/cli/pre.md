@@ -4,20 +4,20 @@ title: Prerelease control
 
 # Prerelease control
 
-How molt cuts prereleases -- and why there is no `molt pre` mode to enter or exit.
+How molt cuts prereleases.
 
-## Molt has no prerelease mode
+## There is no prerelease mode
 
-changesets models prereleases as a **persistent state**: you run `changeset pre enter next`, which writes a `pre.json` file that becomes shared branch state, cut some prereleases, and later run `changeset pre exit`. That `pre.json` is the single most-disliked part of changesets, and its arbitrary tags (`1.0.1-next.0`) are not even legal under PEP 440.
-
-Molt does neither. Prerelease is a **stateless flag on [`molt version`](/cli/version)**:
+Prerelease is a **stateless flag on [`molt version`](/cli/version)**, not a mode you enter and later exit:
 
 ```bash
 molt version --pre rc      # cut release candidates this run
-molt version               # back to a normal release -- nothing to clean up
+molt version               # back to a normal release, nothing to clean up
 ```
 
-There is no `pre.json`, no mode to enter, no mode to exit, and no leftover state on the branch. The "state" is simply the version string already on disk. This page is the reference for how `--pre` behaves.
+There is no state file, no mode to enter, no mode to exit, and no leftover state on the branch. The state is the version string already on disk. This page is the reference for how `--pre` behaves.
+
+If you are migrating from changesets, `changeset pre enter <tag>` and `changeset pre exit` have no molt equivalent, and a named tag such as `next` has no PEP 440 spelling. Pass `--pre` on the runs you want prereleases on.
 
 ## Synopsis
 

@@ -45,7 +45,7 @@ A package with no `CHANGELOG.md` is skipped silently -- that is what "this proje
 
 ### No pre mode
 
-changesets marks the release pull request of a prerelease run with a title suffix and a warning banner, read out of `.changeset/pre.json`. **Molt has none of that**, and it is not an oversight: molt has no pre state at all. `molt pre` exists only to point you at [`molt version --pre {a,b,rc,dev}`](/cli/version), because changesets' `1.0.1-next.0` is not a legal PEP 440 version. A release pull request that carries prereleases therefore looks like any other one.
+Molt has no prerelease state, so a release pull request that carries prereleases looks like any other one. There is no title suffix and no banner. `molt pre` exists to point you at [`molt version --pre {a,b,rc,dev}`](/cli/version). If you are migrating a workflow from changesets, the title suffix and banner it reads out of `.changeset/pre.json` have no molt equivalent.
 
 ## A copy-pasteable workflow
 
@@ -88,7 +88,7 @@ Every input is optional. Supplying only a token runs the version phase with the 
 
 | Input | Default | What it does |
 |---|---|---|
-| `molt-version` | latest release | The exact `molt-cli` version to install, for example `"0.1.0"`. Empty installs the latest release. See [Pinning molt](#pinning-molt). |
+| `molt-version` | latest release | The exact `molt-release` version to install, for example `"0.1.0"`. Empty installs the latest release. See [Pinning molt](#pinning-molt). |
 | `publish` | *(empty)* | The command that publishes the release, for example `molt publish`. Leave it empty to run the version phase only -- supplying it is also what makes the publish phase reachable at all. |
 | `version-command` | *(empty)* | The command that versions the release, for example `molt version --snapshot canary`. Empty runs molt's own `molt version`. Split with POSIX shell rules, so a quoted argument stays one argument. |
 | `title` | `Version Packages` | The title of the release pull request. |
@@ -124,16 +124,16 @@ The Action is a convenience, not a dependency. Every phase above is a plain molt
 
 ```bash
 # Anywhere uv is available -- no GitHub, no Action
-uvx --from molt-cli molt version
+uvx --from molt-release molt version
 git commit -am "Version Packages"
-uvx --from molt-cli molt publish
+uvx --from molt-release molt publish
 ```
 
 This is a deliberate contrast with changesets, whose publish flow is coupled to its own GitHub Action. Molt keeps the orchestration and the CLI as the same code path, so "run it in CI" and "run it by hand" are the same tool.
 
 ## Forge-agnostic by design
 
-Opening the release PR, attributing authors, and writing release notes all go through molt's **forge** seam rather than being hard-wired to GitHub. GitHub ships first and is the most polished, but the abstraction is there from day one, so other forges are additions rather than rewrites. See [Forges](/forges/overview) for what a forge backend does and [GitLab, Gitea & others](/forges/gitlab-gitea-others) for what is planned.
+Opening the release PR, attributing authors, and writing release notes all go through molt's **forge** protocol rather than calling GitHub directly. See [Forges](/forges/overview) for what a forge backend answers, and [GitLab, Gitea & others](/forges/gitlab-gitea-others) for releasing from another host.
 
 ## Windows and cross-platform notes
 
@@ -248,4 +248,4 @@ The release branch name is unchanged -- `changeset-release/<base>` -- so an open
 - [Publishing](/guides/publishing) -- the OIDC upload flow the publish phase runs.
 - [`molt version`](/cli/version) -- what the "Version Packages" PR contains.
 - [Forges](/forges/overview) -- the seam behind PR creation and release notes.
-- [The changesets model](/introduction/the-changesets-model) -- the add / version / publish loop this automates.
+- [The changeset workflow](/introduction/the-changeset-workflow) -- the add / version / publish loop this automates.

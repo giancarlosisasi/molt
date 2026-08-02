@@ -6,7 +6,7 @@ title: Dependency propagation
 
 When you bump a package, molt works out which other packages in your workspace depend on it, decides whether each one needs a release too, and rewrites its dependency constraint to match.
 
-This is the moat -- the part two prior Python ports never reached. A changeset on one package can ripple across the whole workspace, and getting that ripple exactly right is what separates a real monorepo release tool from a single-package one. This guide is the practical version; [The release plan](/concepts/release-plan) is the conceptual one.
+A changeset on one package can ripple across the whole workspace, and the rules below are what decide how far. This guide is the practical version; [The release plan](/concepts/release-plan) is the conceptual one.
 
 ## The core rule
 

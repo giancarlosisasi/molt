@@ -65,7 +65,7 @@ molt version --pre dev     # 2.0.0.dev0
 
 See [Prerelease mode](/concepts/prerelease) and [`molt pre`](/cli/pre).
 
-## Will `molt version` delete the comments in my `pyproject.toml`?
+## Comments and formatting in `pyproject.toml`
 
 **Symptom.** Concern (or a diff review) that molt rewriting `[project].version` and internal dependency ranges will strip comments or reflow the whole file.
 
@@ -85,7 +85,7 @@ See [Prerelease mode](/concepts/prerelease) and [`molt pre`](/cli/pre).
 
 **Symptom.** A changeset front-matter key like `Acme_Core` seems not to match the project named `acme-core`.
 
-**Cause.** This is not actually a problem -- molt applies [PEP 503 name normalization](/config/changeset-format) when matching changeset keys against workspace members, so `Acme_Core`, `acme_core`, and `acme-core` all resolve to the same package. (changesets never needed this, so migrated changesets may use inconsistent casing.)
+**Cause.** This is not actually a problem -- molt applies [PEP 503 name normalization](/config/changeset-format) when matching changeset keys against workspace members, so `Acme_Core`, `acme_core`, and `acme-core` all resolve to the same package. A changeset carried over from another tool may use inconsistent casing; it still matches.
 
 **Fix.** Nothing required. If you want the file to read cleanly, use the canonical normalized name (`acme-core`), but any equivalent spelling works.
 

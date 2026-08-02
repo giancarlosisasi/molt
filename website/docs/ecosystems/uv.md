@@ -4,9 +4,9 @@ title: uv
 
 # uv
 
-The uv backend is molt's first-class, fully supported ecosystem: it discovers uv workspace members, reads and writes their versions, rewrites intra-workspace dependency pins, and refreshes `uv.lock` on every `molt version`.
+The uv backend discovers uv workspace members, reads and writes their versions, rewrites intra-workspace dependency pins, and refreshes `uv.lock` on every `molt version`.
 
-If your monorepo is a uv workspace, molt needs no ecosystem configuration -- it detects uv from `[tool.uv.workspace]` (or the presence of `uv.lock`) and just works.
+If your monorepo is a uv workspace, molt needs no ecosystem configuration. It detects uv from `[tool.uv.workspace]`, or from the presence of `uv.lock`.
 
 ## uv workspaces
 
@@ -54,11 +54,11 @@ The `{ workspace = true }` source tells uv to resolve `acme-core` from inside th
 
 This split matters for how bumps propagate. When `acme-core` moves to `1.5.0`, molt updates the specifier in `acme-cli`'s dependency string in place, preserving the surrounding formatting. A workspace source with **no** version constraint (just `"acme-core"` in `dependencies`) is the uv analogue of an "always current" pin -- there is nothing to rewrite, so molt leaves it alone.
 
-## Lockfile updates -- a real differentiator
+## Lockfile updates
 
 After `molt version` rewrites the manifests, it runs the uv lock update so `uv.lock` reflects the new versions, and includes the lockfile in the files it stages for commit.
 
-Changesets does not do this -- it never touches lockfiles at all. In npm that is cosmetic. In Python it is load-bearing: a consumer of your release PR that runs `uv sync --locked` (or any frozen-lockfile install) against a stale `uv.lock` **fails**. Molt keeping the lock in step means the release commit is internally consistent and installs cleanly in CI. See [Why Molt?](/introduction/why-molt) for where this sits among molt's additions.
+This is what keeps the release commit installable. Anyone who runs `uv sync --locked`, or any other frozen-lockfile install, against a `uv.lock` that still records the old versions gets a failure. Refreshing the lock in the same commit means the manifests and the lock agree at every point in history.
 
 ## How pins drive dependent churn
 
@@ -68,11 +68,11 @@ This is exactly the reasoning in [Dependency propagation](/guides/dependency-pro
 
 ## Single-package uv projects
 
-You do not need a workspace to use the uv backend. A plain single-package project with one `pyproject.toml` is fully first-class -- `molt init`, `molt add`, `molt version`, and `molt publish` work end to end with no workspace table at all. Most Python projects are single-package, and molt treats that as the default path, not a degenerate case.
+You do not need a workspace to use the uv backend. A plain single-package project with one `pyproject.toml` runs the whole loop: `molt init`, `molt add`, `molt version`, and `molt publish` work end to end with no workspace table at all. Most Python projects ship one package, so this is molt's default path.
 
 ## See also
 
 - [Ecosystems overview](/ecosystems/overview) -- the backend protocol uv implements.
-- [Poetry, Hatch, PDM & setuptools](/ecosystems/poetry-hatch-pdm-setuptools) -- the other backends.
+- [Poetry, Hatch, PDM & setuptools](/ecosystems/poetry-hatch-pdm-setuptools) -- where those tools keep the same information.
 - [Dependency propagation](/guides/dependency-propagation) -- how constraints decide who gets re-released.
 - [Options reference](/config/options) -- configuring the backend and the lock command.

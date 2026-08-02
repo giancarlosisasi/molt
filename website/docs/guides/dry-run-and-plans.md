@@ -86,16 +86,16 @@ The `add` plan is the changeset file that would be written -- its generated name
 for yanking, so the command verifies the version and prints the steps for you to complete in a
 browser. Every run is already a dry run. See [`molt yank`](/cli/yank).
 
-## Why a uniform plan beats a publish-only one
+## One plan shape on every command
 
-changesets eventually grew a `publish-plan` -- but only for publish, and only after five years of requests. molt's plan is **uniform**: the same envelope and the same `--dry-run` switch on every mutating verb, and the same snake_case JSON document wherever a plan is emitted as data. That uniformity is what makes molt scriptable:
+Every mutating verb uses the same envelope, the same `--dry-run` switch, and the same snake_case JSON document wherever a plan is emitted as data. That uniformity is what makes molt scriptable:
 
 - **Preview safely.** See every version bump, upload, or tag before it happens.
-- **Gate in CI.** Parse the JSON and decide whether to proceed -- for example, refuse to publish if a plan contains a major bump without human sign-off.
-- **Split build from publish.** Compute a plan in one job, hand it to another. This is how the [publish flow](/guides/publishing) separates building artifacts from uploading them.
-- **Diff releases.** Two plans are just two JSON documents; diffing them shows precisely what changed.
+- **Gate in CI.** Parse the JSON and decide whether to proceed. For example, refuse to publish when a plan contains a major bump without human sign-off.
+- **Split build from publish.** Compute a plan in one job and hand it to another. This is how the [publish flow](/guides/publishing) separates building artifacts from uploading them.
+- **Diff releases.** Two plans are two JSON documents, so diffing them shows exactly what changed.
 
-Because the plan is a value molt already computes internally, exposing it costs nothing at runtime -- the only difference between a dry run and a real run is whether molt executes the plan after printing it.
+The plan is a value molt computes internally on every run. The only difference between a dry run and a real run is whether molt executes the plan after printing it.
 
 ## Where to go next
 

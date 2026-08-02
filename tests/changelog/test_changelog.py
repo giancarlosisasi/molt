@@ -1573,7 +1573,7 @@ def test_the_built_in_generators_are_registered_as_entry_points() -> None:
         "NOTE: importlib.metadata reads INSTALLED distribution metadata, not pyproject.toml, "
         'so adding [project.entry-points."molt.changelog"] does NOT turn this green on its '
         "own -- the editable install has to be rebuilt (`uv sync --reinstall`, or "
-        "`uv sync --reinstall-package molt-cli`) before the new entry points appear."
+        "`uv sync --reinstall-package molt-release`) before the new entry points appear."
     )
     for name, expected in (("git", git_generator), ("github", github_generator)):
         loaded = entry_points[name].load()

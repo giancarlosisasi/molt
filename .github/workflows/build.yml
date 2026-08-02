@@ -1,0 +1,115 @@
+# The artifact gate.
+#
+# It runs on every pull request and every push to main, and both release workflows call it before
+# they upload anything. The wheel that reaches PyPI is therefore built by the same job that was
+# already green on the pull request, from the same commit, with the same tool versions.
+#
+# Nothing here contacts an index and nothing here needs a secret or an OIDC token, so it runs
+# unchanged on a pull request from a fork. Everything that can authenticate lives in release.yml
+# and release-testpypi.yml.
+name: build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # Lets release.yml and release-testpypi.yml reuse this job. A reusable workflow cannot itself be
+  # named in a PyPI Trusted Publisher configuration, which is why only the build is shared and each
+  # release workflow writes out its own publish job.
+  workflow_call:
+
+# No permission by default. Each job re-grants the one thing it needs.
+permissions: {}
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  # Cancel superseded pull-request runs, never a release run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: build and check the distribution
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # Every third-party action is pinned to a commit, not a tag: a tag can be moved to point at
+      # different code. Dependabot's github-actions ecosystem (.github/dependabot.yml) refreshes
+      # these pins weekly, so the pin does not go stale.
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Nothing here pushes, so no credential is written into .git/config.
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # --locked fails the run if uv.lock does not match pyproject.toml, which is the same check a
+      # contributor gets locally. The dev dependency group installs by default.
+      - name: Install the project
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Type-check
+        run: uv run pyrefly check
+
+      - name: Test
+        run: uv run pytest
+
+      # --no-sources builds with [tool.uv.sources] switched off, so the package resolves from a
+      # real index the way a user's machine will. uv builds the wheel FROM the sdist, so a file
+      # missing from the sdist filter in pyproject.toml is missing from the wheel too.
+      - name: Build the sdist and the wheel
+        run: uv build --no-sources
+
+      # The same check PyPI applies to the long description before it accepts an upload. --strict
+      # turns its warnings into failures, which is what catches a description that would render
+      # broken on the project page. PyPI has no way to edit a description after the fact.
+      - name: Check the metadata
+        run: uvx twine check --strict dist/*
+
+      # A tripwire for a broken [tool.hatch.build.targets.sdist] filter, not a size budget. The
+      # unfiltered sdist was 24.8 MB: it shipped website/node_modules, 3,175 files. The filtered
+      # one is under 400 KB.
+      - name: Refuse an oversized sdist
+        run: |
+          size=$(stat -c%s dist/*.tar.gz)
+          echo "sdist: $size bytes"
+          if [ "$size" -gt 5000000 ]; then
+            echo "::error::sdist is $size bytes; the sdist filter in pyproject.toml is not applying"
+            exit 1
+          fi
+
+      # Installs the built wheel into a throwaway environment with no project on the path. It is
+      # the closest thing CI has to a stranger running `uvx --from molt-release molt --version`,
+      # and it proves the console script and the packaged changelog template both survived the
+      # build.
+      - name: Smoke-test the wheel
+        run: uv run --isolated --no-project --with dist/*.whl -- molt --version
+
+      # Only on a tag push, where github.ref_type is inherited from the caller. It runs here rather
+      # than in the publish job so a mistyped tag fails before anyone is asked to approve the
+      # release. Use the canonical PEP 440 spelling in the tag: v0.1.1, v0.2.0rc1.
+      - name: Check the tag matches the built version
+        if: github.ref_type == 'tag'
+        run: |
+          built=$(basename dist/*.whl | cut -d- -f2)
+          tag="${GITHUB_REF_NAME#v}"
+          echo "tag: $tag   built: $built"
+          if [ "$tag" != "$built" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match [project].version $built"
+            exit 1
+          fi
+
+      - name: Upload the distribution
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error

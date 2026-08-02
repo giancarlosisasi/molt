@@ -6,7 +6,7 @@ title: The release workflow
 
 molt splits releasing into three verbs on two clocks: `add` records intent as you work, `version` consumes accumulated intent into concrete releases, and `publish` ships them.
 
-If [The changesets model](/introduction/the-changesets-model) explains *why* intent-based versioning works, this page explains *how* to run it day to day -- as a solo maintainer and as a team on a pull-request flow.
+If [The changeset workflow](/introduction/the-changeset-workflow) explains *why* intent-based versioning works, this page explains *how* to run it day to day -- as a solo maintainer and as a team on a pull-request flow.
 
 ## Three verbs
 

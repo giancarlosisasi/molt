@@ -6,9 +6,9 @@ title: The release plan
 
 The release plan is the calculated object that says exactly what a set of changesets will release: which packages move, to what version, and why -- including every package that has to move because *something it depends on* moved.
 
-This is the heart of molt. Turning "`acme-core` gets a minor" into "...and therefore `acme-http` needs a patch, and its dependency pin has to be rewritten, and `acme-cli` needs one too" is the hard 80% of release automation. It is where the two prior Python attempts stalled, and it is the reason molt exists. See [Why Molt?](/introduction/why-molt) for that history.
+Turning "`acme-core` gets a minor" into "...and therefore `acme-http` needs a patch, and its dependency pin has to be rewritten, and `acme-cli` needs one too" is the part of release automation that a person cannot reliably do by hand in a workspace of any size. Everything [`molt version`](/cli/version), [`molt status`](/cli/status), and [`molt publish`](/cli/publish) do is downstream of this object.
 
-## The plan is a value, not a side effect
+## The plan is a value
 
 Every mutating molt command computes a plan *before* it touches disk. The plan is an inspectable, machine-readable object, and `--dry-run` prints it and writes nothing:
 
@@ -113,11 +113,11 @@ Each pass reads the current set of releases and may add to it or raise existing 
 
 So a single pass is not enough; the engine loops until a complete round -- all three passes -- reports no change. That converged state is the release plan.
 
-### Why order is load-bearing
+### Pass order
 
 The three passes run in that order on purpose, and the order is observable in the output. `fixed` and `linked` alignment runs *after* dependent propagation within each iteration, so a group can absorb a propagated patch: if propagation gives `acme-http` a `patch` but its fixed group is moving by `minor`, the group's `minor` overwrites the `patch` in the same iteration, and `acme-http` lands on the group version rather than a stray patch. Reorder the passes and you get different -- wrong -- numbers. The plan's release ordering is insertion order (requested releases first, then dependents in discovery order, then group members), and molt preserves it deterministically.
 
-### Why it terminates
+### Termination
 
 A loop that "repeats until nothing changes" only halts if change cannot go on forever. molt's does, because **every mutation is monotone up a finite lattice**:
 
@@ -125,7 +125,7 @@ A loop that "repeats until nothing changes" only halts if change cannot go on fo
 - The `old_version` a group aligns to is `max(current versions of the group's members)`, read **from disk** -- never from the evolving plan. It is a fixed target, not a moving one.
 - The set of releasing packages only grows, and it is bounded by the size of the workspace.
 
-So the number of state changes is bounded (roughly "packages times bump levels"), and the loop provably reaches a fixpoint. This is not a detail to gloss over: a naive implementation that reports "changed" on every pass unconditionally never terminates. molt's property tests pin both **termination** (the loop always halts) and **confluence** (the final version numbers do not depend on the order changesets were fed in, even though the *output* order is insertion-defined). The monotonicity that makes the bump arithmetic strictly increasing is the same property the loop's termination rests on -- see [Versioning and PEP 440](/concepts/versioning-pep440).
+So the number of state changes is bounded, roughly "packages times bump levels", and the loop reaches a fixpoint. An implementation that reports "changed" on every pass unconditionally would never halt, so molt's property tests pin both **termination** (the loop always halts) and **confluence** (the final version numbers do not depend on the order changesets were fed in, even though the *output* order is insertion-defined). The monotonicity that makes the bump arithmetic strictly increasing is the same property the loop's termination rests on. See [Versioning and PEP 440](/concepts/versioning-pep440).
 
 ## Grouping mechanisms in the plan
 
@@ -134,7 +134,7 @@ Two config-driven mechanisms let packages move together, and both are resolved i
 - **fixed** -- every member of the group always releases together, at one shared version, even members nothing changed.
 - **linked** -- only members that are *already* releasing get aligned to the group's version; members with no reason to release are left alone.
 
-They look almost identical and are constantly confused. The precise difference -- and why the same setup produces three releases under `fixed` but two under `linked` -- is spelled out in [Linked vs fixed packages](/concepts/linked-vs-fixed).
+They look almost identical. The precise difference, and why the same setup produces three releases under `fixed` but two under `linked`, is in [Linked vs fixed packages](/concepts/linked-vs-fixed).
 
 ## Where to go next
 

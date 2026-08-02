@@ -6,11 +6,11 @@ title: Snapshot releases
 
 A snapshot release is a throwaway version cut from an exact commit -- so a teammate or a CI job can `pip install` the code as it stands right now, without going through the real release flow. You cut one with `molt version --snapshot`.
 
-Snapshots look simple in npm-land, but Python's package index reshapes them. PyPI's constraints are not a footnote here -- they are the reason molt's snapshot design differs from changesets', and understanding them is the point of this page.
+How a snapshot is shaped follows from what PyPI accepts, which is different from npm in four ways that all matter here.
 
-## PyPI changes the rules
+## What PyPI allows
 
-changesets publishes snapshots as `0.0.0-canary-abcdefg` on npm and hides them behind a **dist-tag** (`npm install pkg@canary`), so the junk version never becomes the default and can be forgotten. That trick relies on four npm behaviors PyPI simply does not have:
+On npm a snapshot is published as a throwaway version such as `0.0.0-canary-abcdefg` and hidden behind a **dist-tag** (`npm install pkg@canary`), so it never becomes the default and can be forgotten. That approach rests on four npm behaviors:
 
 | npm | PyPI |
 |---|---|
@@ -19,13 +19,13 @@ changesets publishes snapshots as `0.0.0-canary-abcdefg` on npm and hides them b
 | tolerant of throwaway versions | every upload is a permanent public version |
 | accepts arbitrary local suffixes | **rejects local-version suffixes (`+local`)** on upload |
 
-Put together, this means **every snapshot published to PyPI permanently burns a real, public version number**, and there is no tag to hide it behind. changesets' approach cannot work as-is. So molt makes two design choices to keep snapshots from polluting your public release history.
+Put together, this means **every snapshot published to PyPI permanently burns a real, public version number**, and there is no tag to hide it behind. So molt makes two design choices to keep snapshots out of your public release history.
 
 ## molt's design
 
 ### Snapshots target a non-PyPI index by default
 
-Because a snapshot on PyPI is forever, molt does **not** send snapshots to PyPI by default. They target a **separate index** -- a private or dev index, or TestPyPI -- so testing an exact commit never consumes a public version number. Publishing a snapshot to real PyPI is possible but deliberately not the default path; see [Publishing](/guides/publishing).
+Because a snapshot on PyPI is permanent, molt does **not** send snapshots to PyPI by default. They target a **separate index**: a private or dev index, or TestPyPI, so testing an exact commit never consumes a public version number. Publishing a snapshot to PyPI takes an explicit opt-in; see [Publishing](/guides/publishing).
 
 ### Snapshot versions are `0.0.0.dev<datetime>`
 
@@ -52,7 +52,7 @@ changesets lets you decorate a snapshot with a free-form tag (`0.0.0-experimenta
 | datetime + tag | `0.0.0.dev20211213000730+experimental` | the tag lives in the **local** segment, which PyPI will **not** accept |
 | commit hash | `0.0.0+abcdefg` | hex only fits the local segment -- **not uploadable** |
 
-So the honest rule is: **`{timestamp}` / `{datetime}` snapshots stay as `.devN` and are uploadable everywhere; a `{tag}` or `{commit}` decoration can only live in the local segment**, which means it is fine for a private index or local testing but cannot be published to PyPI. molt keeps tag/commit decoration behind an explicit opt-in and warns loudly when the resulting version is not PyPI-uploadable. Exactly how tags survive alongside `.devN` is an area still being refined -- treat the datetime `.devN` form as the stable default.
+So the rule is: **`{timestamp}` and `{datetime}` snapshots stay as `.devN` and upload anywhere; a `{tag}` or `{commit}` decoration can only live in the local segment**, which is fine for a private index or local testing but cannot go to PyPI. Molt keeps tag and commit decoration behind an explicit opt-in and warns when the resulting version is not PyPI-uploadable. The datetime `.devN` form is the default.
 
 ## What a snapshot run does
 

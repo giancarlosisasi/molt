@@ -4,9 +4,9 @@ title: molt yank
 
 # molt yank
 
-Check a released version and print the exact steps to yank it on PyPI (PEP 592) -- the recovery path for a bad release that changesets structurally cannot offer.
+Check a released version and print the exact steps to yank it on PyPI (PEP 592).
 
-> **`molt yank` does not yank for you.** PyPI provides no supported way for a tool to yank a release: it is a web-UI action, there is no API endpoint, and an upload token does not grant it. So `molt yank` does the part it *can* do -- verify the version, tell you whether it is already yanked, and hand you the exact URL and steps -- and you complete the yank in your browser. See [Why this is a manual step](#why-this-is-a-manual-step).
+> **`molt yank` does not yank for you.** PyPI provides no supported way for a tool to yank a release: it is a web-UI action, there is no API endpoint, and an upload token does not grant it. So `molt yank` does the part it can: verify the version, tell you whether it is already yanked, and hand you the exact URL and steps. You complete the yank in your browser. See [The manual step](#the-manual-step).
 
 ## Synopsis
 
@@ -26,18 +26,16 @@ PyPI is immutable: a published version cannot be deleted or overwritten. But PEP
 
 It contacts only the public read API, so it needs **no credentials** and changes nothing. Run it before you go clicking -- it catches the typo'd version number that would otherwise have you yanking the wrong release.
 
-### Why this is a manual step
+### The manual step
 
-PEP 592 specifies how installers *read* a yank (the `data-yanked` attribute in the Simple API). It deliberately leaves it to each index to decide how a maintainer *sets* one. PyPI implements setting it as a web form on the release-management page only:
+PEP 592 specifies how installers *read* a yank, through the `data-yanked` attribute in the Simple API. It leaves it to each index to decide how a maintainer *sets* one. PyPI implements setting it as a web form on the release-management page only:
 
-- there is **no documented API endpoint** for yanking, and none is planned on a published schedule ([warehouse#12708](https://github.com/pypi/warehouse/issues/12708) tracks the request),
+- there is **no documented API endpoint** for yanking,
 - `twine` has **no yank command**,
-- PyPI **API tokens are scoped to uploads**, so the credential your CI already holds could not perform a yank even if an endpoint existed -- project management requires a logged-in session with 2FA,
+- PyPI **API tokens are scoped to uploads**, so the credential your CI already holds could not perform a yank even if an endpoint existed. Project management requires a logged-in session with 2FA,
 - only a project **Owner** may yank; a Maintainer cannot.
 
-Molt will not drive an undocumented HTML form with your account password to paper over that. If PyPI ships a management API, `molt yank` gains a flag to complete the action itself and this page changes; the surface here is designed so that change is additive.
-
-Third-party indexes (devpi, Artifactory) do expose yank APIs. Support for completing a yank on those is not implemented.
+Molt does not drive an undocumented HTML form with your account password to work around that. Some third-party indexes, such as devpi and Artifactory, do expose yank APIs; `molt yank` reports on those indexes but does not complete the yank on them either.
 
 ## Options
 
@@ -97,6 +95,5 @@ molt yank acme-core 1.1.0 --repository testpypi
 
 ## See also
 
-- [Yanking a release](/guides/yank) -- when and how to yank safely.
-- [Why Molt?](/introduction/why-molt) -- why PyPI immutability makes yank matter.
+- [Yanking a release](/guides/yank) -- when to yank, and when to release a fix instead.
 - [molt publish](/cli/publish).

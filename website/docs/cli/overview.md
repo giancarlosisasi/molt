@@ -6,7 +6,7 @@ title: CLI reference
 
 The complete `molt` command surface: every verb, its flags, its exit codes, and the cross-cutting rules that apply to all of them.
 
-You install the distribution `molt-cli` and type the command `molt`. See [Installation](/getting-started/installation) for why the two names differ.
+You install the distribution `molt-release` and type the command `molt`. See [Installation](/getting-started/installation) for why the two names differ.
 
 ## Command surface at a glance
 
@@ -109,7 +109,7 @@ On an unexpected internal error, molt prints a pre-filled issue-report URL that 
 
 ## See also
 
-- [The changesets model](/introduction/the-changesets-model) -- the add / version / publish loop these commands implement.
+- [The changeset workflow](/introduction/the-changeset-workflow) -- the add / version / publish loop these commands implement.
 - [The release plan](/concepts/release-plan) -- the plan object that `--dry-run` and `--output json` expose.
 - [Dry runs and plans](/guides/dry-run-and-plans) -- previewing any mutating command.
 - [Configuration](/config/config-file) -- the settings these commands read.

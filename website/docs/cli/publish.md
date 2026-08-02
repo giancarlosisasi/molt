@@ -47,7 +47,7 @@ A release whose version has molt's **snapshot shape** -- `0.0.0.dev` followed by
 Refusing to publish a snapshot release to PyPI: acme-core 0.0.0.dev20211213000730.
 ```
 
-The trigger is the **shape** of the version, not who wrote it: a hand-typed `0.0.0.dev` with a 13- or 14-digit counter is refused too, deliberately -- molt cannot tell it from one of its own, and a version that looks like a snapshot on the public index is a mistake either way.
+The trigger is the **shape** of the version, not who wrote it. A hand-typed `0.0.0.dev` with a 13- or 14-digit counter is refused too: molt cannot tell it from one of its own, and a version that looks like a snapshot on the public index is a mistake either way.
 
 `publish-plan` is a separate invocation from `molt version`, so it has no memory of the `--snapshot` flag; the trigger is the version itself. The refusal fires **before molt reads the index and before it writes any output file**, so a refused run leaves nothing behind for a later stage to pick up.
 

@@ -8,7 +8,7 @@ molt resolves its changelog generator through a Python **entry point**, so third
 
 Every line molt writes into a `CHANGELOG.md` comes from a *changelog generator*: a small, named piece of code that turns one changeset (and the releases it caused) into Markdown. molt ships two -- `git` and `github` -- and treats them exactly like a plugin you wrote yourself. This page explains the plugin seam, the contract a generator implements, and how to point your config at one. To build one end to end, see [Custom generators](/extending/custom-generators).
 
-## Why entry points
+## Entry points
 
 changesets names its generator with an npm module path:
 
@@ -24,13 +24,13 @@ molt does the idiomatic Python equivalent -- a [`importlib.metadata`](https://do
 emoji = "molt_changelog_emoji:generator"
 ```
 
-Once that package is installed, `emoji` is a name molt can resolve -- with no code change and no import path baked into your config. This is the same mechanism pytest, Sphinx, and `console_scripts` use, and it satisfies molt's rule that **configuration must be readable without executing user code**: your config names a plugin, it does not point at a file that gets run just to parse settings. Executable config and arbitrary shell hooks are deliberately refused (see [Why molt](/introduction/why-molt) and [Design decisions](/reference/design-decisions)); a typed, named plugin is the sanctioned extension point instead.
+Once that package is installed, `emoji` is a name molt can resolve -- with no code change and no import path baked into your config. This is the same mechanism pytest, Sphinx, and `console_scripts` use, and it satisfies molt's rule that **configuration must be readable without executing user code**: your config names a plugin, it does not point at a file that gets run just to parse settings. Executable config and shell hooks are out of scope (see [Design decisions](/reference/design-decisions)); a typed, named plugin is the extension point instead.
 
 molt's own `git` and `github` generators are registered exactly this way, so there is no privileged built-in path -- a plugin you publish is a first-class peer of the defaults.
 
 ## The contract
 
-A generator implements two functions -- the direct descendants of changesets' `getReleaseLine` and `getDependencyReleaseLine`. One renders a line for *this package changed*; the other renders a line for *a dependency of this package changed*.
+A generator implements two functions. One renders a line for *this package changed*; the other renders a line for *a dependency of this package changed*. If you have written a changesets generator, they correspond to `getReleaseLine` and `getDependencyReleaseLine`.
 
 ```python
 from typing import Any
@@ -109,7 +109,7 @@ changelog = ["github", { repo = "acme/widgets" }]
 changelog = false
 ```
 
-molt resolves the `changelog` name in three ways, in order -- mirroring changesets' "installed package or local path" duality:
+molt resolves the `changelog` name in three ways, in order:
 
 1. **Entry point** -- a name in the `molt.changelog` group (`git`, `github`, or any installed plugin). The normal case.
 2. **Dotted path** -- `my_pkg.changelog:generator`, for an in-repo generator on `sys.path` you have not packaged.

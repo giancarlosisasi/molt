@@ -1,5 +1,4 @@
 [
-  { "type": "file", "name": "what-is-molt", "label": "What is Molt?" },
-  { "type": "file", "name": "the-changesets-model", "label": "The changesets model" },
-  { "type": "file", "name": "why-molt", "label": "Why Molt?" }
+  { "type": "file", "name": "what-is-molt", "label": "Overview" },
+  { "type": "file", "name": "the-changeset-workflow", "label": "The changeset workflow" }
 ]

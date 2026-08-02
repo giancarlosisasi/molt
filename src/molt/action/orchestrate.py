@@ -81,12 +81,12 @@ CHANGELOG_FILENAME = "CHANGELOG.md"
 #: expressible (build step 22 design D1).
 #:
 #: The bare spelling is ratified (owner ruling 2026-08-01, closing gap ``AP-16``). The composite
-#: installs through ``uvx --from molt-cli==<version>``, which puts the pinned environment's ``bin``
-#: on ``PATH`` for the child process, so ``molt`` here resolves to that pinned install rather than
-#: to whatever else the runner has -- ``uvx molt-cli molt version`` and ``python -m molt version``
-#: were the alternatives and buy nothing over it. A workflow that wants a different command now
-#: says so through the composite's ``version-command`` input (``CO-1``) instead of needing molt to
-#: have guessed right.
+#: installs through ``uvx --from molt-release==<version>``, which puts the pinned environment's
+#: ``bin`` on ``PATH`` for the child process, so ``molt`` here resolves to that pinned install
+#: rather than to whatever else the runner has -- ``uvx molt-release molt version`` and
+#: ``python -m molt version`` were the alternatives and buy nothing over it. A workflow that wants
+#: a different command now says so through the composite's ``version-command`` input (``CO-1``)
+#: instead of needing molt to have guessed right.
 DEFAULT_VERSION_SCRIPT: tuple[str, ...] = ("molt", "version")
 
 #: :attr:`molt.ecosystem.Workspace.backend` for a repository that declares no workspace -- the

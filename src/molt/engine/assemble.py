@@ -5,8 +5,8 @@ Ports ``packages/assemble-release-plan/src`` (``index.ts``, ``flatten-releases.t
 from ``changesets@3.0.0-next.9``. Mechanics and every ``file:line`` citation below come from
 ``roadmap/research/changesets-01-core-versioning-engine.md`` sections 2-4, 7 and 11.
 
-This is the moat. Both abandoned Python ports of changesets stopped before it, and everything here
-produces a version number -- the one output whose wrongness a user cannot detect by reading it.
+Everything here produces a version number -- the one output whose wrongness a user cannot detect by
+reading it. Treat every rule below as load-bearing.
 
 The shape
 ---------

@@ -4,7 +4,7 @@ title: GitHub
 
 # GitHub
 
-The GitHub backend is molt's first-class forge: it attributes changes to pull requests and authors with hand-written GraphQL over httpx, creates GitHub Releases, and does both with a cache and backoff that changesets' client lacks.
+The GitHub backend attributes changes to pull requests and authors with hand-written GraphQL over httpx, creates GitHub Releases, and does both behind a request cache and a backoff policy.
 
 ## What it does
 
@@ -59,11 +59,11 @@ For local runs, molt also reads these from a `.env` file if present. The GitHub-
 
 ## Caching and resilience
 
-The GitHub backend keys its attribution cache by `(kind, repository, id)`, so a commit or PR referenced by many changelog lines is fetched exactly once per release. It honors `Retry-After`, retries transient `5xx` responses with jittered backoff, sets an explicit request timeout, and reports an actionable error (with the reset time) when the rate limit is exhausted. These are deliberate fixes over changesets' client, whose cache never hits and which has no retry logic at all -- see [Forges overview](/forges/overview#caching-and-backoff-done-right).
+The GitHub backend keys its attribution cache by `(kind, repository, id)`, so a commit or PR referenced by many changelog lines is fetched exactly once per release. It honors `Retry-After`, retries transient `5xx` responses with jittered backoff, sets an explicit request timeout, and reports an actionable error (with the reset time) when the rate limit is exhausted. See [Forges overview](/forges/overview#caching-and-backoff).
 
 ## See also
 
 - [Forges overview](/forges/overview) -- the protocol this backend implements.
 - [CI: GitHub Action](/guides/ci-github-action) -- the release loop and its permissions.
 - [Changelog templates](/guides/changelog-templates) -- what attribution renders into.
-- [GitLab, Gitea & others](/forges/gitlab-gitea-others) -- the planned backends behind the same seam.
+- [GitLab, Gitea & others](/forges/gitlab-gitea-others) -- releasing from another host.

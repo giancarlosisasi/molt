@@ -93,8 +93,8 @@ __all__ = [
 #: input added to the YAML with no home here -- or renamed on either side -- fails a row rather
 #: than reaching a user as a silently ignored setting.
 ACTION_INPUTS: Final[dict[str, str | None]] = {
-    # Consumed by the install step: it is the `==` pin in `uvx --from molt-cli==<version>`, so the
-    # process this table describes is a *different* molt than the one that read the input.
+    # Consumed by the install step: it is the `==` pin in `uvx --from molt-release==<version>`, so
+    # the process this table describes is a *different* molt than the one that read the input.
     "molt-version": None,
     "publish": "publish",
     # The version half of `publish`, added by owner ruling 2026-07-31 closing gap `CO-1`, which

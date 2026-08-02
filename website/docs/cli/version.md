@@ -20,7 +20,7 @@ molt version [OPTIONS]
 - **Propagates through the dependency graph** -- a dependent whose constraint no longer accepts the new version gets released too, and its pin is rewritten. See [Dependency propagation](/guides/dependency-propagation).
 - **Rewrites internal dependency pins** in every manifest section where a bumped package appears.
 - **Writes changelogs** from the changeset summaries, correct Markdown emitted directly.
-- **Updates the lockfile** (for uv, one `uv lock` call) so `uv.lock` never goes stale -- a Python-specific step changesets does not perform. Molt **never deletes a lockfile it cannot read**: if `uv.lock` will not parse, molt leaves the file exactly as it found it, warns, skips the refresh, and finishes the release -- your manifests and changelogs are still correct. Run `uv lock` yourself once the file is readable again. A lockfile that will not parse is as often a half-finished merge as it is corruption, and the bytes are not molt's to throw away.
+- **Updates the lockfile** (for uv, one `uv lock` call) so `uv.lock` never goes stale. Molt **never deletes a lockfile it cannot read**: if `uv.lock` will not parse, molt leaves the file exactly as it found it, warns, skips the refresh, and finishes the release -- your manifests and changelogs are still correct. Run `uv lock` yourself once the file is readable again. A lockfile that will not parse is as often a half-finished merge as it is corruption, and the bytes are not molt's to throw away.
 - **Deletes the consumed changesets.**
 
 Running `molt version` with **no pending changesets exits 1** with `No unreleased changesets found.` This is v3 semantics (v2 exited 0); CI pipelines must tolerate that code. See [Versioning](/guides/versioning).

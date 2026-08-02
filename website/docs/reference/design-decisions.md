@@ -1,60 +1,63 @@
 ---
 title: Design decisions
+description: The load-bearing choices behind molt, each with the alternative it was chosen over.
 ---
 
 # Design decisions
 
-The load-bearing choices behind molt, each stated as the decision, the alternative it beats, and the reason -- so the divergences from changesets read as intentional, not accidental.
+Each entry below states a decision, the alternative it was chosen over, and the reason. Together
+they are why molt behaves the way the rest of this site describes.
 
-changesets' own `decisions.md` is one of the reasons that tool is understandable. This page is molt's equivalent. It records the choices that shape the product, especially the ones where molt departs from changesets. For the feature-level view of those departures, see [Comparison with changesets](/reference/comparison-with-changesets).
+For a feature-by-feature view of where molt and changesets land differently, see
+[Molt and changesets](/reference/comparison-with-changesets).
 
-## PEP 440, not SemVer
+## PEP 440 rather than SemVer
 
-**Decision.** Version and specifier math is built entirely on the [`packaging`](https://packaging.pypa.io) library -- the PyPA reference implementation of PEP 440 and PEP 508. molt does not hand-roll version parsing and does not use a SemVer library.
+**Decision.** Version and specifier math is built entirely on the [`packaging`](https://packaging.pypa.io) library, the PyPA reference implementation of PEP 440 and PEP 508. Molt hand-rolls no version parsing and uses no SemVer library.
 
-**Alternative.** Port changesets' node-semver logic, or bolt a SemVer shim onto Python versions.
+**Alternative.** Reimplement node-semver's logic, or bolt a SemVer shim onto Python versions.
 
-**Why.** Python versions are genuinely not SemVer: prereleases come from a fixed `a`/`b`/`rc`/`dev` vocabulary, there is no caret operator, and ordering includes epochs, post-releases, and normalization. A SemVer engine would mis-parse and mis-order real PyPI versions. Using the reference implementation also means molt's answer to "does this version satisfy this constraint?" matches exactly what `pip` and `uv` will do at install time. One consequence is deliberate: PEP 440 scopes prerelease opt-in across a whole specifier set, so a dependent that already opted into prereleases is not force-released as its dependency moves `rc0 -> rc1`. That is the correct answer for Python and is pinned by a test asserting the divergence from changesets. See [Versioning and PEP 440](/concepts/versioning-pep440).
+**Why.** Python versions are not SemVer: prereleases come from a fixed `a`/`b`/`rc`/`dev` vocabulary, there is no caret operator, and ordering includes epochs, post-releases, and normalization. A SemVer engine would mis-parse and mis-order real PyPI versions. Using the reference implementation also means molt's answer to "does this version satisfy this constraint?" is exactly what `pip` and `uv` will do at install time. One consequence follows from the standard: PEP 440 scopes prerelease opt-in across a whole specifier set, so a dependent that already opted into prereleases is not re-released as its dependency moves `rc0 -> rc1`. See [Versioning and PEP 440](/concepts/versioning-pep440).
 
-## Prerelease is a flag; `pre.json` is gone
+## Prerelease as a flag
 
-**Decision.** Prerelease is an invocation flag -- `molt version --pre rc` -- with no persistent state. There is no `pre.json`, no mode to enter or exit.
+**Decision.** Prerelease is an invocation flag, `molt version --pre rc`, with no persistent state. There is no mode to enter or exit.
 
-**Alternative.** Port changesets' `pre enter` / `pre exit` model, which writes a repo-global `pre.json` that becomes shared branch state.
+**Alternative.** An `enter` / `exit` pair writing a repository-global state file, the way changesets does it.
 
-**Why.** Two independent pressures point the same way. First, `pre.json` is the single most-disliked part of changesets -- roughly fifteen open issues trace back to its global state, merge conflicts, and whole-branch locking. Second, arbitrary prerelease tags are illegal under PEP 440 anyway, so the mechanism could not survive the port intact. Making prerelease a per-invocation flag satisfies PEP 440 and removes changesets' most-complained-about subsystem in one move. See [Prerelease mode](/concepts/prerelease) and [`molt pre`](/cli/pre).
+**Why.** A named prerelease channel is what a persistent mode carries, and PEP 440 defines a closed vocabulary with no way to spell one. That alone settles the mechanism. It also removes a class of failure that has nothing to do with Python: a state file that lives on a branch is state everyone on that branch shares, has to merge, and has to remember to clear. A per-run flag keeps the whole prerelease state in the version number on disk. See [Prerelease mode](/concepts/prerelease) and [`molt pre`](/cli/pre).
 
 ## Snapshots target a non-PyPI index
 
 **Decision.** Snapshot releases are PEP 440 `.devN` versions built for a **separate index** (a local wheelhouse, TestPyPI, or a private index) by default. Publishing snapshots to PyPI requires an explicit, noisy opt-in.
 
-**Alternative.** Port changesets' `0.0.0-<tag>-<datetime>` scheme with a dist-tag to hide the snapshot from default installs.
+**Alternative.** A throwaway `0.0.0-<tag>-<datetime>` version on the public index, hidden from default installs by a dist-tag, which is how npm handles it.
 
-**Why.** PyPI has immutable versions, no unpublish, and no dist-tags. changesets' approach depends on all three npm affordances that PyPI lacks: every snapshot would permanently burn a public version number and appear on the project's PyPI page forever, and there is no `latest`-vs-`next` tag to keep it out of a plain `pip install`. Encoding "this is a prerelease" in the version string itself (`.devN`) is strictly safer -- `pip` and `uv` exclude dev versions from resolution by default, so the mechanism cannot be clobbered by a single flagless publish. See [Snapshot releases](/concepts/snapshots).
+**Why.** That approach rests on three npm affordances PyPI does not have: versions you can unpublish, versions that do not permanently occupy a number, and a `latest`-versus-`next` tag to keep a build out of a plain `pip install`. On PyPI every snapshot would burn a public version number and stay on the project page forever. Encoding "this is a development build" in the version string itself, as `.devN`, does the same job with the grain of the ecosystem: `pip` and `uv` exclude dev versions from resolution by default, so one flagless publish cannot expose it. See [Snapshot releases](/concepts/snapshots).
 
-## Ecosystem and forge seams from day one
+## Ecosystem and forge seams from the first commit
 
-**Decision.** Package discovery and version writing sit behind an **ecosystem backend** protocol (uv first; Poetry, Hatch, PDM, setuptools to follow). Forge integration sits behind a **forge** protocol (GitHub first; GitLab, Gitea, and others as additions).
+**Decision.** Package discovery and version writing sit behind an **ecosystem backend** protocol. Host integration sits behind a **forge** protocol. uv and GitHub are the implementations molt ships.
 
-**Alternative.** Hard-wire uv and GitHub, the way changesets hard-wires `package.json` and GitHub.
+**Alternative.** Call uv and the GitHub API directly from the engine.
 
-**Why.** Python has no single workspace standard -- uv, Poetry, Hatch, PDM, and setuptools each express workspaces and intra-repo dependencies differently -- so hard-wiring one would exclude most of the ecosystem. The seam is the very feature changesets rejected in 2020 and has deferred ever since; it is cheap to design in and expensive to retrofit, which is exactly why upstream never added it. Shipping GitHub and uv first keeps scope sane while leaving GitLab and Poetry as additions rather than rewrites. See [Ecosystems](/ecosystems/overview) and [Forges](/forges/overview).
+**Why.** Python has no single workspace standard. uv, Poetry, Hatch, PDM, and setuptools each express workspaces and intra-repo dependencies differently, so calling one of them directly from the engine would tie molt to that tool permanently. A protocol is cheap to design in and expensive to retrofit, so it goes in first even though there is one implementation behind it today. The same reasoning applies to the forge: the core release loop already runs on any CI, and a second host is a backend rather than a rewrite. See [Ecosystems](/ecosystems/overview) and [Forges](/forges/overview).
 
-## One distribution, monorepo-ready internals
+## One distribution
 
-**Decision.** molt ships as a single distribution, `molt-cli` (the command is `molt`), with internal module boundaries that mirror changesets' package split.
+**Decision.** Molt ships as a single distribution, `molt-release`, with internal module boundaries between the engine, the CLI, and the backends.
 
-**Alternative.** Replicate changesets' 21-package layout, or split `molt-core` from the CLI immediately.
+**Alternative.** Publish the engine, the CLI, the changelog generators, and each backend as separate distributions.
 
-**Why.** changesets' many-packages split is a JavaScript-cultural artifact -- bundle-size pressure and the npm micro-package norm -- and Python has none of those forces. Twenty-one distributions would mean twenty-one PyPI names, changelogs, and version matrices for a project with one maintainer. A single distribution with clean internal seams keeps the option open: extracting an importable `molt-core` later is a mechanical split, as long as CLI types never leak into the engine (enforced by an import-boundary lint rule). The name `molt-cli` is used because `molt` is squatted on PyPI by a dead 2012 project; the distribution name and the console script are independent, so users still type `molt`. See [What is molt](/introduction/what-is-molt).
+**Why.** Splitting a tool into many small distributions answers pressures Python does not have, and it would mean a separate PyPI name, changelog, and version matrix for each one. A single distribution with clean internal seams keeps the option open: extracting an importable `molt-core` later is a mechanical split, as long as CLI types never leak into the engine, which an import-boundary lint rule enforces. The distribution is named `molt-release` because `molt` on PyPI belongs to an unrelated project; the distribution name and the console script are independent, so users still type `molt`. See [Overview](/introduction/what-is-molt).
 
 ## Python floor of 3.11
 
 **Decision.** `requires-python = ">=3.11"`.
 
-**Alternative.** A higher floor (one abandoned Python port required 3.13) or a lower one (3.10 and earlier).
+**Alternative.** A higher floor, such as 3.13, or a lower one.
 
-**Why.** 3.11 is where `tomllib` landed in the standard library, so molt reads TOML on the hot path with no extra dependency; it also brings `ExceptionGroup`, `Self`, and faster startup. A release tool has to run inside the CI a project already has, which is frequently pinned to an older interpreter -- so a high floor is a pure adoption tax with no engineering payoff, and is the likely reason the 3.13-floored prior attempt saw no uptake. 3.10 and earlier buy nothing and are EOL-adjacent.
+**Why.** 3.11 is where `tomllib` landed in the standard library, so molt reads TOML on the hot path with no extra dependency, and it brings `ExceptionGroup`, `Self`, and faster startup. A release tool has to run inside the CI a project already has, which is often pinned to an older interpreter, so every version above 3.11 in the floor costs adoption and buys nothing here. 3.10 and earlier are EOL-adjacent and would cost a `tomli` dependency.
 
 ## Config lives in one place; both is an error
 
@@ -62,36 +65,31 @@ changesets' own `decisions.md` is one of the reasons that tool is understandable
 
 **Alternative.** Merge the two sources, or let one silently win.
 
-**Why.** Merging two config sources means defining precedence, and every precedence rule is a subtle footgun -- changesets hit exactly this with its `--ignore`-flag-versus-config-`ignore` conflict, which it also resolved by refusing to combine them. Erroring on two sources keeps configuration unambiguous: there is always exactly one answer to "where does this setting come from." Config being static TOML/JSON (never executable) also means any tool can read it without running your code. See [The config file](/config/config-file).
+**Why.** Merging two config sources means defining precedence, and every precedence rule is a place where a setting comes from somewhere the reader did not look. Erroring on two sources keeps configuration unambiguous: there is always exactly one answer to "where does this setting come from." Config being static TOML or JSON, never executable, also means any tool can read it without running your code. See [The config file](/config/config-file).
 
-## Upstream bugs molt does not port
+## Guarantees around failure and text
 
-**Decision.** A faithful port keeps faithful behavior -- but molt deliberately does **not** reproduce a set of known changesets bugs. Things that look like divergences here are corrections, made on purpose.
+**Decision.** Eight behaviors are promised outright rather than left to chance. Each is covered by a test.
 
-**Alternative.** Port changesets bug-for-bug in the name of fidelity.
-
-**Why.** These are defects the changesets source exhibits today; copying them would import known-wrong behavior into a tool whose entire job is correctness.
-
-| Upstream bug | molt's behavior |
+| Situation | What molt does |
 |---|---|
-| Nothing is atomic; a mid-run failure leaves packages bumped with changesets still on disk, so re-running `version` **double-bumps** | Buffer-then-flush: all mutations are staged and flushed together, so a failed run leaves the tree untouched and is safely resumable |
-| Summary post-processing **strips every line starting with `#`**, destroying Markdown headings in changeset descriptions | Summaries are treated as literal prose; `#` headings survive |
-| Special replacement patterns (`$1`, `$&`) in a summary corrupt changelog output | Summaries are never passed through a template engine |
-| A `none` release replaced during dependent propagation **loses its changelog summary** | The summary is preserved |
-| A skipped/ignored package referenced by a changeset is **silently dropped** | molt emits a warning/diagnostic instead of silently no-op'ing |
-| No lockfile update anywhere (cosmetic in npm, load-bearing in Python) | `uv.lock` is updated during `version`, in the same commit |
-| A failed `git commit` is only logged; **exit code stays 0** | Explicit git failures fail with a non-zero exit code |
-| Changelog Markdown emitted with broken blank lines, repaired by a later formatter pass | Correct Markdown emitted directly, no formatter step |
+| A run fails part-way through `version` | Every mutation is buffered and flushed together, so a failed run leaves the tree untouched. Re-running is safe and cannot double-bump |
+| A changeset summary starts a line with `#` | The heading survives. Summaries are literal prose, never post-processed |
+| A summary contains `$1` or `$&` | It appears verbatim. A summary is never passed through a replacement engine |
+| A `none` release is replaced during dependent propagation | Its changelog summary is preserved |
+| A changeset names a package that is ignored or private | Molt reports it by name rather than silently doing nothing |
+| Versions change | `uv.lock` is refreshed in the same commit |
+| An explicit git operation fails | The command exits non-zero. A failure you asked for is never logged and swallowed |
+| A changelog entry is written | The Markdown is correct as emitted, including blank lines, with no formatter pass afterwards |
 
-## A note on git
+## Git is optional until you ask for it
 
-**Decision.** Implicit git use is best-effort and only ever warns; explicit git use hard-fails. Detecting changed packages for the `add` prompt never errors if git is unavailable; `molt status --since main` does.
+**Decision.** Implicit git use is best-effort and only warns. Explicit git use fails hard. Detecting changed packages for the `add` prompt never errors if git is unavailable; `molt status --since main` does.
 
-**Why.** This crisp rule is one of changesets' better decisions, ported verbatim. The core flow -- add, version, changelog -- works without git at all; git only enters when you ask for it, and only then is its failure your problem.
+**Why.** The core flow of add, version, and changelog works with no git at all, which keeps molt usable in a container, a tarball, or a checkout with no history. Git enters when you name it, and only then is its failure yours to handle.
 
 ## Where to go next
 
-- [Comparison with changesets](/reference/comparison-with-changesets) -- these decisions as a feature table.
-- [Why molt](/introduction/why-molt) -- the strategic framing.
-- [Roadmap](/reference/roadmap) -- how these decisions sequence into a build order.
+- [Molt and changesets](/reference/comparison-with-changesets) -- these decisions as a feature table.
+- [Acknowledgements](/reference/acknowledgements) -- what molt is built on.
 - [Troubleshooting](/reference/troubleshooting) -- what these decisions look like when they stop you.

@@ -77,7 +77,7 @@ Package names are always quoted; the front matter maps each affected package to 
 
 ## Non-interactive: flags
 
-Interactive prompts are great for humans and useless for automation. Every changeset you can create by hand, you can create without a prompt -- this is a capability changesets does not have, and it is what unlocks Dependabot, Renovate, and code-generation workflows.
+Every changeset you can create by hand, you can create without a prompt. This is what lets Dependabot, Renovate, and code generators open a pull request that is already complete.
 
 Pass the package, the bump, and the message directly:
 

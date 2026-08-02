@@ -9,41 +9,41 @@ pageType: home
 hero:
   name: Molt
   text: Changeset-driven versioning for Python
-  tagline: "Intent-based versioning, changelogs, and publishing for Python packages and monorepos. A Python-native port of changesets, built on PEP 440."
+  tagline: "Versioning, changelogs, and publishing for Python packages and monorepos, driven by small files you write as you work. Built on PEP 440 and PEP 508."
   actions:
     - theme: brand
       text: Get started
       link: /getting-started/installation
     - theme: alt
-      text: Why Molt?
-      link: /introduction/why-molt
+      text: How it works
+      link: /introduction/the-changeset-workflow
     - theme: alt
       text: GitHub
       link: https://github.com/giancarlosisasi/molt
 
 features:
-  - title: PEP 440 native
-    details: "Version and specifier math built on packaging, not SemVer. Prereleases (a/b/rc/.dev), epochs, local versions, and PEP 503 name normalization are handled the way pip actually resolves them."
+  - title: PEP 440 versions
+    details: "Version and specifier math built on packaging. Prereleases (a/b/rc/.dev), epochs, local versions, and PEP 503 name normalization are handled the way pip and uv actually resolve them."
     icon: 🐍
-  - title: Real monorepo propagation
-    details: "A fixpoint release-plan engine bumps dependents across your workspace and rewrites their constraints. This is the moat, the part two prior Python ports never reached."
+  - title: Monorepo propagation
+    details: "A fixpoint release-plan engine bumps dependents across your workspace and rewrites their PEP 508 constraints. A dependent is released when the new version leaves its declared range, and not before."
     icon: 🔗
-  - title: uv-first, ecosystem-agnostic
-    details: "First-class uv workspaces with lockfile updates on every version bump. A backend seam covers Poetry, Hatch, PDM, and setuptools instead of hard-wiring one tool."
+  - title: uv workspaces
+    details: "Workspace members are discovered from your uv layout, and uv.lock is refreshed in the same commit that bumps a version, so a --frozen install in CI still resolves."
     icon: ⚡
   - title: Single package or monorepo
-    details: "Single-package repos are first-class, not a degenerate special case. Most Python projects are one package, so molt treats that path as the default, not an afterthought."
+    details: "Most Python projects ship one package, so that is molt's default path. molt init, add, version, and publish work end to end with no workspace configuration."
     icon: 📦
-  - title: A plan on every command
+  - title: Plans and dry runs
     details: "add, version, publish, build, and git-tag each produce a machine-readable plan. Pass --dry-run to print exactly what would happen and write nothing to disk."
     icon: 📋
-  - title: Prerelease is a flag
-    details: "molt version --pre rc. No pre.json branch state to leak, forget, or merge-conflict. Prerelease is an invocation, and it maps cleanly onto PEP 440 spellings."
+  - title: Prereleases
+    details: "molt version --pre rc cuts release candidates for one run. There is no mode to enter or exit and no state file to commit, and the spellings map onto PEP 440."
     icon: 🚦
-  - title: molt yank
-    details: "PyPI has no unpublish. molt makes PEP 592 yank a first-class verb: it checks the version, says whether it is already yanked, and prints the exact steps. PyPI has no yank API, so the final click is yours."
+  - title: Yanking a release
+    details: "PyPI keeps every version forever. molt yank checks the version, reports whether it is already yanked, and prints the PEP 592 steps. PyPI publishes no yank API, so the last click is yours."
     icon: ♻️
-  - title: Windows-correct from day one
-    details: "Tested on Windows from the first commit. No cp1252 surprises in output, no path bugs. Your release tool has to run in the CI you already have."
+  - title: Windows
+    details: "The test suite runs on Windows. Output stays ASCII-clean and paths behave, so molt runs in the CI you already have."
     icon: 🪟
 ---

@@ -6,7 +6,7 @@ title: Changesets
 
 A changeset is a small, human-written file that records the **intent** of a change: which packages it affects, how much each one moves, and what the changelog should say.
 
-You never edit a version number by hand in molt. Instead, as part of the work itself, you drop a changeset into the `.changeset/` directory. It sits there, committed alongside your code, until release time -- when [`molt version`](/cli/version) reads every accumulated changeset at once and turns that pile of intent into concrete version bumps and changelog entries. See [The changesets model](/introduction/the-changesets-model) for why that two-step split is the whole point.
+You never edit a version number by hand in molt. Instead, as part of the work itself, you drop a changeset into the `.changeset/` directory. It sits there, committed alongside your code, until release time -- when [`molt version`](/cli/version) reads every accumulated changeset at once and turns that pile of intent into concrete version bumps and changelog entries. See [The changeset workflow](/introduction/the-changeset-workflow) for why that two-step split is the whole point.
 
 ## What a changeset contains
 
@@ -39,7 +39,7 @@ You create one with [`molt add`](/cli/add), which writes it to `.changeset/` und
   slow-lions-cough.md
 ```
 
-The file is deliberately boring and reviewable. A reviewer can see, in one glance, that this pull request intends a `minor` bump to `acme-core` and a `patch` to `acme-cli`, with a summary written by the person who actually made the change. The full grammar -- every field, how names are normalized, and the rules the parser enforces -- lives in [Changeset format](/config/changeset-format).
+The file is boring and reviewable. A reviewer can see, in one glance, that this pull request intends a `minor` bump to `acme-core` and a `patch` to `acme-cli`, with a summary written by the person who actually made the change. The full grammar -- every field, how names are normalized, and the rules the parser enforces -- lives in [Changeset format](/config/changeset-format).
 
 ### Bump types, including `none`
 
@@ -52,7 +52,7 @@ molt uses PEP 440 arithmetic, but the bump *vocabulary* is the familiar `major` 
 | `patch` | A backward-compatible fix (`1.4.2` -> `1.4.3`). |
 | `none` | **A changelog entry with no version bump.** The package is mentioned in the changelog if it is released for some other reason, but this changeset does not move its version by itself. |
 
-> **Note.** changesets has a `none` bump type too, but never documents it. molt makes it first-class: use `none` when you want a note recorded against a package without forcing a release of it on its own. See the [Glossary](/concepts/glossary#bump-type).
+> **`none` in practice.** Use it when you want a note recorded against a package without forcing a release of that package on its own. See the [Glossary](/concepts/glossary#bump-type).
 
 How bump levels map onto real version numbers -- and the ways PEP 440 differs from SemVer -- is covered in [Versioning and PEP 440](/concepts/versioning-pep440).
 
@@ -76,17 +76,11 @@ molt version
 
 Three changesets do not mean three releases. They mean one release at the right version, with every summary preserved in the changelog. The bump is the *maximum*; the changelog is the *union*. That separation is the key invariant of the whole model.
 
-## Why intent beats commit-derived versioning
+## Changesets and git history
 
-The popular alternative is to infer versions from commit messages -- parse `feat:` / `fix:` / `BREAKING CHANGE:` prefixes and let a tool guess the bump. molt deliberately does **not** do this. Intent-based changesets win on the things that actually cause release bugs:
+Because the intent lives in a committed file rather than in commit messages, squash-merging, amending, and rebasing a branch cannot change what a release does. The file survives every history rewrite, and it is reviewed like any other file in the pull request.
 
-- **The context exists only at write time.** The person making a change knows whether it is breaking; a regex reading `git log` three weeks later does not. The changeset captures that decision at the moment there is the most information.
-- **"A commit" is the wrong unit.** A one-character typo fix and a signature-breaking API change are both commits. Only a human can tell them apart, and a changeset lets them say so explicitly.
-- **Changelogs are written, not scraped.** The summary is prose a human wrote for other humans, not a dump of commit subjects.
-- **No convention to police.** Contributors do not memorize a commit-message grammar, and CI does not reject pull requests for malformed subject lines. The changeset is a normal file, reviewed like any other code.
-- **Squash and rebase are safe.** Because the intent lives in a committed file, not in git history, you can squash-merge, amend, and rewrite branches without fear of breaking a release.
-
-molt does offer a one-time *seeding* path -- generating changesets from existing commit history -- but purely as a [migration aid](/guides/migrating-from-changesets) when you adopt the tool. That is a bootstrap convenience, not the ongoing model. Full commit-derived versioning is a deliberate [non-goal](/introduction/why-molt).
+Molt reads commit history once, as a [migration aid](/guides/migrating-from-changesets), to propose a starting pile of changesets when you adopt it mid-project. It does not derive versions from commit messages on an ongoing basis. [The changeset workflow](/introduction/the-changeset-workflow#changesets-and-commit-derived-versioning) sets the two models side by side.
 
 ## The lifecycle of a changeset
 
