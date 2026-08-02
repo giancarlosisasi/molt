@@ -1,8 +1,12 @@
-# The artifact gate.
+# The pull-request gate: two jobs, neither of which uploads anything.
 #
-# It runs on every pull request and every push to main, and both release workflows call it before
-# they upload anything. The wheel that reaches PyPI is therefore built by the same job that was
-# already green on the pull request, from the same commit, with the same tool versions.
+#   build      -- lint, types, tests, and a build proven installable. It also produces the artifact
+#                 release-testpypi.yml uploads, through `workflow_call`.
+#   changeset  -- every pull request that changes what ships must say what it releases.
+#
+# It is no longer the source of the artifact that reaches PyPI. `molt publish`, driven by the
+# composite action in release.yml, builds its own from the merged tree. What this job proves is that
+# the tree builds, installs and passes, which is what a release is allowed to be cut from.
 #
 # Nothing here contacts an index and nothing here needs a secret or an OIDC token, so it runs
 # unchanged on a pull request from a fork. Everything that can authenticate lives in release.yml
@@ -13,9 +17,9 @@ on:
   pull_request:
   push:
     branches: [main]
-  # Lets release.yml and release-testpypi.yml reuse this job. A reusable workflow cannot itself be
-  # named in a PyPI Trusted Publisher configuration, which is why only the build is shared and each
-  # release workflow writes out its own publish job.
+  # Lets release-testpypi.yml reuse the build job. A reusable workflow cannot itself be named in a
+  # PyPI Trusted Publisher configuration, which is why the workflow that publishes writes out its
+  # own upload step rather than sharing one from here.
   workflow_call:
 
 # No permission by default. Each job re-grants the one thing it needs.
@@ -93,19 +97,9 @@ jobs:
       - name: Smoke-test the wheel
         run: uv run --isolated --no-project --with dist/*.whl -- molt --version
 
-      # Only on a tag push, where github.ref_type is inherited from the caller. It runs here rather
-      # than in the publish job so a mistyped tag fails before anyone is asked to approve the
-      # release. Use the canonical PEP 440 spelling in the tag: v0.1.1, v0.2.0rc1.
-      - name: Check the tag matches the built version
-        if: github.ref_type == 'tag'
-        run: |
-          built=$(basename dist/*.whl | cut -d- -f2)
-          tag="${GITHUB_REF_NAME#v}"
-          echo "tag: $tag   built: $built"
-          if [ "$tag" != "$built" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match [project].version $built"
-            exit 1
-          fi
+      # There is no tag/version check here any more. Releases are no longer started by a hand-pushed
+      # tag: molt computes the version from the changesets and creates the tag itself, after the
+      # upload succeeds, so the two cannot disagree.
 
       - name: Upload the distribution
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -113,3 +107,40 @@ jobs:
           name: dist
           path: dist/
           if-no-files-found: error
+
+  # molt's own changeset gate, run with the molt in this checkout rather than an installed one. A
+  # pull request that changes what ships must declare the release it needs, which is what keeps the
+  # "Version Packages" pull request an accurate account of the next version.
+  #
+  # `changed_file_patterns` in pyproject.toml decides what counts: src/, pyproject.toml, action.yml
+  # and README.md. A pull request that only touches website/, tests/ or .github/ passes untouched.
+  # For a change that really does ship nothing, `molt add --empty` records that in one line.
+  changeset:
+    name: a changeset covers what changed
+    # Pull requests only. On a push to main the changesets have already served their purpose, and
+    # release.yml is what reads them next.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # `molt status --since` resolves a ref on the base branch, so the base branch has to be
+          # in the clone. The default shallow single-branch fetch does not include it.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install the project
+        run: uv sync --locked
+
+      # Exits 1 when a versionable package changed and no changeset covers it, naming the fix.
+      - name: Check for a changeset
+        run: uv run molt status --since origin/${{ github.base_ref }}
