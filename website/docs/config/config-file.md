@@ -32,7 +32,7 @@ Or, equivalently, in `.molt/config.json`:
 
 ```json
 {
-  "$schema": "https://molt.dev/schema/config.json",
+  "$schema": "https://molt.gio-labs.com/schema/config.json",
   "baseBranch": "main"
 }
 ```

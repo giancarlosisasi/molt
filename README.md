@@ -4,7 +4,7 @@ Changeset-driven versioning, changelogs, and publishing for Python packages and 
 Python-native port of [`changesets`](https://github.com/changesets/changesets), built on PEP 440
 versions and PEP 508 requirements instead of SemVer and npm.
 
-**[Documentation](https://molt.dev)**
+**[Documentation](https://molt.gio-labs.com)**
 
 ## Install
 
@@ -65,7 +65,7 @@ release. Molt gives it the smallest bump that does the job and rewrites the cons
 `>=2.0.0,<3.0.0`. A minor bump to `1.3.0` would have released nothing extra, because `1.3.0` still
 satisfies the range.
 
-See [Dependency propagation](https://molt.dev/guides/dependency-propagation).
+See [Dependency propagation](https://molt.gio-labs.com/guides/dependency-propagation).
 
 ## Commands
 
@@ -85,7 +85,7 @@ resolves every prompt to its documented default, which is what Dependabot, Renov
 need. Human-facing output goes to stderr and stdout carries machine-readable payloads only, so
 `molt status --output json | jq '.releases[].name'` needs no filtering.
 
-Full reference: [CLI](https://molt.dev/cli/overview).
+Full reference: [CLI](https://molt.gio-labs.com/cli/overview).
 
 ## Python specifics
 
@@ -97,7 +97,7 @@ Some behavior differs from changesets because Python's packaging rules force a d
 - **Prerelease is a flag**, not a persistent mode: `molt version --pre rc`. There is no `pre.json`
   branch state to merge or forget.
 - **`uv.lock` is refreshed** when `molt version` bumps a package. uv workspaces are first-class;
-  other backends sit behind an [ecosystem seam](https://molt.dev/ecosystems/overview).
+  other backends sit behind an [ecosystem seam](https://molt.gio-labs.com/ecosystems/overview).
 - **Snapshots target a separate index**, because PyPI versions are immutable and every snapshot
   would otherwise burn a public version number.
 - **A bad release is yanked, not unpublished.** `molt yank` verifies the version, reports whether it
@@ -119,21 +119,21 @@ creates a GitHub Release per package once that pull request merges.
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-See [CI: GitHub Action](https://molt.dev/guides/ci-github-action) for the full workflow, its inputs,
+See [CI: GitHub Action](https://molt.gio-labs.com/guides/ci-github-action) for the full workflow, its inputs,
 and its outputs. Nothing in the loop is GitHub-specific: the same `molt` commands drive it anywhere.
 
 ## Documentation
 
-- [What is Molt?](https://molt.dev/introduction/what-is-molt) and
-  [Why Molt?](https://molt.dev/introduction/why-molt)
-- [Installation](https://molt.dev/getting-started/installation),
-  [single-package quickstart](https://molt.dev/getting-started/quickstart-single-package),
-  [monorepo quickstart](https://molt.dev/getting-started/quickstart-monorepo)
-- [The release plan](https://molt.dev/concepts/release-plan) and
-  [Versioning and PEP 440](https://molt.dev/concepts/versioning-pep440)
-- [Configuration](https://molt.dev/config/config-file) and
-  [every option](https://molt.dev/config/options)
-- [Migrating from changesets](https://molt.dev/guides/migrating-from-changesets)
+- [What is Molt?](https://molt.gio-labs.com/introduction/what-is-molt) and
+  [Why Molt?](https://molt.gio-labs.com/introduction/why-molt)
+- [Installation](https://molt.gio-labs.com/getting-started/installation),
+  [single-package quickstart](https://molt.gio-labs.com/getting-started/quickstart-single-package),
+  [monorepo quickstart](https://molt.gio-labs.com/getting-started/quickstart-monorepo)
+- [The release plan](https://molt.gio-labs.com/concepts/release-plan) and
+  [Versioning and PEP 440](https://molt.gio-labs.com/concepts/versioning-pep440)
+- [Configuration](https://molt.gio-labs.com/config/config-file) and
+  [every option](https://molt.gio-labs.com/config/options)
+- [Migrating from changesets](https://molt.gio-labs.com/guides/migrating-from-changesets)
 
 ## License
 

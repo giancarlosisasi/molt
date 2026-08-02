@@ -18,7 +18,7 @@ Add a `$schema` key pointing at molt's published schema. Editors that understand
 
 ```json
 {
-  "$schema": "https://molt.dev/schema/config.json",
+  "$schema": "https://molt.gio-labs.com/schema/config.json",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
   "fixed": [["acme-core", "acme-runtime"]]
@@ -38,7 +38,7 @@ The `$schema` key is informational only -- molt itself ignores it when reading c
   "json.schemas": [
     {
       "fileMatch": [".molt/config.json"],
-      "url": "https://molt.dev/schema/config.json"
+      "url": "https://molt.gio-labs.com/schema/config.json"
     }
   ]
 }

@@ -151,7 +151,7 @@ tag = "molt.ecosystem.version_sources.tag"
 [project.urls]
 Homepage = "https://github.com/giancarlosisasi/molt"
 Repository = "https://github.com/giancarlosisasi/molt"
-Documentation = "https://molt.dev"
+Documentation = "https://molt.gio-labs.com"
 Issues = "https://github.com/giancarlosisasi/molt/issues"
 
 [build-system]
