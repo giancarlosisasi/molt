@@ -1531,7 +1531,7 @@ def test_schema_key_is_accepted_and_stripped() -> None:
     Upstream carries it in ``defaultWrittenConfig`` (`defaults.ts:8`) and strips it from the
     normalized ``Config`` (`parse.test.ts:102-104`). Unlike a typo it must NOT warn.
     """
-    written = {"$schema": "https://molt.dev/schema/config.json", "base_branch": "release"}
+    written = {"$schema": "https://molt.gio-labs.com/schema/config.json", "base_branch": "release"}
     config, warnings, errors = parse_config(written, package_names=DEFAULT_PKGS)
     assert list(errors) == []
     assert list(warnings) == []

@@ -119,8 +119,9 @@ creates a GitHub Release per package once that pull request merges.
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-See [CI: GitHub Action](https://molt.gio-labs.com/guides/ci-github-action) for the full workflow, its inputs,
-and its outputs. Nothing in the loop is GitHub-specific: the same `molt` commands drive it anywhere.
+See [CI: GitHub Action](https://molt.gio-labs.com/guides/ci-github-action) for the full workflow,
+its inputs, and its outputs. Nothing in the loop is GitHub-specific: the same `molt` commands drive
+it anywhere.
 
 ## Documentation
 
