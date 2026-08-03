@@ -62,7 +62,7 @@ Deliberate divergences from upstream (research README sections 3.4 / 4, section 
    states the mapping it used. A new version that escapes a caret expansion moves **both** bounds
    (``>=1.0.3,<2.0.0`` -> ``>=2.0.0,<3.0.0``), which is the PEP 440 form of upstream's
    ``^1.0.3`` -> ``^2.0.0`` and the worked example in
-   ``website/docs/guides/dependency-propagation.md``.
+   ``website/docs/guide/dependency-propagation.md``.
 6. **Rows 14-15 -- a byte-identical file is not "touched".** Upstream's unconditional ``version``
    edit (``index.ts:153``) rewrites a ``none`` release's manifest with identical bytes and still
    reports it (``index.test.ts:894``, ``:953``). molt reports neither manifest.
@@ -1044,7 +1044,7 @@ def test_a_direct_reference_is_left_alone_even_for_a_prerelease_new_version(
 # Rows 20 and 25 are the direct analogue of upstream's `^1.0.3` -> `^2.0.0`: the new version escapes
 # the caret expansion's upper bound, so **both** bounds move and `>=1.0.3,<2.0.0` becomes
 # `>=2.0.0,<3.0.0`. That is not this phase inventing an answer -- it is the worked example in
-# `website/docs/guides/dependency-propagation.md` ("Out of range: cascade + rewrite", which shows
+# `website/docs/guide/dependency-propagation.md` ("Out of range: cascade + rewrite", which shows
 # `acme-core>=1.2.0,<2.0.0` -> `acme-core>=2.0.0,<3.0.0`) and the rule doc 04 section 2.6 states
 # outright: "the 'keep the leading operator' rule cannot round-trip and you must rewrite both
 # bounds".
@@ -1153,7 +1153,7 @@ def test_patch_gate_updates_major_bumped_internal_dependencies(tmp_path: Path) -
     Upstream's ``^1.0.3`` -> ``^2.0.0`` moves both ends of the caret at once because ``^`` is a
     single token. The PEP 440 spelling of that caret is the two-sided ``>=1.0.3,<2.0.0``, so the
     analogue moves both ends too: ``>=2.0.0,<3.0.0``
-    (``website/docs/guides/dependency-propagation.md``, "Out of range: cascade + rewrite"; doc 04
+    (``website/docs/guide/dependency-propagation.md``, "Out of range: cascade + rewrite"; doc 04
     section 2.6). Moving only the lower bound would yield the unsatisfiable ``>=2.0.0,<2.0.0``;
     dropping the upper bound would reintroduce the constraint-widening bug. Both failure modes are
     pinned by :func:`test_a_two_sided_range_escaped_by_a_major_bump_rewrites_both_bounds`.
@@ -1316,7 +1316,7 @@ def test_a_two_sided_range_escaped_by_a_major_bump_rewrites_both_bounds(tmp_path
     reintroduces the constraint-widening bug. The answer is neither: **both** bounds move, so the
     result is ``>=2.0.0,<3.0.0``.
 
-    This is decided, not open. ``website/docs/guides/dependency-propagation.md`` ("Out of range:
+    This is decided, not open. ``website/docs/guide/dependency-propagation.md`` ("Out of range:
     cascade + rewrite") shows exactly this rewrite -- ``acme-core>=1.2.0,<2.0.0`` becomes
     ``acme-core>=2.0.0,<3.0.0`` -- and doc 04 section 2.6 states the rule in the same words. It is
     the PEP 440 spelling of upstream's ``^1.0.3`` -> ``^2.0.0`` (``version-package.ts:103-105``
@@ -1353,7 +1353,7 @@ def test_a_two_sided_range_escaped_by_a_major_bump_rewrites_both_bounds(tmp_path
     assert set(specifier.split(",")) == {">=2.0.0", "<3.0.0"}, (
         f"{specifier!r} is not the documented rewrite: both bounds move, so "
         "'>=1.0.3,<2.0.0' becomes '>=2.0.0,<3.0.0' "
-        "(website/docs/guides/dependency-propagation.md; doc 04 section 2.6)"
+        "(website/docs/guide/dependency-propagation.md; doc 04 section 2.6)"
     )
     parsed = parse_range(specifier)
     assert parsed is not None and satisfies(Version("2.0.0"), parsed), (
@@ -1569,7 +1569,7 @@ def test_new_entry_is_inserted_below_an_existing_package_title(tmp_path: Path) -
 
     Row 29 covers the title-less file. The everyday case is a changelog that already has both a
     ``# <package>`` title and previous entries; the new entry goes **below the title and above the
-    newest existing entry** (``website/docs/guides/changelog-templates.md``, "The default
+    newest existing entry** (``website/docs/guide/changelog-templates.md``, "The default
     structure": newest-first).
     """
     existing = "# pkg-a\n\n## 1.0.0\n\n### Minor Changes\n\n- Initial release\n"
@@ -1942,7 +1942,7 @@ def test_an_unconstrained_dependency_is_not_listed_in_the_changelog_either(
     changelog for a pin it never rewrote.
 
     **molt emits no line.** The changelog documents what the release *did*, and an unconstrained
-    dependency "never triggers a bump" (``website/docs/guides/dependency-propagation.md``), so
+    dependency "never triggers a bump" (``website/docs/guide/dependency-propagation.md``), so
     claiming it was updated is simply false. The same answer is asserted from the
     ``molt.changelog`` side in ``tests/changelog/``; the two suites must not diverge on it.
 

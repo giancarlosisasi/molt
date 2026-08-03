@@ -20,7 +20,7 @@ GitHub is the backend molt ships. Because the protocol sits between the engine a
 
 A forge backend answers a small, host-agnostic set of questions:
 
-- **Attribution.** Given a commit, which pull request introduced it, and who authored it? Given a pull request number, its author and merge commit? This is what lets [changelog templates](/guides/changelog-templates) render `Thanks @author!` and link back to the PR.
+- **Attribution.** Given a commit, which pull request introduced it, and who authored it? Given a pull request number, its author and merge commit? This is what lets [changelog templates](/guide/changelog-templates) render `Thanks @author!` and link back to the PR.
 - **Release publication.** Given an existing tag, a name and a changelog body, create a release on the host -- one per released package, with that package's changelog entry as the body.
 - **Pull request lifecycle.** Find the open release PR for a branch and update it in place, or open a new one.
 - **Commit creation.** Given a branch, a base commit, a message and a set of file additions and deletions, make that branch carry one commit holding those changes on top of that base.
@@ -35,7 +35,7 @@ The engine, the changelog generators, and the CI loop call these; they never ass
 
 ### Two details of commit creation worth knowing
 
-**The seam says "commit", never "sign".** A commit the *host* authors on its own server can be signed by that host, which is what makes [`commit-mode: api`](/guides/ci-github-action#signed-commits) work on GitHub. Signing is a property of a particular backend's implementation, not a promise the seam makes -- a member named for it would be a GitHub-shaped hole in a host-neutral protocol. Every host molt names as a backend candidate has a multi-file commit endpoint that fits behind this shape.
+**The seam says "commit", never "sign".** A commit the *host* authors on its own server can be signed by that host, which is what makes [`commit-mode: api`](/guide/ci-github-action#signed-commits) work on GitHub. Signing is a property of a particular backend's implementation, not a promise the seam makes -- a member named for it would be a GitHub-shaped hole in a host-neutral protocol. Every host molt names as a backend candidate has a multi-file commit endpoint that fits behind this shape.
 
 **File contents cross as bytes, keyed by path.** Additions are a mapping from a repository-relative path to that file's raw bytes, and the backend applies whatever encoding its host wants on the wire -- base64 for GitHub, raw text behind an encoding flag for GitLab. Decoding to text at the seam would corrupt a file that is not UTF-8 and would silently translate line endings on a Windows checkout. A file the host's commit API cannot represent -- a symbolic link, an executable, a submodule -- is refused by name rather than committed as the wrong kind of file.
 
@@ -45,7 +45,7 @@ The engine, the changelog generators, and the CI loop call these; they never ass
 
 **Updating a PR also re-opens it.** A force-push onto the release branch can close the pull request, and a closed one is not found by an "open" query. Molt therefore sets the state back to open on every update, so the next run keeps the same pull request -- with its number, its comments and its subscribers -- instead of opening a second one.
 
-The [CI action's](/guides/ci-github-action) release loop calls all of these: it finds or opens the release pull request during the version phase, and creates one release per package during the publish phase.
+The [CI action's](/guide/ci-github-action) release loop calls all of these: it finds or opens the release pull request during the version phase, and creates one release per package during the publish phase.
 
 ## Caching and backoff
 
@@ -60,5 +60,5 @@ On a large release that generates many changelog lines, this is the difference b
 
 - [GitHub](/forges/github) -- the forge backend molt ships, in detail.
 - [GitLab, Gitea & others](/forges/gitlab-gitea-others) -- releasing from another host.
-- [CI: GitHub Action](/guides/ci-github-action) -- the release loop the forge backend drives.
-- [Changelog templates](/guides/changelog-templates) -- what author and PR attribution feed into.
+- [CI: GitHub Action](/guide/ci-github-action) -- the release loop the forge backend drives.
+- [Changelog templates](/guide/changelog-templates) -- what author and PR attribution feed into.

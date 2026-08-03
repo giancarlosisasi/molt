@@ -430,7 +430,7 @@ def test_dependency_splice_changes_only_the_target_bytes(
 def test_a_uv_workspace_source_table_is_not_touched_by_a_splice() -> None:
     """``[tool.uv.sources]`` is the ``workspace:`` protocol analogue and is never rewritten.
 
-    research doc 04 section 2.6 and ``website/docs/guides/dependency-propagation.md``: the
+    research doc 04 section 2.6 and ``website/docs/guide/dependency-propagation.md``: the
     constraint lives in the PEP 508 string, the workspace marker lives in
     ``[tool.uv.sources]``. Only the former moves.
     """
@@ -674,7 +674,7 @@ OPERATOR_CASES = [
         ">=2.0.0,<3.0.0",
         "pkg-b>=2.0.0,<3.0.0",
         "out-of-range major bump: both bounds move, or the set would be unsatisfiable "
-        "(website/docs/guides/dependency-propagation.md)",
+        "(website/docs/guide/dependency-propagation.md)",
     ),
     (
         "pkg-b>=1.0.0,!=1.0.2,<2.0.0",

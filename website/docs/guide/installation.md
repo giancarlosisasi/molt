@@ -41,7 +41,7 @@ pip install molt-release
 ```
 
 :::tip molt in GitHub Actions
-In CI you do not install molt yourself. The [GitHub Action](/guides/ci-github-action) installs it
+In CI you do not install molt yourself. The [GitHub Action](/guide/ci-github-action) installs it
 with uv on the runner, keeps a "Version Packages" pull request in sync with your changesets, and
 publishes to PyPI over OIDC when that pull request merges. You add it with one `uses:` line:
 
@@ -55,7 +55,7 @@ publishes to PyPI over OIDC when that pull request merges. You add it with one `
 
 ## `molt-release` the package, `molt` the command
 
-You install **`molt-release`** but you run **`molt`**. The distribution is named `molt-release` because `molt` on PyPI belongs to an unrelated project. A distribution name and the console script it installs are independent, so `molt-release` still gives you a `molt` binary. You never type `molt-release` again after installing. See the [Overview](/introduction/what-is-molt).
+You install **`molt-release`** but you run **`molt`**. The distribution is named `molt-release` because `molt` on PyPI belongs to an unrelated project. A distribution name and the console script it installs are independent, so `molt-release` still gives you a `molt` binary. You never type `molt-release` again after installing. See the [Overview](/guide/what-is-molt).
 
 ## Verify the install
 
@@ -85,8 +85,8 @@ See [`molt init`](/cli/init) for the flags and prompts, and [The config file](/c
 
 ## Where to go next
 
-- **One package?** Follow the [single-package quickstart](/getting-started/quickstart-single-package) -- the majority Python case, and first-class in molt.
-- **A workspace?** Follow the [monorepo quickstart](/getting-started/quickstart-monorepo) to see dependency propagation in action.
-- **Want the mental model first?** Read [The release workflow](/getting-started/the-release-workflow).
-- **Releasing from GitHub?** Set up the [GitHub Action](/guides/ci-github-action) and molt runs `molt version` and `molt publish` for you, on every push to your base branch.
-- **Coming from JavaScript changesets?** [Molt and changesets](/reference/comparison-with-changesets) maps the commands, configuration keys, and changeset fields one to one, and [Migrating from changesets](/guides/migrating-from-changesets) converts an existing `.changeset/` directory.
+- **One package?** Follow the [single-package quickstart](/guide/quickstart-single-package) -- the majority Python case, and first-class in molt.
+- **A workspace?** Follow the [monorepo quickstart](/guide/quickstart-monorepo) to see dependency propagation in action.
+- **Want the mental model first?** Read [The release workflow](/guide/the-release-workflow).
+- **Releasing from GitHub?** Set up the [GitHub Action](/guide/ci-github-action) and molt runs `molt version` and `molt publish` for you, on every push to your base branch.
+- **Coming from JavaScript changesets?** [Molt and changesets](/reference/comparison-with-changesets) maps the commands, configuration keys, and changeset fields one to one, and [Migrating from changesets](/guide/migrating-from-changesets) converts an existing `.changeset/` directory.

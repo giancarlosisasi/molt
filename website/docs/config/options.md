@@ -39,7 +39,7 @@ A **non-empty** list is legal even when it matches nothing today, for the same r
 | `bump_workspace_sources_only` | `boolean` | `false` | Only rewrite dependency pins that are backed by a workspace source. |
 | `ignore` | `string[]` | `[]` | Packages that must never be released. Package names or globs; expanded to concrete names at load time. |
 
-`update_internal_dependents` is molt's promotion of a changesets option that used to live behind the `___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH` wrapper. In molt it is a plain, stable, top-level option. `"out-of-range"` (the default) only pulls a dependent into the release when the dependency's new version would fall outside the dependent's current pin. `"always"` releases every internal dependent with at least a patch, even when it is still in range -- useful when you want lockstep movement. See [Dependency propagation](/guides/dependency-propagation).
+`update_internal_dependents` is molt's promotion of a changesets option that used to live behind the `___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH` wrapper. In molt it is a plain, stable, top-level option. `"out-of-range"` (the default) only pulls a dependent into the release when the dependency's new version would fall outside the dependent's current pin. `"always"` releases every internal dependent with at least a patch, even when it is still in range -- useful when you want lockstep movement. See [Dependency propagation](/guide/dependency-propagation).
 
 `bump_workspace_sources_only` is molt's rename of changesets' `bumpVersionsWithWorkspaceProtocolOnly` (which it still accepts as an alias). The Python analogue of npm's `workspace:` protocol is a dependency backed by `[tool.uv.sources]` with `workspace = true`; when this is on, molt only rewrites the pins of such dependencies and leaves externally-versioned ones untouched.
 
@@ -121,7 +121,7 @@ template = "changelog-entry.md.jinja"
 dates = true
 ```
 
-See [Changelog templates](/guides/changelog-templates).
+See [Changelog templates](/guide/changelog-templates).
 
 :::warning Migrating from `changelog_template` / `changelog_dates`
 Those two flat keys were removed, and a configuration that still writes them **does not load**. Move them into the `changelog` table:
@@ -243,6 +243,6 @@ The `$schema` key is not a behavioral option -- it drives editor autocomplete fo
 ## Where to go next
 
 - [The config file](/config/config-file) -- where these options live and how validation reports problems.
-- [Dependency propagation](/guides/dependency-propagation) -- what `update_internal_dependencies` and `update_internal_dependents` actually do.
+- [Dependency propagation](/guide/dependency-propagation) -- what `update_internal_dependencies` and `update_internal_dependents` actually do.
 - [Linked vs fixed](/concepts/linked-vs-fixed) -- choosing between the two grouping options.
 - [JSON schema](/config/json-schema) -- get these options autocompleted in your editor.

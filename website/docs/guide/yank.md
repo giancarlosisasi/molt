@@ -31,7 +31,7 @@ That asymmetry is the whole point. You take a bad release out of the default pat
 Yanking removes a version from consideration; it does not ship a fix. In almost every case you do **both**:
 
 1. **Yank the bad version** so nobody new lands on it.
-2. **Release a fix** -- add a changeset, run [`molt version`](/cli/version) to cut a higher version (`1.2.1`), and [publish](/guides/publishing) it as the new default.
+2. **Release a fix** -- add a changeset, run [`molt version`](/cli/version) to cut a higher version (`1.2.1`), and [publish](/guide/publishing) it as the new default.
 
 Reach for yank alone when a version is actively harmful and there is no fix ready yet -- for example a release that leaks a secret, corrupts data, or is fundamentally broken on install. Yank plus a patch is the normal flow; yank alone is the emergency brake.
 
@@ -55,5 +55,5 @@ Two things to know before you click:
 ## See also
 
 - [`molt yank`](/cli/yank) -- flags, exit codes, and the reason the yank itself is manual.
-- [Publishing](/guides/publishing) -- how PyPI immutability shapes the whole publish flow.
+- [Publishing](/guide/publishing) -- how PyPI immutability shapes the whole publish flow.
 - [Snapshot releases](/concepts/snapshots) -- publishing a throwaway build without burning a version.

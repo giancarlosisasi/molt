@@ -87,4 +87,4 @@ molt init --cwd ./packages/workspace-root
 - [The config file](/config/config-file) -- what `init` writes and where.
 - [Options reference](/config/options) -- every config key.
 - [Ecosystems](/ecosystems/overview) -- how the backend is detected.
-- [Quickstart: single package](/getting-started/quickstart-single-package) and [Quickstart: monorepo](/getting-started/quickstart-monorepo).
+- [Quickstart: single package](/guide/quickstart-single-package) and [Quickstart: monorepo](/guide/quickstart-monorepo).

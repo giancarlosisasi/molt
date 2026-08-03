@@ -80,4 +80,4 @@ git push --follow-tags
 ## See also
 
 - [molt publish](/cli/publish) -- tags automatically after upload.
-- [The release workflow](/getting-started/the-release-workflow).
+- [The release workflow](/guide/the-release-workflow).

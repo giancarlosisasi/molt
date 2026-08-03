@@ -96,7 +96,7 @@ acme-api    patch  2.3.0 -> 2.3.1   (dependency out of range)
 acme-cli    patch  0.5.0 -> 0.5.1   (dependency out of range)
 ```
 
-molt walks the dependency graph until no further bumps are needed, so a single changeset at the bottom of a chain releases the whole chain above it. None of the upper packages need a changeset of their own; in the [plan](/guides/dry-run-and-plans) they appear as releases with an empty `changesets` array.
+molt walks the dependency graph until no further bumps are needed, so a single changeset at the bottom of a chain releases the whole chain above it. None of the upper packages need a changeset of their own; in the [plan](/guide/dry-run-and-plans) they appear as releases with an empty `changesets` array.
 
 ### `none` stops the ripple
 

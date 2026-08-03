@@ -64,7 +64,7 @@ This is what keeps the release commit installable. Anyone who runs `uv sync --lo
 
 The version constraint style you use decides how far a bump ripples. An **exact pin** maximizes churn: if `acme-cli` requires `acme-core==1.4.0` and `acme-core` bumps, the old constraint no longer admits the new version, so `acme-cli` must be re-released with an updated pin. A **range** like `>=1.4.0,<2` absorbs a compatible bump without forcing a release, because the new version still satisfies it.
 
-This is exactly the reasoning in [Dependency propagation](/guides/dependency-propagation) -- the uv backend supplies the version and the constraints, and the [release plan](/concepts/release-plan) engine decides who needs to move. The uv source table (`{ workspace = true }`) tells uv where to resolve the package from; the specifier in `[project].dependencies` tells molt whether a dependent has fallen out of range.
+This is exactly the reasoning in [Dependency propagation](/guide/dependency-propagation) -- the uv backend supplies the version and the constraints, and the [release plan](/concepts/release-plan) engine decides who needs to move. The uv source table (`{ workspace = true }`) tells uv where to resolve the package from; the specifier in `[project].dependencies` tells molt whether a dependent has fallen out of range.
 
 ## Single-package uv projects
 
@@ -74,5 +74,5 @@ You do not need a workspace to use the uv backend. A plain single-package projec
 
 - [Ecosystems overview](/ecosystems/overview) -- the backend protocol uv implements.
 - [Poetry, Hatch, PDM & setuptools](/ecosystems/poetry-hatch-pdm-setuptools) -- where those tools keep the same information.
-- [Dependency propagation](/guides/dependency-propagation) -- how constraints decide who gets re-released.
+- [Dependency propagation](/guide/dependency-propagation) -- how constraints decide who gets re-released.
 - [Options reference](/config/options) -- configuring the backend and the lock command.

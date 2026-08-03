@@ -170,7 +170,7 @@ pytestmark = pytest.mark.functional
 # ======================================================================================
 
 #: The warning text for an empty ``.changeset/`` (``version/index.ts:96``, echoed verbatim by
-#: ``website/docs/cli/version.md``). ``website/docs/guides/versioning.md`` writes "No pending
+#: ``website/docs/cli/version.md``). ``website/docs/guide/versioning.md`` writes "No pending
 #: changesets found." instead -- a docs bug, reported to the owner; the CLI reference page is the
 #: more specific oracle and wins. Only the substring is asserted so the sentence may be reworded.
 NO_CHANGESETS_FRAGMENT = "unreleased changesets"
@@ -606,7 +606,7 @@ def test_consumed_changeset_files_are_deleted(
     ``.changeset/config.json``. molt's config lives in ``[tool.molt]`` (or ``.molt/config.json``),
     so the directory holds only changesets and the count is 2 -> 0. This is half of the
     no-double-bump guarantee: the delete is part of the same flush as the bump
-    (``website/docs/guides/versioning.md``, "Atomic by design").
+    (``website/docs/guide/versioning.md``, "Atomic by design").
     """
     tmp_project.add_package("pkg-a", "1.0.0")
     tmp_project.write_changeset("some-id-0", {"pkg-a": "minor"}, "This is a summary")
@@ -2071,7 +2071,7 @@ def test_unversioned_private_packages_are_frozen_but_their_pins_still_move(
 
 #: A changelog-entry template that is unmistakably *not* the default layout, so a run that quietly
 #: ignored the configured template renders something this row can tell apart. Written with the
-#: documented context keys only (``website/docs/guides/changelog-templates.md``, "Customizing the
+#: documented context keys only (``website/docs/guide/changelog-templates.md``, "Customizing the
 #: template"), because those keys are the public contract a user's template is written against.
 CUSTOM_TEMPLATE = """## {{ release.name }} {{ release.new_version }}\
 {% if config.dates %} ({{ release.date.strftime("%Y-%m-%d") }}){% endif %}
@@ -2436,7 +2436,7 @@ def test_dry_run_writes_nothing_at_all(
 def test_dry_run_prints_every_version_transition(
     tmp_project: ProjectBuilder, console: RecordingConsole, fake_git: FakeGit
 ) -> None:
-    """Net-new (``website/docs/guides/dry-run-and-plans.md``: "a faithful preview").
+    """Net-new (``website/docs/guide/dry-run-and-plans.md``: "a faithful preview").
 
     Writing nothing is only half the contract -- a dry run that printed nothing would pass the
     test above. Each planned release must be legible, including the dependent that is only in the

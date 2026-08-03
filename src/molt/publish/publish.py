@@ -481,7 +481,7 @@ def _publish_tag(release: ReleaseRef, *, single_package: bool) -> str:
 
     A workspace member is tagged ``<pep503-name>@<version>``; a **single-package** project is tagged
     ``v<version>``, because there is only one candidate and the version alone identifies it
-    (``molt.commands.git_tag`` design D2, and ``website/docs/guides/publishing.md``, "Tags and
+    (``molt.commands.git_tag`` design D2, and ``website/docs/guide/publishing.md``, "Tags and
     machine-readable output"). The two producers must agree: a release tagged by ``publish`` under
     a shape ``git-tag`` does not recognise is a release ``git-tag`` tags a *second* time on the
     next run.

@@ -30,7 +30,7 @@ see [Acknowledgements](/reference/acknowledgements).
 [Molt and changesets](/reference/comparison-with-changesets) maps every command, configuration key,
 and changeset field to its molt equivalent, and marks the places where PEP 440 and PyPI make the two
 tools differ. To convert an existing `.changeset/` directory, follow
-[Migrating from changesets](/guides/migrating-from-changesets).
+[Migrating from changesets](/guide/migrating-from-changesets).
 :::
 
 ## `molt-release` the package, `molt` the command
@@ -56,7 +56,7 @@ molt --help
 ```
 
 You never type `molt-release` again after installing. See
-[Installation](/getting-started/installation) for the full setup, including running molt inside CI.
+[Installation](/guide/installation) for the full setup, including running molt inside CI.
 
 ## Who it is for
 
@@ -95,9 +95,9 @@ would execute and writes nothing.
 
 ## Where to go next
 
-- [The changeset workflow](/introduction/the-changeset-workflow) -- how intent turns into version
+- [The changeset workflow](/guide/the-changeset-workflow) -- how intent turns into version
   numbers.
-- [Installation](/getting-started/installation) and the
-  [single-package quickstart](/getting-started/quickstart-single-package) -- get molt running.
+- [Installation](/guide/installation) and the
+  [single-package quickstart](/guide/quickstart-single-package) -- get molt running.
 - [Molt and changesets](/reference/comparison-with-changesets) -- a feature-by-feature map, if you
   are coming from the JavaScript tool.

@@ -13,10 +13,10 @@ hero:
   actions:
     - theme: brand
       text: Get started
-      link: /getting-started/installation
+      link: /guide/installation
     - theme: alt
       text: How it works
-      link: /introduction/the-changeset-workflow
+      link: /guide/the-changeset-workflow
     - theme: alt
       text: GitHub
       link: https://github.com/giancarlosisasi/molt

@@ -8,7 +8,7 @@ Version a uv workspace where one package depends on another, and watch a single 
 
 When you change one package, molt works out which other packages depend on it, decides whether they need a release too, and rewrites their dependency constraints to match. That cross-package reasoning is the [release plan](/concepts/release-plan).
 
-If you have not read the [single-package quickstart](/getting-started/quickstart-single-package), start there; this page assumes the `init` / `add` / `version` / `publish` loop.
+If you have not read the [single-package quickstart](/guide/quickstart-single-package), start there; this page assumes the `init` / `add` / `version` / `publish` loop.
 
 ## The workspace
 
@@ -93,9 +93,9 @@ Packages to be bumped:
 - `acme-cli` requires `acme-core>=1.2.0,<2.0.0`. The new `2.0.0` falls **outside** that range -- the constraint would no longer resolve.
 - So `acme-cli` needs a release. molt gives it the smallest bump that does the job, a **patch**, and will rewrite its constraint to admit the new version.
 
-Had the change to `acme-core` been a *minor* bump (to `1.3.0`), `acme-cli` would **not** have been released -- `1.3.0` still satisfies `>=1.2.0,<2.0.0`, so nothing about `acme-cli` needs to change. Which bumps cascade and which do not is governed entirely by the constraints your packages declare. That is the whole topic of [Dependency propagation](/guides/dependency-propagation).
+Had the change to `acme-core` been a *minor* bump (to `1.3.0`), `acme-cli` would **not** have been released -- `1.3.0` still satisfies `>=1.2.0,<2.0.0`, so nothing about `acme-cli` needs to change. Which bumps cascade and which do not is governed entirely by the constraints your packages declare. That is the whole topic of [Dependency propagation](/guide/dependency-propagation).
 
-You can also print the plan as JSON (`molt status --output json`) or preview the file writes with `molt version --dry-run`. See [Checking status](/guides/status) and [Dry runs and plans](/guides/dry-run-and-plans).
+You can also print the plan as JSON (`molt status --output json`) or preview the file writes with `molt version --dry-run`. See [Checking status](/guide/status) and [Dry runs and plans](/guide/dry-run-and-plans).
 
 ## 3. Version the workspace
 
@@ -144,11 +144,11 @@ The lockfile (`uv.lock`) is refreshed, and the consumed changeset is deleted. Al
 molt publish
 ```
 
-molt publishes exactly the packages whose versions changed -- here, both -- in dependency order, and tags each one. In a workspace the tags are per package: `acme-core@2.0.0` and `acme-cli@0.5.1`. See [Publishing](/guides/publishing).
+molt publishes exactly the packages whose versions changed -- here, both -- in dependency order, and tags each one. In a workspace the tags are per package: `acme-core@2.0.0` and `acme-cli@0.5.1`. See [Publishing](/guide/publishing).
 
 ## Where to go next
 
-- [Dependency propagation](/guides/dependency-propagation) -- the full rules for how bumps cascade, including exact pins, ranges, and transitive dependents.
+- [Dependency propagation](/guide/dependency-propagation) -- the full rules for how bumps cascade, including exact pins, ranges, and transitive dependents.
 - [The release plan](/concepts/release-plan) -- the engine that computes all of the above.
 - [Linked vs fixed packages](/concepts/linked-vs-fixed) -- when you want packages to move together on purpose.
 - [uv workspaces](/ecosystems/uv) -- how molt discovers members and reads internal dependencies.

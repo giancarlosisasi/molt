@@ -6,7 +6,7 @@ title: Adding a changeset
 
 `molt add` records the intent of a change -- which packages it affects, how much, and what the changelog should say -- either through an interactive prompt or fully non-interactively for scripts and bots.
 
-A changeset is a small Markdown file in `.changeset/`. You commit it in the same pull request as your code, and [`molt version`](/guides/versioning) consumes it at release time. This guide covers both ways to write one. For the file format itself, see [Changeset format](/config/changeset-format).
+A changeset is a small Markdown file in `.changeset/`. You commit it in the same pull request as your code, and [`molt version`](/guide/versioning) consumes it at release time. This guide covers both ways to write one. For the file format itself, see [Changeset format](/config/changeset-format).
 
 ## Interactive: `molt add`
 
@@ -115,11 +115,11 @@ Some changes -- a README fix, a test-only tweak -- should ship no version bump a
 molt add --empty
 ```
 
-This writes a changeset with no releases and an optional message. It satisfies the [`molt status`](/guides/status) CI gate ("a package changed but no changeset was found") without forcing a release. Use it instead of skipping `molt add`, so the decision is visible in the pull request.
+This writes a changeset with no releases and an optional message. It satisfies the [`molt status`](/guide/status) CI gate ("a package changed but no changeset was found") without forcing a release. Use it instead of skipping `molt add`, so the decision is visible in the pull request.
 
 ## Where to go next
 
 - [Changeset format](/config/changeset-format) -- the front matter and body in detail.
-- [Versioning](/guides/versioning) -- how `molt version` consumes what you added.
-- [The release workflow](/getting-started/the-release-workflow) -- where `add` sits in the bigger loop.
+- [Versioning](/guide/versioning) -- how `molt version` consumes what you added.
+- [The release workflow](/guide/the-release-workflow) -- where `add` sits in the bigger loop.
 - [`molt add`](/cli/add) -- every flag and the JSON schema.

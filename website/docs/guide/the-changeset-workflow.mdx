@@ -80,7 +80,7 @@ differ on five points:
   bump, including for packages a change touched only through the
   [dependency graph](/concepts/release-plan).
 
-Molt does read commit history once, as a [migration aid](/guides/migrating-from-changesets), to
+Molt does read commit history once, as a [migration aid](/guide/migrating-from-changesets), to
 propose a starting pile of changesets when you adopt it mid-project. That is a bootstrap step, not
 the ongoing model. If commit-derived versioning suits your project better,
 [`python-semantic-release`](https://python-semantic-release.readthedocs.io) implements that model.
@@ -104,4 +104,4 @@ before you run it, and every mutating command accepts `--dry-run` to print its
 - [Changesets](/concepts/changesets) -- the file format and bump types in detail.
 - [The release plan](/concepts/release-plan) -- how `molt version` turns pending changesets into
   version numbers, including cross-package propagation.
-- [Adding a changeset](/guides/adding-a-changeset) -- a hands-on walkthrough of `molt add`.
+- [Adding a changeset](/guide/adding-a-changeset) -- a hands-on walkthrough of `molt add`.

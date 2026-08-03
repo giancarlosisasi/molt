@@ -83,7 +83,7 @@ __all__ = ["PRE_PHASES", "run"]
 PRE_PHASES: Final[tuple[str, ...]] = ("a", "b", "rc", "dev")
 
 #: ``version/index.ts:96``, echoed verbatim by ``website/docs/cli/version.md``.
-#: ``website/docs/guides/versioning.md`` used to write "No pending changesets found." instead --
+#: ``website/docs/guide/versioning.md`` used to write "No pending changesets found." instead --
 #: corrected by this change, because the CLI reference page is the more specific oracle.
 _NO_CHANGESETS: Final = "No unreleased changesets found."
 

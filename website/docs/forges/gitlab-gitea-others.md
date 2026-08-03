@@ -12,7 +12,7 @@ attribution. [GitHub](/forges/github) is the backend molt ships.
 ## Releasing without a native backend
 
 The core loop is host-independent. [`molt version`](/cli/version),
-[`molt publish`](/guides/publishing), and [`molt git-tag`](/cli/git-tag) read your repository, write
+[`molt publish`](/guide/publishing), and [`molt git-tag`](/cli/git-tag) read your repository, write
 your manifests and changelogs, upload to PyPI, and push tags. None of that calls a code host. It
 runs anywhere uv is installed: GitLab CI, Gitea Actions, Jenkins, Buildkite, a cron job, or your
 laptop.
@@ -26,7 +26,7 @@ molt publish
 
 What you write yourself on a host without a backend is the release change-request step: opening or
 updating the merge request that carries the version commit. That is a few lines of your host's own
-CLI around `molt version`, and [CI: GitHub Action](/guides/ci-github-action#molt-is-not-tied-to-github-actions)
+CLI around `molt version`, and [CI: GitHub Action](/guide/ci-github-action#molt-is-not-tied-to-github-actions)
 shows the portable shape.
 
 ## What a native backend adds
@@ -35,7 +35,7 @@ A backend implements the host-agnostic contract from the [forges overview](/forg
 
 | Question the backend answers | What it enables |
 |---|---|
-| Which change request introduced this commit, and who wrote it? | `Thanks @author!` lines and pull-request links in [changelogs](/guides/changelog-templates) |
+| Which change request introduced this commit, and who wrote it? | `Thanks @author!` lines and pull-request links in [changelogs](/guide/changelog-templates) |
 | Create a release from a tag and a changelog body | One host release per released package |
 | Find or open the release change request for a branch | The "Version Packages" merge request, kept in sync |
 | Commit a set of files onto a branch through the host API | Commits the host signs, without a signing key in CI |
@@ -49,4 +49,4 @@ it rather than reimplementing it.
 
 - [Forges overview](/forges/overview) -- the protocol and what each member does.
 - [GitHub](/forges/github) -- the reference implementation.
-- [CI: GitHub Action](/guides/ci-github-action) -- the release loop, and the portable form of it.
+- [CI: GitHub Action](/guide/ci-github-action) -- the release loop, and the portable form of it.

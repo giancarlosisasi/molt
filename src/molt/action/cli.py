@@ -119,7 +119,7 @@ ACTION_INPUTS: Final[dict[str, str | None]] = {
     "github-token": None,
 }
 
-#: The four outputs, snake_case (``website/docs/guides/ci-github-action.md``) -- a deliberate
+#: The four outputs, snake_case (``website/docs/guide/ci-github-action.md``) -- a deliberate
 #: divergence from upstream's camelCase ``action.yml``. Order is the order they are written in.
 OUTPUT_NAMES: Final[tuple[str, ...]] = (
     "published",
@@ -261,7 +261,7 @@ def output_payload(result: ActionResult) -> dict[str, Any]:
     """The four outputs of a run, as the values a workflow reads.
 
     ``published_packages`` is a **compact** JSON array of ``{"name", "version"}`` objects -- the
-    shape ``website/docs/guides/ci-github-action.md`` documents -- so a following step can
+    shape ``website/docs/guide/ci-github-action.md`` documents -- so a following step can
     ``fromJSON`` it. ``pull_request_number`` is ``None`` for a run that opened or updated no pull
     request, which is every publish run and every run that did nothing; the file writer drops it
     entirely in that case (``index.ts:167`` sets it inside the version branch alone), while the

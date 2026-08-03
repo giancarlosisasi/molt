@@ -104,7 +104,7 @@ _NO_CHANGELOG = "no-changelog"
 
 @dataclass(frozen=True, slots=True)
 class ActionResult:
-    """The four outputs a run reports (``website/docs/guides/ci-github-action.md``).
+    """The four outputs a run reports (``website/docs/guide/ci-github-action.md``).
 
     Spelled in **snake_case**, a deliberate divergence from upstream's camelCase ``action.yml``
     outputs: every machine-readable payload molt emits -- ``molt status --output json``, the

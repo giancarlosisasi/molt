@@ -13,7 +13,7 @@ Both settings are members of the ``changelog`` table, alongside the ``generator`
 carries what used to be the whole value of that key (owner ruling 2026-07-30, closing ``VC-4``;
 they were flat ``changelog_template`` / ``changelog_dates`` keys before it). Inside a template
 ``dates`` arrives as ``config.dates``, which is the surface
-``website/docs/guides/changelog-templates.md`` documents: a template's ``config`` is the changelog
+``website/docs/guide/changelog-templates.md`` documents: a template's ``config`` is the changelog
 scope of the configuration, narrowed by :class:`molt.apply.apply._ChangelogConfigView`, not the
 whole document.
 
@@ -119,7 +119,7 @@ class RenderReleaseLike(ReleaseLike, Protocol):
 class TemplateRelease:
     """What a template sees as ``release`` -- the documented public template surface.
 
-    Every field here appears in ``website/docs/guides/changelog-templates.md``'s field table or in
+    Every field here appears in ``website/docs/guide/changelog-templates.md``'s field table or in
     its worked example, so **renaming one silently breaks user templates the docs told people to
     write**. ``tests/changelog/test_render_changelog.py::
     test_the_documented_template_context_keys_are_available`` pins them one per row.

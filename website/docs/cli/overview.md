@@ -6,7 +6,7 @@ title: CLI reference
 
 The complete `molt` command surface: every verb, its flags, its exit codes, and the cross-cutting rules that apply to all of them.
 
-You install the distribution `molt-release` and type the command `molt`. See [Installation](/getting-started/installation) for why the two names differ.
+You install the distribution `molt-release` and type the command `molt`. See [Installation](/guide/installation) for why the two names differ.
 
 ## Command surface at a glance
 
@@ -23,7 +23,7 @@ You install the distribution `molt-release` and type the command `molt`. See [In
 | `molt git-tag` | Create annotated git tags for released packages. | [molt git-tag](/cli/git-tag) |
 | `molt pre` | Prerelease control. Molt has no persistent pre-mode: prereleases are the stateless `molt version --pre` flag. | [Prerelease control](/cli/pre) |
 
-The distribution also installs a second command, `molt-action`, which runs the whole release loop for a CI workflow. It is **not** part of the `molt` command table and is not documented as a verb: molt's [composite GitHub Action](/guides/ci-github-action) is what invokes it, and everything it does is reachable from the commands above. You never need to type it.
+The distribution also installs a second command, `molt-action`, which runs the whole release loop for a CI workflow. It is **not** part of the `molt` command table and is not documented as a verb: molt's [composite GitHub Action](/guide/ci-github-action) is what invokes it, and everything it does is reachable from the commands above. You never need to type it.
 
 ## The default command
 
@@ -43,7 +43,7 @@ These options are accepted by every command (subject to the command actually hav
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `--non-interactive`, `--yes` | flag | off | Never block on a prompt. Each prompt resolves to its documented default, or the command exits non-zero naming the missing input. Required for CI, Dependabot, Renovate, and codegen. |
-| `--dry-run` | flag | off | On any mutating command (`add`, `version`, `publish`, `git-tag`, `build`), print the [plan](/concepts/release-plan) the command would execute and write nothing. (`yank` has none: it never mutates, so every run is already a dry run.) See [Dry runs and plans](/guides/dry-run-and-plans). |
+| `--dry-run` | flag | off | On any mutating command (`add`, `version`, `publish`, `git-tag`, `build`), print the [plan](/concepts/release-plan) the command would execute and write nothing. (`yank` has none: it never mutates, so every run is already a dry run.) See [Dry runs and plans](/guide/dry-run-and-plans). |
 | `--output json` | string | human-readable | Where supported (`status`, `publish-plan`), emit the plan as a JSON document to stdout instead of the rendered view. See [Machine-readable output](#machine-readable-output). |
 | `--cwd <path>` | path | current directory | Directory to run in. Root discovery walks up from here to the workspace root. |
 | `--version` | flag | -- | Print the bare version string (for example `0.1.0`) and exit 0. No banner, no prefix. |
@@ -108,7 +108,7 @@ On an unexpected internal error, molt prints a pre-filled issue-report URL that 
 
 ## See also
 
-- [The changeset workflow](/introduction/the-changeset-workflow) -- the add / version / publish loop these commands implement.
+- [The changeset workflow](/guide/the-changeset-workflow) -- the add / version / publish loop these commands implement.
 - [The release plan](/concepts/release-plan) -- the plan object that `--dry-run` and `--output json` expose.
-- [Dry runs and plans](/guides/dry-run-and-plans) -- previewing any mutating command.
+- [Dry runs and plans](/guide/dry-run-and-plans) -- previewing any mutating command.
 - [Configuration](/config/config-file) -- the settings these commands read.

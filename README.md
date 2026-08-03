@@ -64,7 +64,7 @@ release. Molt gives it the smallest bump that does the job and rewrites the cons
 `>=2.0.0,<3.0.0`. A minor bump to `1.3.0` would have released nothing extra, because `1.3.0` still
 satisfies the range.
 
-See [Dependency propagation](https://molt.gio-labs.com/guides/dependency-propagation).
+See [Dependency propagation](https://molt.gio-labs.com/guide/dependency-propagation).
 
 ## Commands
 
@@ -120,22 +120,22 @@ merges.
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-See [CI: GitHub Action](https://molt.gio-labs.com/guides/ci-github-action) for the full workflow,
+See [CI: GitHub Action](https://molt.gio-labs.com/guide/ci-github-action) for the full workflow,
 its inputs, and its outputs. Nothing in the loop is GitHub-specific: the same `molt` commands drive
 it anywhere.
 
 ## Documentation
 
-- [Overview](https://molt.gio-labs.com/introduction/what-is-molt) and
-  [The changeset workflow](https://molt.gio-labs.com/introduction/the-changeset-workflow)
-- [Installation](https://molt.gio-labs.com/getting-started/installation),
-  [single-package quickstart](https://molt.gio-labs.com/getting-started/quickstart-single-package),
-  [monorepo quickstart](https://molt.gio-labs.com/getting-started/quickstart-monorepo)
+- [Overview](https://molt.gio-labs.com/guide/what-is-molt) and
+  [The changeset workflow](https://molt.gio-labs.com/guide/the-changeset-workflow)
+- [Installation](https://molt.gio-labs.com/guide/installation),
+  [single-package quickstart](https://molt.gio-labs.com/guide/quickstart-single-package),
+  [monorepo quickstart](https://molt.gio-labs.com/guide/quickstart-monorepo)
 - [The release plan](https://molt.gio-labs.com/concepts/release-plan) and
   [Versioning and PEP 440](https://molt.gio-labs.com/concepts/versioning-pep440)
 - [Configuration](https://molt.gio-labs.com/config/config-file) and
   [every option](https://molt.gio-labs.com/config/options)
-- [Migrating from changesets](https://molt.gio-labs.com/guides/migrating-from-changesets)
+- [Migrating from changesets](https://molt.gio-labs.com/guide/migrating-from-changesets)
 
 ## Acknowledgements
 

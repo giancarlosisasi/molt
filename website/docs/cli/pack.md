@@ -75,4 +75,4 @@ molt publish --from-pack-dir artifacts
 ## See also
 
 - [molt publish](/cli/publish) -- uploads what `molt build` produces.
-- [Publishing](/guides/publishing).
+- [Publishing](/guide/publishing).

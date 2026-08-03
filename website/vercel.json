@@ -5,6 +5,11 @@
   "outputDirectory": "doc_build",
   "cleanUrls": true,
   "trailingSlash": false,
+  "redirects": [
+    { "source": "/introduction/:slug", "destination": "/guide/:slug", "permanent": true },
+    { "source": "/getting-started/:slug", "destination": "/guide/:slug", "permanent": true },
+    { "source": "/guides/:slug", "destination": "/guide/:slug", "permanent": true }
+  ],
   "headers": [
     {
       "source": "/static/(.*)",

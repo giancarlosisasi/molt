@@ -20,7 +20,7 @@ mechanism (Jinja2 ``StrictUndefined`` in place of the hand-rolled ``hasOwn`` che
 
 Two template layers, do not confuse them
 -----------------------------------------
-``website/docs/guides/changelog-templates.md`` documents a *different*, molt-native Jinja2
+``website/docs/guide/changelog-templates.md`` documents a *different*, molt-native Jinja2
 template -- ``[tool.molt.changelog] template = "..."`` -- which shapes the **entry**
 (the ``## <version>`` heading, the ``### Major/Minor/Patch Changes`` sections, dates).
 The template exercised here is the upstream **per-line** ``template`` option, which lives

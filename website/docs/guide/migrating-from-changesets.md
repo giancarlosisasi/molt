@@ -112,7 +112,7 @@ Adopting molt mid-project leaves you with commits that predate any changesets. m
 molt add --from-commits <since-ref>
 ```
 
-This is a migration aid. Molt does **not** derive versions from commit messages on an ongoing basis, because a commit is not a release intent and a prefix convention cannot see a breaking change that crosses a package boundary. Seeding gets you a starting pile of changesets; from there, the normal `molt add` flow takes over. See [The changeset workflow](/introduction/the-changeset-workflow#changesets-and-commit-derived-versioning).
+This is a migration aid. Molt does **not** derive versions from commit messages on an ongoing basis, because a commit is not a release intent and a prefix convention cannot see a breaking change that crosses a package boundary. Seeding gets you a starting pile of changesets; from there, the normal `molt add` flow takes over. See [The changeset workflow](/guide/the-changeset-workflow#changesets-and-commit-derived-versioning).
 
 ## A suggested migration order
 

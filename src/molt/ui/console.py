@@ -10,7 +10,7 @@ Two contracts this module owns:
 **Streams.** Every level -- ``info``, ``success``, ``warn``, ``error``, ``note``, spinners and
 progress -- goes to **stderr**. stdout carries machine-readable payloads only: the ``--output json``
 document of ``status``/``publish-plan`` and the bare ``molt --version`` string. Without that split,
-``molt status --output json | jq`` -- the recipe ``website/docs/guides/status.md`` tells CI to
+``molt status --output json | jq`` -- the recipe ``website/docs/guide/status.md`` tells CI to
 run -- dies on the startup banner.
 
 **Encoding.** A Windows console on a legacy code page (cp1252) cannot encode the butterfly glyph or

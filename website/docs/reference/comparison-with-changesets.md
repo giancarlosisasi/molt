@@ -33,13 +33,13 @@ The core loop is the same in both tools, and the muscle memory transfers.
 | Capability | molt | changesets | Notes |
 |---|---|---|---|
 | Changeset file: Markdown body, YAML front matter | ✅ | ✅ | Same [format](/config/changeset-format). Molt matches package names under PEP 503 normalization, so `Acme_Core` and `acme-core` are one package |
-| Record intent now, consume it in a batch | ✅ | ✅ | The [two-clock model](/introduction/the-changeset-workflow) |
+| Record intent now, consume it in a batch | ✅ | ✅ | The [two-clock model](/guide/the-changeset-workflow) |
 | Flatten to the highest bump, keep every summary | ✅ | ✅ | Three changesets become one release at the highest bump |
 | Intent lives in a committed file, not in git history | ✅ | ✅ | Squash- and rebase-safe in both |
 | Empty changeset to satisfy a CI gate | ✅ | ✅ | `molt add --empty` |
 | Interactive prompt to write a changeset | ✅ | ✅ | |
 | Write a changeset with no prompt | ✅ | ⬜ | `molt add --minor acme-core -m "..."`. What makes Dependabot, Renovate, and code generators able to open a complete pull request. See [molt add](/cli/add) |
-| Seed changesets from commit history, once, at adoption | ✅ | ⬜ | A [migration aid](/guides/migrating-from-changesets), not an ongoing mode |
+| Seed changesets from commit history, once, at adoption | ✅ | ⬜ | A [migration aid](/guide/migrating-from-changesets), not an ongoing mode |
 
 ## Versions
 
@@ -94,7 +94,7 @@ different implementation.
 | One `CHANGELOG.md` per package | ✅ | ✅ | |
 | Pluggable generator | ✅ | ✅ | Molt resolves generators through Python [entry points](/extending/changelog-plugins) |
 | Author and pull-request attribution | ✅ | ✅ | |
-| [Templates](/guides/changelog-templates) for sections, dates, and layout | ✅ | ⬜ | Jinja2. changesets generators return strings, so layout is fixed |
+| [Templates](/guide/changelog-templates) for sections, dates, and layout | ✅ | ⬜ | Jinja2. changesets generators return strings, so layout is fixed |
 | Markdown that needs no formatter pass afterwards | ✅ | ⬜ | Molt emits the blank lines correctly rather than repairing them later |
 
 ## Automation
@@ -103,10 +103,10 @@ different implementation.
 |---|---|---|---|
 | A release pull request kept in sync with pending changesets | ✅ | ✅ | |
 | Host releases, one per package | ✅ | ✅ | |
-| Signed commits made through the host API | ✅ | ✅ | [`commit-mode: api`](/guides/ci-github-action#signed-commits) |
+| Signed commits made through the host API | ✅ | ✅ | [`commit-mode: api`](/guide/ci-github-action#signed-commits) |
 | GitHub | ✅ | ✅ | |
 | GitLab, Gitea, Bitbucket, Azure DevOps | ⬜ | ⬜ | Both tools ship a GitHub backend. Molt keeps host calls behind a [protocol](/forges/overview), so a second host is a backend rather than a rewrite. The core loop already runs on any CI |
-| A machine-readable plan on every mutating command | ✅ | ⬜ | `--dry-run` prints it and writes nothing. See [Dry runs and plans](/guides/dry-run-and-plans) |
+| A machine-readable plan on every mutating command | ✅ | ⬜ | `--dry-run` prints it and writes nothing. See [Dry runs and plans](/guide/dry-run-and-plans) |
 | All-or-nothing `version` | ✅ | ⬜ | Molt buffers every write and flushes them together, so an interrupted run leaves the tree untouched and re-runs safely |
 | Rate-limit handling, retry, and backoff on host calls | ✅ | ⬜ | Molt honors `Retry-After`, retries transient `5xx` with jittered backoff, and reports when a rate limit resets |
 | Windows | ✅ | ✅ | Molt runs its test suite on Windows |
@@ -117,7 +117,7 @@ These are decisions, not gaps:
 
 - **Versions derived from commit messages.** A commit is not a release intent, and a prefix
   convention cannot see a breaking change that crosses a package boundary. Molt reads commits once,
-  at adoption, to [seed changesets](/guides/migrating-from-changesets).
+  at adoption, to [seed changesets](/guide/migrating-from-changesets).
 - **Executable configuration.** Config is TOML or JSON so any tool can read it without running your
   code.
 - **Shell hooks as the main extension point.** Extension goes through typed Python
@@ -126,6 +126,6 @@ These are decisions, not gaps:
 
 ## See also
 
-- [Migrating from changesets](/guides/migrating-from-changesets) -- the practical port guide.
+- [Migrating from changesets](/guide/migrating-from-changesets) -- the practical port guide.
 - [Design decisions](/reference/design-decisions) -- the reasoning behind each divergence.
 - [Acknowledgements](/reference/acknowledgements) -- what molt is built on.

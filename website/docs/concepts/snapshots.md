@@ -25,7 +25,7 @@ Put together, this means **every snapshot published to PyPI permanently burns a 
 
 ### Snapshots target a non-PyPI index by default
 
-Because a snapshot on PyPI is permanent, molt does **not** send snapshots to PyPI by default. They target a **separate index**: a private or dev index, or TestPyPI, so testing an exact commit never consumes a public version number. Publishing a snapshot to PyPI takes an explicit opt-in; see [Publishing](/guides/publishing).
+Because a snapshot on PyPI is permanent, molt does **not** send snapshots to PyPI by default. They target a **separate index**: a private or dev index, or TestPyPI, so testing an exact commit never consumes a public version number. Publishing a snapshot to PyPI takes an explicit opt-in; see [Publishing](/guide/publishing).
 
 ### Snapshot versions are `0.0.0.dev<datetime>`
 
@@ -69,7 +69,7 @@ Both are short-lived, non-final releases, but they answer different questions:
 
 ## Where to go next
 
-- [Publishing](/guides/publishing) -- targeting an index, and where snapshots go by default.
+- [Publishing](/guide/publishing) -- targeting an index, and where snapshots go by default.
 - [Prerelease mode](/concepts/prerelease) -- the other non-final release shape.
 - [Versioning and PEP 440](/concepts/versioning-pep440) -- why `.devN` sorts where it does.
 - [Glossary](/concepts/glossary) -- snapshot, prerelease, and the rest.

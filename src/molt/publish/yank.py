@@ -4,7 +4,7 @@ molt-native: there is nothing to port. ``roadmap/research/test-suite/07-publish-
 ``molt yank`` under "New in molt", research README section 4.3 explains why it exists ("PyPI has no
 unpublish... our worst constraint becomes a feature") and README section 5 item 11 lists it as
 differentiator #11, marked "Impossible on npm". Website docs: ``website/docs/cli/yank.md`` (flags,
-exit codes) and ``website/docs/guides/yank.md`` (semantics). The conformance suite is
+exit codes) and ``website/docs/guide/yank.md`` (semantics). The conformance suite is
 ``tests/publish/test_yank.py``.
 
 This command does **not** perform the yank -- owner ruling (design D6)

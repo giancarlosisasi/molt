@@ -80,7 +80,7 @@ Both functions are **synchronous**. molt calls each directly, with no `await` an
 
 Key points:
 
-- **You return lines, not layout.** A function returns the text for one bullet. molt owns the surrounding structure -- the `## <version>` heading, the `### Major/Minor/Patch Changes` sections, ordering, and blank-line spacing. That structural layer is a separate, Jinja2-templated concern; see [Changelog templates](/guides/changelog-templates).
+- **You return lines, not layout.** A function returns the text for one bullet. molt owns the surrounding structure -- the `## <version>` heading, the `### Major/Minor/Patch Changes` sections, ordering, and blank-line spacing. That structural layer is a separate, Jinja2-templated concern; see [Changelog templates](/guide/changelog-templates).
 - **Forge info is injected, not imported.** When the active [forge](/forges/overview) is GitHub, molt passes a `Forge` adapter as the `forge` argument, so the generator resolves commit -> author and PR links through molt's cached, rate-limited client instead of opening its own. A generator that does not need a forge simply ignores the argument; `forge` is `None` when no forge is configured. See [GitHub](/forges/github) for what the adapter exposes.
 - **Options pass through verbatim.** Whatever you put in the config options table arrives as the `options` dict, untouched. A generator validates its own options (and may declare a typed options model so molt can check them at startup rather than mid-release).
 - **Errors abort before any write.** If a generator raises, molt fails the whole `version` run before touching a single file -- consistent with its [atomic, buffer-then-flush](/reference/design-decisions) discipline. You never get a half-written changelog.
@@ -131,6 +131,6 @@ The `git` generator works with no configuration and no network, which is why it 
 ## Where to go next
 
 - [Custom generators](/extending/custom-generators) -- write, register, and configure your own generator, with a worked Jinja2 example.
-- [Changelog templates](/guides/changelog-templates) -- customize the *structure* of an entry (headings, dates, sections) without writing a plugin.
+- [Changelog templates](/guide/changelog-templates) -- customize the *structure* of an entry (headings, dates, sections) without writing a plugin.
 - [GitHub](/forges/github) -- what the injected forge adapter provides.
 - [Options reference](/config/options) -- the full `changelog` option.

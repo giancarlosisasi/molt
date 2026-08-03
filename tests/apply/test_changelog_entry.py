@@ -77,7 +77,7 @@ Divergences pinned as assertions (research README section 3.4)
 ---------------------------------------------------------------
 - **Markdown headings inside a summary survive.** Upstream's summary post-processing strips every
   line beginning with ``#``, destroying headings in changeset descriptions. molt treats a summary
-  as literal prose (``website/docs/guides/changelog-templates.md``, "Correct Markdown, the first
+  as literal prose (``website/docs/guide/changelog-templates.md``, "Correct Markdown, the first
   time").
 - **Replacement is function-based.** A summary or sha containing ``$``, ``\\1`` or ``\\g<0>`` must
   survive byte-for-byte, which in Python means a replacement *callable* passed to ``re.sub``,
@@ -601,7 +601,7 @@ def test_an_entry_is_a_version_heading_plus_its_sections() -> None:
 def test_sections_render_major_then_minor_then_patch_joined_by_a_blank_line() -> None:
     """``get-changelog-entry.ts:112-118`` -- fixed order, ``"\\n\\n"`` join.
 
-    Also confirmed as intended molt behaviour by ``website/docs/guides/changelog-templates.md``
+    Also confirmed as intended molt behaviour by ``website/docs/guide/changelog-templates.md``
     ("Sections render in order: Major, then Minor, then Patch").
     """
     release = Release("pkg-a", MAJOR, v("1.0.0"), v("2.0.0"), ("cs-a", "cs-b", "cs-c"))
@@ -834,7 +834,7 @@ def test_dependency_bumps_are_always_last_and_always_in_the_patch_section(
     """``get-changelog-entry.ts:95-103`` -- pushed into ``patch``, and pushed *last*.
 
     Load-bearing (research README section 3.3; group file index row 30). The rationale is in
-    ``website/docs/guides/changelog-templates.md``: the dependent's own code did not change, so
+    ``website/docs/guide/changelog-templates.md``: the dependent's own code did not change, so
     however large the dependency's release was, the dependent is only being re-released to keep
     its pin valid. Two things are pinned here at once -- the *section* and the *position*.
     """
@@ -938,7 +938,7 @@ NO_CONSTRAINT_CASES = [
         "even though version-package.ts:93-102 refuses to rewrite it -- the changelog claims an "
         "update the manifest never made. molt keeps the two consistent: an unconstrained "
         "dependency 'never triggers a bump' "
-        "(website/docs/guides/dependency-propagation.md), so it is never recorded either",
+        "(website/docs/guide/dependency-propagation.md), so it is never recorded either",
     ),
 ]
 
@@ -1142,7 +1142,7 @@ def test_markdown_headings_inside_a_summary_are_preserved() -> None:
 
     That post-processing silently deletes the heading structure of any changeset written as real
     Markdown -- a body like ``# Breaking\\n...`` loses its title. molt treats a summary as literal
-    prose (``website/docs/guides/changelog-templates.md``, "Your summaries are preserved
+    prose (``website/docs/guide/changelog-templates.md``, "Your summaries are preserved
     literally"), so the assembler must pass ``#`` lines through untouched.
     """
     summary = "# Breaking change\n\n## What moved\n\nThe export API is now streaming-only."
@@ -1194,7 +1194,7 @@ def test_regex_metacharacters_in_a_summary_survive_verbatim(summary: str, why: s
     ``tests/changelog/test_render_template.py::test_render_template_does_not_interpret_regex_replacement_syntax``
     -- there the token value genuinely passes through a substitution, and a replacement-string
     implementation fails it. What these rows do earn their place for is the *other* half of the
-    promise in ``website/docs/guides/changelog-templates.md`` ("Your summaries are preserved
+    promise in ``website/docs/guide/changelog-templates.md`` ("Your summaries are preserved
     literally"): they pin that the assembly path performs no rewriting of author prose at all,
     which is a regression guard on a rule that is easy to break by adding a "helpful"
     normalization step later. Same framing as

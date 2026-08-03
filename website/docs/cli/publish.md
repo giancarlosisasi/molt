@@ -129,7 +129,7 @@ molt publish --repository snapshots
 
 ## See also
 
-- [Publishing](/guides/publishing) -- the release-time guide.
+- [Publishing](/guide/publishing) -- the release-time guide.
 - [molt build](/cli/pack) -- the mandatory build step.
 - [molt git-tag](/cli/git-tag) -- tags created after a successful publish.
 - [Snapshot releases](/concepts/snapshots) and [molt yank](/cli/yank).

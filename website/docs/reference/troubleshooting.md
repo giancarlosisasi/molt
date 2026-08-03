@@ -37,7 +37,7 @@ molt refuses rather than guesses here on purpose; see [Design decisions](/refere
 
 **Fix.** Usually nothing is wrong -- there is simply nothing to release. If you expected a release:
 
-- Confirm you actually [added a changeset](/guides/adding-a-changeset) (`molt status` lists what is pending).
+- Confirm you actually [added a changeset](/guide/adding-a-changeset) (`molt status` lists what is pending).
 - Check that a previous `molt version` did not already consume and delete the changesets (it deletes them once applied).
 - In CI, treat exit 1 from `version` as "no release this run," not as a build failure.
 

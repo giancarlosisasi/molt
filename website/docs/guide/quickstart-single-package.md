@@ -6,13 +6,13 @@ title: "Quickstart: single package"
 
 Take one package from a code change to a published release with `molt init`, `molt add`, `molt version`, and `molt publish`.
 
-Most Python projects ship a single package, and molt treats that as the default path -- not a stripped-down special case. This walkthrough is copy-pasteable end to end. If you manage a workspace of several packages, read the [monorepo quickstart](/getting-started/quickstart-monorepo) instead.
+Most Python projects ship a single package, and molt treats that as the default path -- not a stripped-down special case. This walkthrough is copy-pasteable end to end. If you manage a workspace of several packages, read the [monorepo quickstart](/guide/quickstart-monorepo) instead.
 
 We will use a package called `acme-core` that starts at version `1.2.0`.
 
 ## 0. Set up
 
-Install molt (see [Installation](/getting-started/installation)) and scaffold the project from its root:
+Install molt (see [Installation](/guide/installation)) and scaffold the project from its root:
 
 ```bash
 molt init
@@ -64,7 +64,7 @@ Commit this file in the same pull request as your code. It is the *intent* of th
 molt add --package acme-core --bump minor --message "Add a --stream flag to the export API for large datasets."
 ```
 
-See [Adding a changeset](/guides/adding-a-changeset) for the full flow, interactive and non-interactive.
+See [Adding a changeset](/guide/adding-a-changeset) for the full flow, interactive and non-interactive.
 
 ## 3. Version the package
 
@@ -101,7 +101,7 @@ molt version
 
 **`.changeset/late-mangos-cheer.md`** -- deleted. The intent has been consumed into a concrete release, so the changeset is gone. Re-running `molt version` now would exit with code 1 and "No pending changesets found." -- there is nothing left to do, and molt never double-bumps.
 
-Preview all of this before it touches disk with `molt version --dry-run`; see [Dry runs and plans](/guides/dry-run-and-plans).
+Preview all of this before it touches disk with `molt version --dry-run`; see [Dry runs and plans](/guide/dry-run-and-plans).
 
 Now commit the release:
 
@@ -117,7 +117,7 @@ molt publish
 
 `molt publish` builds the package (an sdist and a wheel), uploads exactly the versions that are not already on the index, and creates an annotated git tag. In a single-package repo the tag is `v1.3.0`.
 
-In CI, molt publishes through PyPI [Trusted Publishing](/guides/publishing) (OIDC), so there is no long-lived token to manage. Locally you can use an API token. Either way, push your tag afterward:
+In CI, molt publishes through PyPI [Trusted Publishing](/guide/publishing) (OIDC), so there is no long-lived token to manage. Locally you can use an API token. Either way, push your tag afterward:
 
 ```bash
 git push --follow-tags
@@ -136,7 +136,7 @@ molt publish              # build, upload, tag
 
 ## Where to go next
 
-- [The release workflow](/getting-started/the-release-workflow) -- the mental model behind these four commands.
-- [Adding a changeset](/guides/adding-a-changeset) and [Versioning](/guides/versioning) -- the two verbs you run most.
-- [Quickstart: monorepo](/getting-started/quickstart-monorepo) -- when one package becomes several.
-- [Publishing](/guides/publishing) -- tokens, Trusted Publishing, and what gets uploaded.
+- [The release workflow](/guide/the-release-workflow) -- the mental model behind these four commands.
+- [Adding a changeset](/guide/adding-a-changeset) and [Versioning](/guide/versioning) -- the two verbs you run most.
+- [Quickstart: monorepo](/guide/quickstart-monorepo) -- when one package becomes several.
+- [Publishing](/guide/publishing) -- tokens, Trusted Publishing, and what gets uploaded.

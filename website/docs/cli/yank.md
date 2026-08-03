@@ -95,5 +95,5 @@ molt yank acme-core 1.1.0 --repository testpypi
 
 ## See also
 
-- [Yanking a release](/guides/yank) -- when to yank, and when to release a fix instead.
+- [Yanking a release](/guide/yank) -- when to yank, and when to release a fix instead.
 - [molt publish](/cli/publish).
