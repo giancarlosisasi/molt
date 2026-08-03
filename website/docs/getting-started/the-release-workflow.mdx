@@ -2,6 +2,8 @@
 title: The release workflow
 ---
 
+import { ChangesetClocks } from '../../components/ChangesetClocks';
+
 # The release workflow
 
 molt splits releasing into three verbs on two clocks: `add` records intent as you work, `version` consumes accumulated intent into concrete releases, and `publish` ships them.
@@ -25,10 +27,7 @@ The idea that makes everything click is that adding intent and consuming intent 
 - **The development clock** ticks once per meaningful change, driven by whoever wrote it. Ten pull requests over two weeks drop ten changesets into `.changeset/`.
 - **The release clock** ticks whenever *you* decide to release. `molt version` drains the whole `.changeset/` buffer at once and computes the correct version for every affected package.
 
-```text
-   development clock  --->  .changeset/  --->  release clock
-   molt add (many)          the buffer         molt version (one batch)
-```
+<ChangesetClocks />
 
 Nobody has to pick a final version number when they open a pull request, because the number depends on *everything* that ships in the release -- which is not known until release time. A package with a pending `minor` and a pending `patch` moves once, by the higher bump. Three changesets do not mean three releases; they mean one release that reflects the most significant change, with all three summaries in the changelog.
 
@@ -42,13 +41,7 @@ On a team, the changeset is a reviewable artifact that travels with the code.
 4. **A release job runs `molt version`** and opens a "Version Packages" pull request containing the version bumps, changelog updates, and lockfile changes -- with the changesets consumed. This PR is the human-readable preview of the next release.
 5. **Merging that PR triggers `molt publish`**, which builds and uploads the changed packages and pushes their tags.
 
-Steps 4 and 5 are wired up for you by the [GitHub Action](/guides/ci-github-action); the same shape works on any forge, since the [forge is a seam](/forges/overview).
-
-```text
-  feature PRs (molt add)          release PR (molt version)         merge
-  ----------------------  --->    -------------------------  --->   -----------------
-  changesets accumulate           bumps + changelogs, previewed     molt publish ships
-```
+Steps 4 and 5 are wired up for you by the [GitHub Action](/guides/ci-github-action), which draws the whole pull-request flow step by step; the same shape works on any forge, since the [forge is a seam](/forges/overview).
 
 ## When to use --dry-run
 
