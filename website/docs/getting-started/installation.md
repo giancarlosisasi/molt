@@ -50,7 +50,7 @@ You install **`molt-release`** but you run **`molt`**. The distribution is named
 molt --version
 ```
 
-This prints the bare version string (for example, `0.1.0`) and touches none of your project -- it is safe to run anywhere.
+This prints the bare version string (for example, `0.1.1`) and touches none of your project -- it is safe to run anywhere.
 
 ## Scaffold a project
 
@@ -75,3 +75,4 @@ See [`molt init`](/cli/init) for the flags and prompts, and [The config file](/c
 - **One package?** Follow the [single-package quickstart](/getting-started/quickstart-single-package) -- the majority Python case, and first-class in molt.
 - **A workspace?** Follow the [monorepo quickstart](/getting-started/quickstart-monorepo) to see dependency propagation in action.
 - **Want the mental model first?** Read [The release workflow](/getting-started/the-release-workflow).
+- **Coming from JavaScript changesets?** [Molt and changesets](/reference/comparison-with-changesets) maps the commands, configuration keys, and changeset fields one to one, and [Migrating from changesets](/guides/migrating-from-changesets) converts an existing `.changeset/` directory.

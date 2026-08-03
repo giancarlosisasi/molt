@@ -43,7 +43,7 @@ features:
   - title: Yanking a release
     details: "PyPI keeps every version forever. molt yank checks the version, reports whether it is already yanked, and prints the PEP 592 steps. PyPI publishes no yank API, so the last click is yours."
     icon: ♻️
-  - title: Windows
-    details: "The test suite runs on Windows. Output stays ASCII-clean and paths behave, so molt runs in the CI you already have."
-    icon: 🪟
+  - title: Test suite
+    details: "2,104 tests cover the release-plan engine, the CLI, the changelog, and the publish path, with property-based cases over PEP 440 bump math."
+    icon: 🧪
 ---

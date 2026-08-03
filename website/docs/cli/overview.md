@@ -102,7 +102,6 @@ The same argument-handling rules apply across every command:
 | `molt status` when nothing relevant changed (or only ignored, private, or unmatched files) | 0 |
 | `molt version` when there are no unreleased changesets | 1 |
 | `molt publish` when there is nothing to publish | 0 |
-| A command whose implementation has not yet landed | non-zero |
 | Unexpected internal error | 1 |
 
 On an unexpected internal error, molt prints a pre-filled issue-report URL that includes the CLI version and the Python version, with the working directory redacted to `<cwd>`, then exits 1. Any other uncaught exception prints a traceback and exits 1. `molt` never lets a bare traceback escape as the program's only output.

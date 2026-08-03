@@ -72,7 +72,7 @@ jobs:
 
       - uses: giancarlosisasi/molt@v1
         with:
-          molt-version: "0.1.0"   # pin molt; keeps the Action and the tool in lockstep
+          molt-version: "0.1.1"   # pin molt; keeps the Action and the tool in lockstep
           publish: molt publish   # the command to run in the publish phase
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -80,13 +80,19 @@ jobs:
 
 That is the entire release automation for a single package or a monorepo. There is **no separate `astral-sh/setup-uv` step**: the Action installs uv itself, from a commit-pinned copy it owns. In production, pin `actions/checkout` and `giancarlosisasi/molt` to full commit SHAs.
 
+:::warning One repository setting is required
+**Settings → Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests.** It is off by default on personal-account repositories, and without it the version phase fails with `GitHub Actions is not permitted to create or approve pull requests`. Granting `pull-requests: write` above does not substitute for it.
+
+Three more settings shape what the loop can do: branch protection on `changeset-release/*`, a signed-commits rule, and whether checks start on the release pull request. All four are in [Repository settings](/forges/github#repository-settings).
+:::
+
 ## Inputs
 
 Every input is optional. Supplying only a token runs the version phase with the defaults below.
 
 | Input | Default | What it does |
 |---|---|---|
-| `molt-version` | latest release | The exact `molt-release` version to install, for example `"0.1.0"`. Empty installs the latest release. See [Pinning molt](#pinning-molt). |
+| `molt-version` | latest release | The exact `molt-release` version to install, for example `"0.1.1"`. Empty installs the latest release. See [Pinning molt](#pinning-molt). |
 | `publish` | *(empty)* | The command that publishes the release, for example `molt publish`. Leave it empty to run the version phase only -- supplying it is also what makes the publish phase reachable at all. |
 | `version-command` | *(empty)* | The command that versions the release, for example `molt version --snapshot canary`. Empty runs molt's own `molt version`. Split with POSIX shell rules, so a quoted argument stays one argument. |
 | `title` | `Version Packages` | The title of the release pull request. |
@@ -219,9 +225,9 @@ Deliberate omissions, each with the reason -- a changesets user migrating looks 
 | changesets has | molt does not | Why |
 |---|---|---|
 | Pre mode (`pre.json`, a title suffix and a banner on the release PR) | -- | Molt has no pre state at all: `1.0.1-next.0` is not a legal PEP 440 version, so `--pre` is a stateless flag on [`molt version`](/cli/version). |
-| Draft pull requests (`prDraft`) | -- | Not implemented; the release PR is always opened ready for review. |
+| Draft pull requests (`prDraft`) | -- | The release pull request is always opened ready for review. |
 | Signed **tags** in `api` mode (`commitMode` also routes `pushTag`) | -- | Molt pushes tags with git in both modes. A tag ref carries no signature either way -- `git push origin <tag>` and the API create the same object -- so signing the commit solves the problem on its own. |
-| A `cwd` input | -- | The Action runs in the checkout root, so a repository whose Python workspace lives in a subdirectory cannot use it yet. |
+| A `cwd` input | -- | The Action runs in the checkout root, so a repository whose Python workspace lives in a subdirectory cannot use it. |
 
 ## Migrating from `changesets/action`
 
