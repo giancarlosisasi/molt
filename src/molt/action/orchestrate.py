@@ -94,6 +94,13 @@ DEFAULT_VERSION_SCRIPT: tuple[str, ...] = ("molt", "version")
 #: is why the value is named here rather than tested for inline.
 _SINGLE_BACKEND = "single"
 
+#: What :func:`_create_release` did, for the caller's report. Three values because the function has
+#: three non-failing outcomes and two of them create nothing: a duplicate the host already carried
+#: (forge design D2), and a package whose project keeps no changelog.
+_CREATED = "created"
+_DUPLICATE = "duplicate"
+_NO_CHANGELOG = "no-changelog"
+
 
 @dataclass(frozen=True, slots=True)
 class ActionResult:
@@ -158,6 +165,7 @@ def run_action(
     commit_mode: CommitMode = CommitMode.GIT_CLI,
     forge: Any = None,
     git: Any = None,
+    console: Any = None,
 ) -> ActionResult:
     """Run one half of the release loop, whichever half this repository is in.
 
@@ -174,8 +182,11 @@ def run_action(
     git command line, so every existing call site and every pinned row is byte-identical with no
     edit. It only ever reaches the version phase; the publish phase has no commit of its own.
 
-    ``forge`` and ``git`` are seams. They default to a real :class:`~molt.forge.GitHubForge` and
-    :class:`molt.git.Git`, resolved lazily inside the call.
+    ``forge``, ``git`` and ``console`` are seams. They default to a real
+    :class:`~molt.forge.GitHubForge`, :class:`molt.git.Git` and
+    :data:`molt.ui.console.console`, each resolved lazily inside the call. ``console`` reaches only
+    the publish phase, which is the one that has an outcome a human has to be able to read
+    (design D4).
 
     **Every failure that exits with a child's status leaves as an** :class:`ActionFailed`, carrying
     whatever this run had observed (owner ruling 2026-08-01, design D13). That is what lets the
@@ -200,6 +211,7 @@ def run_action(
             commit_mode=commit_mode,
             forge=forge,
             git=git,
+            console=console,
         )
     # The clause order is the whole correctness here, and it is the same subclass trap
     # `molt.commands.version`'s funnel documents one module over: `ActionFailed` **is** an
@@ -231,6 +243,7 @@ def _dispatch(
     commit_mode: CommitMode,
     forge: Any,
     git: Any,
+    console: Any = None,
 ) -> ActionResult:
     """Run the phase ``mode`` selected, or nothing at all.
 
@@ -254,7 +267,12 @@ def _dispatch(
     # product code is a statement that vanishes under `python -O`.
     if mode is Mode.PUBLISH and publish is not None:
         return _publish_phase(
-            root, command=publish, create_releases=create_releases, forge=forge, git=git
+            root,
+            command=publish,
+            create_releases=create_releases,
+            forge=forge,
+            git=git,
+            console=console,
         )
     return ActionResult(has_changesets=has_changesets)
 
@@ -367,6 +385,7 @@ def _publish_phase(
     create_releases: bool,
     forge: Any,
     git: Any,
+    console: Any = None,
 ) -> ActionResult:
     """Publish, create one host release per published package, and only then fail.
 
@@ -391,10 +410,18 @@ def _publish_phase(
     ``create_releases`` is upstream's ``createGithubReleases`` input and defaults to on. Switched
     off, the publish still happens and is still reported in full -- the switch is about the host,
     not about the release.
+
+    **Every outcome is reported through** ``console`` (design D4). The release step used to be
+    silent in all four cases, and that silence is what let a wrong answer survive three releases:
+    ``published=false`` is a legitimate value -- it is what a "nothing to release" run reports -- so
+    a run that published a package and detected none looked exactly like a run with nothing to do.
+    Saying "no package was reported as published, so no release was created" makes the same state
+    legible in the workflow log, where somebody reading a green job can see it.
     """
     from molt.git import Git
 
     seam = Git(root) if git is None else git
+    console = _resolve_console(console)
     result = run_publish(command=list(command), cwd=root, git=seam)
 
     failures: list[tuple[str, str]] = []
@@ -403,7 +430,7 @@ def _publish_phase(
         forge_seam = _resolve_forge(forge)
         for package in result.published_packages:
             try:
-                _create_release(package, workspace=workspace, forge=forge_seam)
+                outcome = _create_release(package, workspace=workspace, forge=forge_seam)
             # `MoltError`, deliberately, and never `Exception`: every failure molt *models* is a
             # `MoltError` -- the missing-changelog-section refusal `_create_release` raises itself,
             # and every forge failure including an exhausted retry budget. A `KeyError` or an
@@ -411,6 +438,14 @@ def _publish_phase(
             # would hide it behind a message that reads like a host problem.
             except MoltError as error:
                 failures.append((package.name, str(error)))
+            else:
+                console.info(_release_outcome_line(package, outcome))
+    elif create_releases:
+        console.info(
+            "No package was reported as published, so no host release was created. When a package "
+            "did reach the index, the publish command reported no tag: molt reads its "
+            "machine-readable output, and falls back to `New tag:` lines on stdout."
+        )
 
     outcome = ActionResult(
         published=result.published,
@@ -447,8 +482,13 @@ def _release_failure_summary(failures: Sequence[tuple[str, str]]) -> str:
     )
 
 
-def _create_release(package: PublishedPackage, *, workspace: Workspace, forge: Any) -> None:
+def _create_release(package: PublishedPackage, *, workspace: Workspace, forge: Any) -> str:
     """Create one host release for a published package (``run.ts:118-149``).
+
+    Returns which of the three things happened -- :data:`_CREATED`, :data:`_DUPLICATE` or
+    :data:`_NO_CHANGELOG` -- because the caller reports it and must not have to guess. Inferring
+    "created" from "did not raise" would report a release for the two cases that deliberately make
+    none.
 
     Two per-package rules are ported from ``run.ts:30-58``, and they pull in opposite directions on
     purpose:
@@ -471,33 +511,39 @@ def _create_release(package: PublishedPackage, *, workspace: Workspace, forge: A
     directory = discovered.directory if discovered is not None else workspace.root
     changelog = directory / CHANGELOG_FILENAME
     if not changelog.is_file():
-        return
+        return _NO_CHANGELOG
 
     content, _level = _changelog_entry(
         directory, package.version, package=package.name, required=True
     )
     tag = _release_tag(package, single_package=workspace.backend == _SINGLE_BACKEND)
-    forge.create_release(
+    created = forge.create_release(
         tag,
         name=tag,
         body=content,
         prerelease=is_prerelease(package.version),
     )
+    return _DUPLICATE if created is None else _CREATED
 
 
 def _release_tag(package: PublishedPackage, *, single_package: bool) -> str:
     """The tag the release points at, in the shape molt's own tagging wrote it.
 
-    ``<pep503-name>@<version>`` for a workspace member through
-    :func:`molt.publish.tag_name`, and ``v<version>`` for a single-package repository -- the branch
-    ``molt git-tag`` design D2 defines, because there the version alone identifies the release.
-    A release pointing at a tag that does not exist is a broken link on the host.
+    **The publish command's own answer wins when it gave one.** A package resolved from the git-tag
+    event stream carries the tag that command actually created, so nothing here re-derives it and a
+    release cannot point at a tag molt merely believes should exist (design D3).
 
-    This is the **third** copy of that branch (``molt.commands.git_tag``,
-    ``molt.publish.publish._publish_tag``, here), which is one too many; the extraction is recorded
-    as ``openspec/GAPS.md`` ``AP-5`` rather than performed inside a change that must not disturb
-    ``tests/publish``.
+    Without one -- the ``New tag:`` fallback path, which parses no tag -- the shape is derived:
+    ``<pep503-name>@<version>`` for a workspace member through :func:`molt.publish.tag_name`, and
+    ``v<version>`` for a single-package repository, the branch ``molt git-tag`` design D2 defines
+    because there the version alone identifies the release.
+
+    That derivation is the **third** copy of the branch (``molt.commands.git_tag``,
+    ``molt.publish.publish._publish_tag``, here). ``openspec/GAPS.md`` ``AP-5`` **narrows** rather
+    than closes: the copy survives, but only on the path a molt publish no longer takes.
     """
+    if package.tag:
+        return package.tag
     if single_package:
         return f"v{package.version}"
     return tag_name(package.name, package.version)
@@ -540,6 +586,38 @@ def _changelog_entry(
             ) from exc
         return "", 0
     return entry.content, entry.highest_level
+
+
+def _release_outcome_line(package: PublishedPackage, outcome: str) -> str:
+    """One line saying what the release step did for ``package``.
+
+    Each of the three says what happened *and* why nothing further is wrong, because the two
+    non-creating outcomes are both correct and both look like a failure to a reader who does not
+    know the rules (design D4).
+    """
+    tag = package.tag or f"{package.name} {package.version}"
+    if outcome == _CREATED:
+        return f"Created the host release for {tag}."
+    if outcome == _DUPLICATE:
+        return f"The host already carries a release for {tag}; left it alone."
+    return (
+        f"{package.name} has no {CHANGELOG_FILENAME}, so no host release was created for {tag}. "
+        f"That is what a project keeping no changelog looks like on disk."
+    )
+
+
+def _resolve_console(console: Any) -> Any:
+    """The injected console, or molt's own.
+
+    Imported **inside** the function for the same reason :func:`_resolve_forge` is: ``molt.ui``
+    costs ``rich``, and this module is reached from ``molt.action.cli`` whose import graph
+    ``tests/cli/test_cli.py`` keeps thin.
+    """
+    if console is not None:
+        return console
+    from molt.ui.console import console as default
+
+    return default
 
 
 def _resolve_forge(forge: Any) -> Any:

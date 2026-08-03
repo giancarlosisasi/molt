@@ -10,7 +10,8 @@ What each loop owns
 :func:`run_version` switches to ``changeset-release/<branch>`` (``run.ts:112``), records every
 package's version, runs the script, works out what actually moved, commits, and force-pushes
 (``run.ts:146``). :func:`run_publish` runs the publish script, pushes the tags the script created,
-and reports which packages went out by scraping the ``New tag:`` lines it printed.
+and reports which packages went out -- from the script's machine-readable git-tag event stream, and
+from its ``New tag:`` stdout lines when it wrote no stream.
 
 **How the version commit reaches the remote is a mode**, :class:`CommitMode`. The default is the
 git command line, exactly as above. Selecting :attr:`CommitMode.API` makes no local branch, no
@@ -30,6 +31,12 @@ Two deliberate divergences from upstream
   answer becomes the body of a public pull request -- it has to mean "these were released". The
   before/after version diff gets that for free, which is why neither this module nor upstream's
   ``getChangedPackages`` (``utils.ts:16-31``) takes an ``ignore`` argument.
+* **The published set is read from a machine channel, not from a log line.** ``run.ts:41-47``
+  scrapes stdout because ``changeset publish`` writes ``New tag:`` there with ``console.log``.
+  molt's console sends every human-facing level to **stderr**, so the same scrape found nothing on
+  every real run -- three releases published, tagged, and reported nothing. :func:`run_publish`
+  reads molt's NDJSON git-tag stream first and keeps the scrape for publish commands that are not
+  molt. See its docstring.
 
 Everything that touches the remote goes through the injected :class:`~molt.git.Git` seam, so a test
 that does not hand one over pushes to whatever ``origin`` its own temporary clone has, and never
@@ -38,6 +45,8 @@ anywhere real.
 
 from __future__ import annotations
 
+import json
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -53,9 +62,10 @@ from molt.ecosystem import (
     resolve_workspace_versions,
 )
 from molt.errors import ExitError, MoltError
+from molt.events import GIT_TAG_EVENT
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
     from molt.ecosystem import Package, Workspace
 
@@ -90,6 +100,11 @@ _SINGLE_TAG_PATTERN = re.compile(r"New tag:")
 #: :attr:`molt.ecosystem.Workspace.backend` for a repository that declares no workspace -- the
 #: analogue of ``@manypkg``'s ``tool === "root"`` test (``run.ts:44``).
 _SINGLE_BACKEND = "single"
+
+#: The environment variable that back-fills ``--output`` when a molt command is given no flag
+#: (``molt.cli.normalize_options`` rule 6; upstream's ``CHANGESETS_OUTPUT``, ``index.ts:59-63``).
+#: :func:`run_publish` names a destination through it rather than editing the caller's argv.
+_OUTPUT_VARIABLE = "MOLT_OUTPUT"
 
 
 class CommitMode(StrEnum):
@@ -145,10 +160,15 @@ class RunVersionResult:
 
 @dataclass(frozen=True, slots=True)
 class PublishedPackage:
-    """One package a publish script announced with a ``New tag:`` line."""
+    """One package a publish script announced, through its event stream or a ``New tag:`` line."""
 
     name: str
     version: str
+    #: The tag the publish command reported creating, when it reported one. Present on every
+    #: event-stream path and ``None`` on the ``New tag:`` fallback, where no tag is parsed out --
+    #: a caller with ``None`` re-derives the tag from molt's own tagging rule (design D3).
+    #: Defaulted, so every construction site that predates the event stream is unchanged.
+    tag: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,26 +323,69 @@ def run_publish(
     the partial publish unobservable, which is exactly the information a half-failed release loses
     for good.
 
-    Which packages went out is scraped from the script's stdout, not from the tag list, because
-    only the script knows which uploads the index actually accepted. A monorepo announces
-    ``New tag: <name>@<version>`` (``run.ts:47``) and a single-package repository announces
-    ``New tag: v<version>`` with no name (``run.ts:75``); the reported version comes from the
-    manifest in both cases, so a tag spelled unusually cannot invent a release.
+    Which packages went out comes from **two sources, in a fixed order** -- the script's
+    machine-readable git-tag event stream first, its ``New tag:`` stdout lines second. Never both:
+    a non-empty stream is the whole answer (design D1). Only the script knows which uploads the
+    index actually accepted, which is why neither source is the tag list.
+
+    **The stream is primary because stdout cannot detect a molt publish at all.** ``molt publish``
+    announces each tag with ``console.success("New tag: ...")``, and :mod:`molt.ui.console`'s
+    streams contract sends every human-facing level to **stderr** -- stdout carries machine-readable
+    payloads only, so ``molt status --output json | jq`` is not poisoned by the banner. This loop
+    scraped stdout, faithfully to ``run.ts:41-47``, where ``changeset publish`` writes those lines
+    with ``console.log`` and stdout is the only channel. molt kept the consumer and reversed the
+    producer's stream, so the scrape found nothing on every real run: ``molt-release`` 0.1.0, 0.1.1
+    and 0.1.2 each published, tagged, reported an empty released set, created no host release and
+    exited green.
+
+    The destination for that stream is named through **``MOLT_OUTPUT``** rather than by appending
+    ``--output`` to the command, because the command is the workflow author's argv and molt does not
+    parse it. :func:`molt.cli.normalize_options` rule 6 already back-fills the option from that
+    variable (upstream's ``withEnvOptions``, ``index.ts:59-63``), so it reaches every molt command
+    in the child's process tree. A value the caller already set **wins**: a workflow that sets it is
+    collecting the stream for a later step, and overriding it would break that step silently while
+    giving molt the same events it can read from the caller's file anyway.
+
+    The ``New tag:`` scrape is kept, and is reached whenever the stream is missing or empty, because
+    a publish command that is **not** molt still follows upstream's contract -- a shell script, a
+    ``twine`` wrapper. An empty stream falls through rather than meaning "nothing was published": an
+    empty file is what ``molt publish`` writes when it published nothing *and* what a non-molt
+    command leaves behind when this loop pre-creates the path, and the two cannot be told apart from
+    the file. The fallback answers both correctly, because a molt run that published nothing has no
+    ``New tag:`` lines either. A monorepo announces ``New tag: <name>@<version>`` (``run.ts:47``)
+    and a single-package repository ``New tag: v<version>`` with no name (``run.ts:75``); the
+    reported version comes from the manifest on both paths, so a tag spelled unusually cannot
+    invent a release.
     """
+    import tempfile
+
     from molt.git import Git
 
     root = Path(cwd)
     seam = Git(root) if git is None else git
 
-    completed = _run_script(command, cwd=root)
+    handle, name = tempfile.mkstemp(prefix="molt-publish-", suffix=".ndjson")
+    os.close(handle)
+    temporary = Path(name)
+    stream, environment = _publish_environment(temporary)
+    try:
+        completed = _run_script(command, cwd=root, env=environment)
+        events = _read_tag_events(stream)
+    finally:
+        # Only molt's own file. A destination the caller named belongs to the caller's later step,
+        # and deleting it would be the silent breakage that honouring the value exists to avoid.
+        temporary.unlink(missing_ok=True)
+
     seam.push_tags()
 
     workspace = discover_workspace(find_workspace_root(root))
-    released = (
-        _single_package_releases(completed.stdout, workspace)
-        if workspace.backend == _SINGLE_BACKEND
-        else _monorepo_releases(completed.stdout, workspace)
-    )
+    released = _event_releases(events, workspace)
+    if not released:
+        released = (
+            _single_package_releases(completed.stdout, workspace)
+            if workspace.backend == _SINGLE_BACKEND
+            else _monorepo_releases(completed.stdout, workspace)
+        )
     return RunPublishResult(
         published=bool(released),
         published_packages=released,
@@ -335,7 +398,9 @@ def run_publish(
 # ======================================================================================
 
 
-def _run_script(argv: Sequence[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+def _run_script(
+    argv: Sequence[str], *, cwd: Path, env: Mapping[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     """Run ``argv`` in ``cwd`` and return the completed process. **Never raises on a status.**
 
     ``argv`` is a list, never a string, and it is never handed to a shell (design D1). Upstream
@@ -343,11 +408,17 @@ def _run_script(argv: Sequence[str], *, cwd: Path) -> subprocess.CompletedProces
     ``--snapshot canary`` unexpressible. An empty ``argv`` is still a :class:`~molt.errors
     .MoltError`: that is a caller mistake, not a child's failure.
 
-    Only stdout is captured -- :func:`run_publish` scrapes it. **stderr is inherited on purpose**,
-    so the script's own diagnostics reach the workflow log as it runs instead of being swallowed
-    into an exception message nobody sees when the job is cancelled. That is also why
-    :func:`_require_success`'s :class:`~molt.errors.ExitError` carries only the status: the
-    operator already has the output.
+    Only stdout is captured -- the ``New tag:`` fallback in :func:`run_publish` reads it. **stderr
+    is inherited on purpose**, so the script's own diagnostics reach the workflow log as it runs
+    instead of being swallowed into an exception message nobody sees when the job is cancelled.
+    That is also why :func:`_require_success`'s :class:`~molt.errors.ExitError` carries only the
+    status: the operator already has the output. Capturing stderr *would* have made the old stdout
+    scrape find molt's own ``New tag:`` lines, and it is the wrong fix twice over -- it hides a live
+    upload log until the command exits, and it keeps a human sentence as a machine contract.
+
+    ``env`` is the child's whole environment, or ``None`` to inherit this process's. Only
+    :func:`run_publish` passes one, to name a ``MOLT_OUTPUT`` destination; ``None`` keeps every
+    other call site byte-identical to before the seam existed.
 
     Deciding what a non-zero status *means* is the caller's, because the two callers disagree
     (owner ruling 2026-07-31, closing gap ``AP-14``). :func:`run_version` fails immediately through
@@ -364,7 +435,91 @@ def _run_script(argv: Sequence[str], *, cwd: Path) -> subprocess.CompletedProces
         encoding="utf-8",
         errors="replace",
         check=False,
+        env=None if env is None else dict(env),
     )
+
+
+def _publish_environment(temporary: Path) -> tuple[Path, dict[str, str]]:
+    """``(the stream to read, the child's environment)`` for a publish run.
+
+    ``MOLT_OUTPUT`` is the seam :func:`molt.cli.normalize_options` rule 6 reads to back-fill
+    ``--output`` when the flag is absent, so naming it here reaches every molt command the publish
+    script spawns without this loop parsing an argv it does not own (design D2).
+
+    **A value the caller already set wins, and then the loop reads _that_ file.** A workflow that
+    exports ``MOLT_OUTPUT`` is collecting the stream for a later step; overriding it would break
+    that step in silence. Honouring the variable but still reading ``temporary`` would be worse
+    than either -- the command writes where it was told, molt reads an empty file it made itself,
+    and the run reports nothing while looking like it tried. The path is returned rather than
+    assumed for exactly that reason.
+
+    Accepted consequence, recorded as a gap: a publish command that chains two molt commands has
+    the second truncate the first's file, because :func:`molt.events.write_ndjson` overwrites.
+    ``molt publish`` already tags, so the realistic chain does not arise.
+    """
+    environment = dict(os.environ)
+    caller = environment.get(_OUTPUT_VARIABLE)
+    stream = Path(caller) if caller else temporary
+    environment[_OUTPUT_VARIABLE] = str(stream)
+    return stream, environment
+
+
+def _read_tag_events(stream: Path) -> tuple[dict[str, Any], ...]:
+    """The git-tag events ``stream`` carries, or ``()`` for anything unreadable.
+
+    **Never raises.** By the time this runs the publish command has already reached the index, and
+    failing the run over a reporting artifact would turn a successful release into a red job for a
+    reason nobody can act on (design D1, Risks). Every unreadable shape -- a missing file, an empty
+    one, a truncated line, a line that is not an object -- resolves to "no events", which is the
+    value that sends :func:`run_publish` to the stdout fallback.
+    """
+    try:
+        text = stream.read_text(encoding="utf-8")
+    except OSError:
+        return ()
+    events: list[dict[str, Any]] = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            return ()
+        if isinstance(event, dict) and event.get("type") == GIT_TAG_EVENT:
+            events.append(event)
+    return tuple(events)
+
+
+def _event_releases(
+    events: Sequence[Mapping[str, Any]], workspace: Workspace
+) -> tuple[PublishedPackage, ...]:
+    """The published packages ``events`` name, resolved against the workspace.
+
+    The event's ``package_name`` is matched **PEP 503-normalized** through
+    :meth:`molt.ecosystem.Workspace.get`, exactly as :func:`_monorepo_releases` matches a scraped
+    name, and a name that matches nothing is the same real error for the same reason: the publish
+    command and molt disagree about what this repository contains, and guessing would report a
+    release nobody can find.
+
+    The event carries the **tag it created**, so it travels on the result and the caller stops
+    re-deriving one from the package's name and version (design D3). That narrows
+    ``openspec/GAPS.md`` ``AP-5`` -- the tag-shape branch survives only on the fallback path now.
+    """
+    released: list[PublishedPackage] = []
+    for event in events:
+        name = str(event.get("package_name", ""))
+        package = workspace.get(name)
+        if package is None:
+            raise MoltError(f"Package {name} was published but is not in this workspace")
+        tag = event.get("tag")
+        released.append(
+            PublishedPackage(
+                name=package.name,
+                version=package.version or "",
+                tag=str(tag) if tag else None,
+            )
+        )
+    return tuple(released)
 
 
 def _require_success(completed: subprocess.CompletedProcess[str]) -> str:

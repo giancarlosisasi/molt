@@ -46,6 +46,10 @@ Very large releases degrade rather than fail. GitHub rejects a pull-request body
 
 After a successful publish, molt creates one **GitHub Release per published package**, named for that package's tag and carrying that package's changelog entry as the body, marked as a prerelease when the version is a PEP 440 prerelease. This is on by default and can be switched off; switching it off does not change what is published or what is reported.
 
+Which packages went out is read from the publish command's **machine-readable output**: `molt publish` writes one JSON event per tag it creates, and the Action reads that. A publish command that is not molt — a shell script, a `twine` wrapper — is read from its `New tag:` lines on stdout instead, which is the contract `changesets` uses. You configure neither; the Action names the destination for the stream itself, and honours a `MOLT_OUTPUT` you set yourself if you are collecting the events for a later step.
+
+The Action reports each release it created, each one the host already carried, and — when releases are on and the publish command reported no package — that it created none and why. A run that published nothing and a run that published something it failed to detect both write `published=false`, so the log line is what tells them apart.
+
 A package with no `CHANGELOG.md` is skipped silently -- that is what "this project keeps no changelog" looks like on disk. A package whose `CHANGELOG.md` exists but carries no section for the version just published **fails the run**, naming the package and the version: the file is there, so release notes were meant to be written and are missing. A release the host already carries is not an error -- re-running a publish that half-failed completes the missing releases instead of failing on the finished ones.
 
 ### No pre mode
