@@ -2,6 +2,8 @@
 title: "CI: GitHub Action"
 ---
 
+import { ReleaseFlow } from '../../components/ReleaseFlow';
+
 # CI: GitHub Action
 
 Automate the whole release loop on GitHub: molt keeps a "Version Packages" pull request in sync with your accumulated changesets, and publishes to PyPI over OIDC the moment that PR merges.
@@ -20,6 +22,9 @@ Every push to your base branch triggers one of two behaviors, and molt decides w
 - **Publish phase** -- there are no pending changesets but there *are* versions on disk that are not yet on PyPI. That is the state right after the release PR merges. Molt builds and [publishes](/guides/publishing) the changed packages, git-tags each one, and creates a GitHub Release per package with its changelog entry as the body.
 
 So the human loop is simply: merge feature PRs (each carrying a changeset), watch the "Version Packages" PR accumulate, and merge it when you want to cut a release. Merging it is the release.
+
+<ReleaseFlow />
+
 
 The release PR lives on a dedicated branch, `changeset-release/<base>` (for a `main` base, `changeset-release/main`). Molt owns that branch and force-updates it -- do not hand-edit it, your changes are replaced on the next push. The name is deliberately the one changesets uses, so a repository migrating from changesets keeps its existing release branch, its open release PR, and any branch protection rule written against that name.
 
