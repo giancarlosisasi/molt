@@ -105,6 +105,21 @@ molt status --since origin/main
 
 `--since <ref>` scopes "what changed" to the diff against a base branch, which is what you want on a PR. Wire this into the [GitHub Action](/guides/ci-github-action) and every PR is checked automatically.
 
+### The release pull request
+
+Exclude the branch the release action owns, `changeset-release/<base>`. That branch carries molt's own version commit: it deletes the changesets it consumed and bumps the manifests, so a changed package with no changeset covering it is what a correct release pull request looks like. A gate that runs there fails every release.
+
+On GitHub Actions the condition belongs on the job, so the check reports as skipped rather than failed:
+
+```yaml
+jobs:
+  changeset:
+    name: a changeset covers what changed
+    if: >-
+      github.event_name == 'pull_request'
+      && github.head_ref != format('changeset-release/{0}', github.base_ref)
+```
+
 ## Where to go next
 
 - [Dry runs and plans](/guides/dry-run-and-plans) -- the machine-readable plan across every command.
