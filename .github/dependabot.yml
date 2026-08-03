@@ -1,5 +1,9 @@
-# Keeps the SHA-pinned `astral-sh/setup-uv` step in the root `action.yml` current.
-# A pin nobody refreshes is a stale pin (openspec/GAPS.md CO-4).
+# Keeps the SHA-pinned `uses:` steps in `.github/workflows/` current, `giancarlosisasi/molt-action`
+# among them. A pin nobody refreshes is a stale pin (openspec/GAPS.md CO-4).
+#
+# It used to cover the composite `action.yml` at this repository's root too. That file moved to
+# giancarlosisasi/molt-action on 2026-08-03, which runs Dependabot on the same weekly interval for
+# the `astral-sh/setup-uv` pin it now owns.
 version: 2
 updates:
   - package-ecosystem: "github-actions"

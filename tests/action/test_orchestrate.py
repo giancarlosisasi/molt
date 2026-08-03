@@ -1257,3 +1257,135 @@ def test_a_repository_with_no_changeset_directory_has_nothing_pending(
     else:
         assert result.published is False, "and with no publish command the run does nothing"
         assert forge.calls == []
+
+
+# ======================================================================================
+# The release step reports what it did (design D4).
+#
+# The step used to be silent in every case. That silence is what let a wrong answer survive three
+# releases: `published=false` is a legitimate value -- it is what a "nothing to release" run
+# reports -- so a run that published a package and detected none looked exactly like a run with
+# nothing to do. Neither the workflow log nor the outputs distinguished them.
+# ======================================================================================
+
+
+class CollectingConsole:
+    """A console double that keeps every line, shaped like :class:`molt.ui.console.Console`."""
+
+    def __init__(self) -> None:
+        self.lines: list[str] = []
+
+    def info(self, *messages: object) -> None:
+        self.lines.append(" ".join(str(message) for message in messages))
+
+    success = info
+    warn = info
+    error = info
+
+    def note(self, title: str, body: str = "") -> None:
+        self.lines.append(f"{title}\n{body}" if body else title)
+
+
+#: Tags one package and reports it the way `molt publish` really does: through the event stream,
+#: with nothing on stdout.
+PUBLISH_STUB_EVENTS = """
+import json
+import os
+
+with open(os.environ["MOLT_OUTPUT"], "w", encoding="utf-8") as stream:
+    stream.write(
+        json.dumps(
+            {"type": "git-tag", "tag": "pkg-a@1.1.0", "package_name": "pkg-a"},
+            separators=(",", ":"),
+        )
+        + "\\n"
+    )
+"""
+
+
+@pytest.mark.integration
+def test_a_publish_reported_only_on_the_event_stream_creates_its_release(
+    tmp_path: Path, tmp_project: ProjectBuilder
+) -> None:
+    """Spec: "A release per published package", reached through the channel molt actually uses.
+
+    The publish stub prints nothing on stdout, so the scrape sees an empty run. This is the
+    end-to-end shape of the 0.1.2 failure: before the event stream was read, this row created no
+    release and reported ``published=false`` while the package was on the index.
+
+    The release points at the tag the **event** named, not one re-derived from the package's name
+    and version (design D3).
+    """
+    seed_published_workspace(tmp_project)
+    journal: list[str] = []
+    forge = RecordingForge(journal)
+    console = CollectingConsole()
+
+    result = run_action(
+        cwd=tmp_project.root,
+        publish=stub_script(tmp_path, PUBLISH_STUB_EVENTS),
+        forge=forge,
+        git=FakeGit(journal),
+        console=console,
+    )
+
+    assert result.published is True
+    assert [call.args[0] for call in forge.named("create_release")] == ["pkg-a@1.1.0"]
+    assert any("Created the host release for pkg-a@1.1.0" in line for line in console.lines)
+
+
+@pytest.mark.integration
+def test_creating_no_releases_is_reported_rather_than_silent(
+    tmp_path: Path, tmp_project: ProjectBuilder
+) -> None:
+    """Spec: "Creating no releases is reported, not silent".
+
+    A publish command that reports nothing is indistinguishable, in the outputs alone, from a run
+    with nothing to release -- both carry ``published=false`` and an empty package list. Saying so
+    in the log is what makes the state legible to somebody reading a green job, which is the thing
+    that did not happen for `molt-release` 0.1.0, 0.1.1 and 0.1.2.
+    """
+    seed_published_workspace(tmp_project)
+    journal: list[str] = []
+    forge = RecordingForge(journal)
+    console = CollectingConsole()
+
+    result = run_action(
+        cwd=tmp_project.root,
+        publish=stub_script(tmp_path, "pass\n"),
+        forge=forge,
+        git=FakeGit(journal),
+        console=console,
+    )
+
+    assert result.published is False
+    assert forge.named("create_release") == []
+    assert any("no host release was created" in line for line in console.lines), (
+        "a release step that creates nothing must say so; silence is what hid the 0.1.2 bug"
+    )
+
+
+@pytest.mark.integration
+def test_a_release_the_host_already_carries_is_reported_as_left_alone(
+    tmp_path: Path, tmp_project: ProjectBuilder
+) -> None:
+    """A duplicate is reported as a duplicate, not as a creation (design D4).
+
+    ``forge.create_release`` answers ``None`` for a release the host already has (forge design D2),
+    and reporting that as "created" would tell an operator re-running a half-failed publish that it
+    did work it did not do.
+    """
+    seed_published_workspace(tmp_project)
+    journal: list[str] = []
+    forge = RecordingForge(journal, duplicate_releases=True)
+    console = CollectingConsole()
+
+    run_action(
+        cwd=tmp_project.root,
+        publish=stub_script(tmp_path, PUBLISH_STUB_EVENTS),
+        forge=forge,
+        git=FakeGit(journal),
+        console=console,
+    )
+
+    assert any("already carries a release for pkg-a@1.1.0" in line for line in console.lines)

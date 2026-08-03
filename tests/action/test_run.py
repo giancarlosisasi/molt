@@ -479,3 +479,225 @@ def test_version_fails_when_the_script_exits_non_zero(tmp_path: Path, git_repo: 
         run_version(cwd=clone.root, script=stub_script(tmp_path, "import sys\nsys.exit(7)\n"))
 
     assert excinfo.value.code == 7
+
+
+# ======================================================================================
+# The event stream -- the channel a molt publish actually reports on.
+#
+# molt diverges from `run.ts:41-47` here, and the divergence is why these rows exist. Upstream has
+# one output channel: `changeset publish` writes `New tag:` to stdout with `console.log`, so
+# scraping stdout is correct there. molt's `console.success` writes to **stderr**, because
+# `molt.ui.console`'s streams contract keeps stdout for machine-readable payloads only. The scrape
+# was ported anyway and found nothing on every real run: `molt-release` 0.1.0, 0.1.1 and 0.1.2 each
+# published to PyPI, pushed a tag, reported an empty released set, created no GitHub Release and
+# exited green (run 30780112459).
+#
+# Every publish stub above writes its `New tag:` line with `print`, i.e. to stdout -- which is why
+# this suite passed while production was broken. `test_publish_reads_the_real_molt_publish_command`
+# is the row that could not have passed.
+# ======================================================================================
+
+
+def event_line(tag: str, package_name: str) -> str:
+    """One NDJSON git-tag event, in ``molt.events.write_ndjson``'s exact compact form."""
+    return json.dumps(
+        {"type": "git-tag", "tag": tag, "package_name": package_name}, separators=(",", ":")
+    )
+
+
+#: Tags two packages and reports them **only** through the event stream, printing nothing on
+#: stdout. This is the shape of a real `molt publish`: its human line went to stderr.
+STUB_PUBLISH_EVENTS = """
+import os
+import subprocess
+
+for tag in ("pkg-a@1.0.0", "pkg-b@1.0.0"):
+    subprocess.run(["git", "tag", "-a", tag, "-m", tag], check=True)
+
+with open(os.environ["MOLT_OUTPUT"], "w", encoding="utf-8") as stream:
+    stream.write(EVENT_A + "\\n")
+    stream.write(EVENT_B + "\\n")
+"""
+
+
+def test_publish_reads_the_published_set_from_the_event_stream(
+    tmp_path: Path, git_repo: GitRepo
+) -> None:
+    """A publish reporting only through the stream is fully reported.
+
+    Spec: "The published set comes from the event stream". Nothing is printed on stdout, so the
+    scrape returns nothing and this row fails against the code that shipped 0.1.2. Each package
+    also carries the tag its own event named, which is what stops ``_release_tag`` re-deriving one.
+    """
+    origin = git_repo
+    seed_workspace(
+        origin,
+        {"pkg-a": member_manifest("pkg-a", "1.0.0"), "pkg-b": member_manifest("pkg-b", "1.0.0")},
+    )
+    clone = origin.shallow_clone(tmp_path / "clone")
+    origin.run("checkout", "-b", "some-other-branch")
+    body = STUB_PUBLISH_EVENTS.replace("EVENT_A", repr(event_line("pkg-a@1.0.0", "pkg-a"))).replace(
+        "EVENT_B", repr(event_line("pkg-b@1.0.0", "pkg-b"))
+    )
+
+    result = run_publish(command=stub_script(tmp_path, body), cwd=clone.root)
+
+    assert result.published is True
+    assert [(p.name, p.version, p.tag) for p in result.published_packages] == [
+        ("pkg-a", "1.0.0", "pkg-a@1.0.0"),
+        ("pkg-b", "1.0.0", "pkg-b@1.0.0"),
+    ]
+
+
+#: Writes an **empty** stream and reports on stdout -- what a publish command that is not molt
+#: leaves behind once ``run_publish`` has pre-created the path for it.
+STUB_PUBLISH_EMPTY_STREAM = """
+import os
+import subprocess
+
+subprocess.run(["git", "tag", "-a", "pkg-a@1.0.0", "-m", "pkg-a@1.0.0"], check=True)
+open(os.environ["MOLT_OUTPUT"], "w", encoding="utf-8").close()
+print("New tag: pkg-a@1.0.0")
+"""
+
+
+def test_publish_falls_back_to_the_scrape_when_the_stream_is_empty(
+    tmp_path: Path, git_repo: GitRepo
+) -> None:
+    """An empty stream is not "nothing was published".
+
+    Spec: "An empty event stream falls back to the scrape". An empty file is what ``molt publish``
+    writes when it published nothing **and** what a non-molt command leaves behind, and the two
+    cannot be told apart from the file. Falling through answers both, because a molt run that
+    published nothing prints no ``New tag:`` line either.
+    """
+    origin = git_repo
+    seed_workspace(origin, {"pkg-a": member_manifest("pkg-a", "1.0.0")})
+    clone = origin.shallow_clone(tmp_path / "clone")
+    origin.run("checkout", "-b", "some-other-branch")
+
+    result = run_publish(command=stub_script(tmp_path, STUB_PUBLISH_EMPTY_STREAM), cwd=clone.root)
+
+    assert result.published is True
+    assert [(p.name, p.tag) for p in result.published_packages] == [("pkg-a", None)]
+
+
+#: Reports through **both** channels, disagreeing about how many packages went out.
+STUB_PUBLISH_BOTH_CHANNELS = """
+import os
+import subprocess
+
+for tag in ("pkg-a@1.0.0", "pkg-b@1.0.0"):
+    subprocess.run(["git", "tag", "-a", tag, "-m", tag], check=True)
+
+with open(os.environ["MOLT_OUTPUT"], "w", encoding="utf-8") as stream:
+    stream.write(EVENT_A + "\\n")
+
+print("New tag: pkg-a@1.0.0")
+print("New tag: pkg-b@1.0.0")
+"""
+
+
+def test_publish_prefers_the_stream_over_the_scrape_and_never_merges_them(
+    tmp_path: Path, git_repo: GitRepo
+) -> None:
+    """A non-empty stream is the whole answer (design D1).
+
+    Merging the two sources would report ``pkg-a`` twice, and de-duplicating them means matching a
+    tag string against a package name -- the guesswork the stream removes. ``pkg-b`` is on stdout
+    only and is deliberately **not** reported: the command's machine-readable answer wins outright.
+    """
+    origin = git_repo
+    seed_workspace(
+        origin,
+        {"pkg-a": member_manifest("pkg-a", "1.0.0"), "pkg-b": member_manifest("pkg-b", "1.0.0")},
+    )
+    clone = origin.shallow_clone(tmp_path / "clone")
+    origin.run("checkout", "-b", "some-other-branch")
+    body = STUB_PUBLISH_BOTH_CHANNELS.replace("EVENT_A", repr(event_line("pkg-a@1.0.0", "pkg-a")))
+
+    result = run_publish(command=stub_script(tmp_path, body), cwd=clone.root)
+
+    assert [p.name for p in result.published_packages] == ["pkg-a"]
+
+
+#: Writes to whatever ``MOLT_OUTPUT`` names, which the row below sets before the loop runs.
+STUB_PUBLISH_CALLER_STREAM = """
+import os
+import subprocess
+
+subprocess.run(["git", "tag", "-a", "pkg-a@1.0.0", "-m", "pkg-a@1.0.0"], check=True)
+with open(os.environ["MOLT_OUTPUT"], "w", encoding="utf-8") as stream:
+    stream.write(EVENT_A + "\\n")
+"""
+
+
+def test_publish_keeps_a_stream_destination_the_caller_already_set(
+    tmp_path: Path, git_repo: GitRepo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ``MOLT_OUTPUT`` the caller set wins.
+
+    Spec: "A caller's own stream destination is not overridden". A workflow that exports it is
+    collecting the stream for a later step; overriding it would break that step in silence, and
+    reading the caller's file hands molt the same events. The file must survive the run -- molt
+    removes only the temporary one it created itself.
+    """
+    origin = git_repo
+    seed_workspace(origin, {"pkg-a": member_manifest("pkg-a", "1.0.0")})
+    clone = origin.shallow_clone(tmp_path / "clone")
+    origin.run("checkout", "-b", "some-other-branch")
+    destination = tmp_path / "caller-owned.ndjson"
+    monkeypatch.setenv("MOLT_OUTPUT", str(destination))
+    body = STUB_PUBLISH_CALLER_STREAM.replace("EVENT_A", repr(event_line("pkg-a@1.0.0", "pkg-a")))
+
+    result = run_publish(command=stub_script(tmp_path, body), cwd=clone.root)
+
+    assert [p.name for p in result.published_packages] == ["pkg-a"]
+    assert destination.is_file(), "molt must not delete a file the caller asked to have written"
+    assert "pkg-a" in destination.read_text(encoding="utf-8")
+
+
+#: A single package carrying the `Private :: Do Not Upload` classifier. `molt publish` plans it as
+#: **tag-only**: no artifact is uploaded, so the run needs no index, no credential and no network,
+#: and it still takes the real tagging path that emits the event and writes the `New tag:` line.
+PRIVATE_PACKAGE_MANIFEST = """[project]
+name = "single-package"
+version = "1.0.0"
+requires-python = ">=3.11"
+classifiers = ["Private :: Do Not Upload"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+"""
+
+
+def test_publish_reads_the_real_molt_publish_command(tmp_path: Path, git_repo: GitRepo) -> None:
+    """**The row that was missing.** The real ``molt publish``, through the real ``run_publish``.
+
+    Every other publish row in this file drives a stub that prints ``New tag:`` with ``print``, so
+    on stdout. The real command writes that line through :mod:`molt.ui.console`, so on **stderr**,
+    and the producer and the consumer had therefore never met in a test. The suite stayed green
+    through three releases that created no host release at all.
+
+    A private package keeps this offline and still exercises the whole tagging path: the plan is
+    tag-only, so nothing is uploaded, no credential is resolved and no index is read, while
+    ``_upload_plan`` still creates the tag, appends the git-tag event and writes the stream.
+
+    The assertion is only that the loop learned something. That is exactly what it failed to do in
+    production, and the diagnosis is in the message.
+    """
+    origin = git_repo
+    write_bytes(origin.root / "pyproject.toml", PRIVATE_PACKAGE_MANIFEST)
+    write_bytes(origin.root / "src" / "single_package" / "__init__.py", "")
+    origin.run("add", ".")
+    origin.commit("chore: seed a private single package")
+    clone = origin.shallow_clone(tmp_path / "clone")
+    origin.run("checkout", "-b", "some-other-branch")
+
+    result = run_publish(command=[sys.executable, "-m", "molt", "publish"], cwd=clone.root)
+
+    assert [(p.name, p.tag) for p in result.published_packages] == [("single-package", "v1.0.0")], (
+        "the real `molt publish` reports its tags on the event stream, never on stdout -- an empty "
+        "set here is the 0.1.2 bug: uploaded, tagged, no host release, exit 0"
+    )

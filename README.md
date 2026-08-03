@@ -106,14 +106,15 @@ Python's packaging rules shape several of molt's behaviors.
 
 ## Continuous integration
 
-The repository root carries a composite GitHub Action that runs the whole loop. It keeps a "Version
-Packages" pull request in sync with your pending changesets, then builds, publishes, tags, and
-creates a GitHub Release per package once that pull request merges.
+[molt-action](https://github.com/giancarlosisasi/molt-action) is a composite GitHub Action that runs
+the whole loop. It keeps a "Version Packages" pull request in sync with your pending changesets,
+then builds, publishes, tags, and creates a GitHub Release per package once that pull request
+merges.
 
 ```yaml
-- uses: giancarlosisasi/molt@<sha>
+- uses: giancarlosisasi/molt-action@v1
   with:
-    molt-version: "0.1.0"
+    molt-version: "0.1.2"
     publish: molt publish
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
