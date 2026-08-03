@@ -123,7 +123,9 @@
   padding: 0.125rem 0.5rem;
   border-radius: 999px;
   background: var(--rp-c-brand);
-  color: #fff;
+  /* Text on a brand fill inverts by mode -- white on the light jade, near-black on the dark
+     one, which white would meet at 2.24:1. `bg-alt` is the token that already flips that way. */
+  color: var(--rp-c-bg-alt);
   font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.04em;

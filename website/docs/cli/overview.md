@@ -49,7 +49,7 @@ These options are accepted by every command (subject to the command actually hav
 | `--version` | flag | -- | Print the bare version string (for example `0.1.0`) and exit 0. No banner, no prefix. |
 | `-h`, `--help` | flag | -- | Show help for the program or a command and exit 0. |
 
-The startup banner (`molt v<version>`, prefixed with a butterfly glyph) prints once before a matched command's output. It is **not** printed for `--help` or `--version`. On a Windows console that cannot encode the glyph, the banner degrades to plain text rather than raising an error.
+The startup banner (`molt v<version>`, prefixed with a snake glyph) prints once before a matched command's output. It is **not** printed for `--help` or `--version`. On a Windows console that cannot encode the glyph, the banner degrades to plain text rather than raising an error.
 
 > `-v` is **not** a global alias for `--version`. On [`molt status`](/cli/status), `-v` means `--verbose`. Use the long `--version` form for the version string.
 

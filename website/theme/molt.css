@@ -1,0 +1,284 @@
+/*
+ * molt's palette. This is the only stylesheet in the site that names a color literal --
+ * every page, and both local components, read `--rp-c-*` or `--molt-*`.
+ *
+ * Three specificity facts drive the selectors below, all verified against @rspress/core 2.0.18:
+ *
+ *   1. The dark class is `rp-dark`. Rspress toggles `dark` as well, but every shipped variable
+ *      is declared under `html.rp-dark`, so that is the class to match.
+ *   2. Most shipped variables sit inside `:where(...)`, which contributes zero specificity.
+ *      A plain `:root` beats them, so nothing here needs `!important`.
+ *   3. The fonts (base.css) and the callout containers (Callout/index.css) are the exception:
+ *      they ship in real `:root` and `.dark` rules. `html:root`, `:root:not(.rp-dark)` and
+ *      `:root.rp-dark` all outrank those without depending on stylesheet order.
+ */
+
+/* ---------------------------------------------------------------- mode-independent */
+html:root {
+  --molt-font-sans: ui-sans-serif, -apple-system, "Segoe UI", Inter, system-ui, sans-serif;
+  --molt-font-mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", "Cascadia Mono", Consolas,
+    monospace;
+  --rp-font-family-base: var(--molt-font-sans);
+  --rp-font-family-mono: var(--molt-font-mono);
+
+  /* The hero gradient runs parchment to jade, left to right: the shed skin to the new one,
+     in the direction a reader already scans `1.2.0 -> 2.0.0`. It is the only gradient here,
+     and the brand button reuses it as its fill. */
+  --rp-home-hero-title-color: transparent;
+  --rp-home-hero-title-bg: linear-gradient(92deg, var(--molt-parchment) 0%, var(--molt-brand) 62%);
+  --rp-home-hero-secondary-color: var(--molt-brand);
+
+  /* Callout containers. Rspress ships seven; all seven are mapped so none can fall back to
+     its stock blue or purple. `color-mix` against transparent keeps a callout legible on
+     whatever surface it lands on, including inside a card. */
+  --rp-container-tip-border: color-mix(in srgb, var(--molt-brand) 34%, transparent);
+  --rp-container-tip-text: var(--molt-brand);
+  --rp-container-tip-bg: color-mix(in srgb, var(--molt-brand) 8%, transparent);
+  --rp-container-tip-code-bg: color-mix(in srgb, var(--molt-brand) 14%, transparent);
+
+  --rp-container-info-border: color-mix(in srgb, var(--molt-blue) 34%, transparent);
+  --rp-container-info-text: var(--molt-blue);
+  --rp-container-info-bg: color-mix(in srgb, var(--molt-blue) 8%, transparent);
+  --rp-container-info-code-bg: color-mix(in srgb, var(--molt-blue) 14%, transparent);
+
+  --rp-container-note-border: color-mix(in srgb, var(--molt-blue) 34%, transparent);
+  --rp-container-note-text: var(--molt-blue);
+  --rp-container-note-bg: color-mix(in srgb, var(--molt-blue) 8%, transparent);
+  --rp-container-note-code-bg: color-mix(in srgb, var(--molt-blue) 14%, transparent);
+  --rp-container-note-link: var(--molt-blue);
+
+  --rp-container-important-border: color-mix(in srgb, var(--molt-brand) 34%, transparent);
+  --rp-container-important-text: var(--molt-brand);
+  --rp-container-important-bg: color-mix(in srgb, var(--molt-brand) 8%, transparent);
+  --rp-container-important-code-bg: color-mix(in srgb, var(--molt-brand) 14%, transparent);
+
+  --rp-container-warning-border: color-mix(in srgb, var(--molt-warning) 36%, transparent);
+  --rp-container-warning-text: var(--molt-warning);
+  --rp-container-warning-bg: color-mix(in srgb, var(--molt-warning) 9%, transparent);
+  --rp-container-warning-code-bg: color-mix(in srgb, var(--molt-warning) 15%, transparent);
+
+  --rp-container-danger-border: color-mix(in srgb, var(--molt-error) 36%, transparent);
+  --rp-container-danger-text: var(--molt-error);
+  --rp-container-danger-bg: color-mix(in srgb, var(--molt-error) 9%, transparent);
+  --rp-container-danger-code-bg: color-mix(in srgb, var(--molt-error) 15%, transparent);
+
+  --rp-container-details-border: var(--rp-c-divider);
+  --rp-container-details-text: var(--rp-c-text-1);
+  --rp-container-details-bg: var(--rp-c-bg-soft);
+  --rp-container-details-code-bg: var(--rp-c-text-code-bg);
+
+  /* Syntax highlighting. Rspress ships a shiki ramp whose light comment token measures
+     2.06:1 on the code surface, so the tokens are re-pointed at palette entries that were
+     solved against every background they can land on. Six hues, one job each: red keyword,
+     green string, blue constant, jade callable, amber parameter, muted comment. */
+  --rp-code-block-color: var(--rp-c-text-1);
+  --shiki-token-comment: var(--rp-c-text-3);
+  --shiki-token-punctuation: var(--rp-c-text-2);
+  --shiki-token-keyword: var(--molt-error);
+  --shiki-token-string: var(--molt-success);
+  --shiki-token-string-expression: var(--molt-success);
+  --shiki-token-constant: var(--molt-blue);
+  --shiki-token-parameter: var(--molt-warning);
+  --shiki-token-function: var(--molt-brand);
+  --shiki-token-link: var(--molt-blue);
+  --shiki-token-inserted: var(--molt-success);
+  --shiki-token-deleted: var(--molt-error);
+
+  /* Rspress's gray ramp is a single #8e8e8e that fails contrast in both modes. */
+  --rp-c-gray: var(--rp-c-text-3);
+  --rp-c-gray-light-1: var(--rp-c-text-3);
+  --rp-c-gray-light-2: var(--rp-c-divider);
+  --rp-c-gray-light-3: var(--rp-c-divider);
+  --rp-c-gray-light-4: var(--rp-c-divider-light);
+  --rp-c-gray-light-5: var(--rp-c-bg-soft);
+}
+
+/* ---------------------------------------------------------------------------- light */
+:root:not(.rp-dark) {
+  --molt-brand: #006e61;
+  --molt-blue: #2a5f94;
+  --molt-parchment: #6b6047;
+  --molt-success: #1a6e37;
+  --molt-warning: #7f5a05;
+  --molt-error: #b32d37;
+  --molt-major: #b32d37;
+  --molt-minor: #1a6e37;
+  --molt-patch: #2a5f94;
+
+  --rp-c-brand: #006e61;
+  --rp-c-brand-light: #008576;
+  --rp-c-brand-lighter: #00a08c;
+  --rp-c-brand-dark: #005c51; /* --rp-c-link resolves here in light mode: 7.59:1 */
+  --rp-c-brand-darker: #004038;
+  --rp-c-brand-tint: #006e611f;
+
+  --rp-c-bg: #fbfaf7;
+  --rp-c-bg-soft: #f2f0ea;
+  --rp-c-bg-mute: #e7e4db;
+  --rp-c-bg-alt: #ffffff;
+
+  --rp-c-divider: #cbc7bb;
+  --rp-c-divider-light: #e5e2d9;
+
+  --rp-c-text-0: #000000;
+  --rp-c-text-1: #12171a;
+  --rp-c-text-2: #454f54;
+  --rp-c-text-3: #5a6367;
+  --rp-c-text-4: #787d80;
+
+  --rp-c-text-code: #12171a;
+  --rp-c-text-code-bg: #f2f0ea;
+  --rp-c-text-code-border: #e5e2d9;
+
+  --rp-code-block-bg: #f2f0ea;
+  --rp-code-title-bg: #e7e4db;
+
+  /* Rspress's stock home background is a stack of purple and blue radial gradients over a
+     hardcoded base color, which would sit under the hero and reintroduce the page background
+     this palette just replaced. */
+  --rp-home-background-bg:
+    radial-gradient(
+      42% 56% at 100% 0%,
+      color-mix(in srgb, var(--molt-brand) 10%, transparent) 0%,
+      transparent 100%
+    ),
+    radial-gradient(
+      80% 58% at 0% 0%,
+      color-mix(in srgb, var(--molt-parchment) 22%, transparent) 0%,
+      transparent 100%
+    ),
+    var(--rp-c-bg);
+  --rp-home-feature-bg: linear-gradient(
+    135deg,
+    var(--rp-c-bg-alt),
+    color-mix(in srgb, var(--rp-c-bg-soft) 50%, transparent)
+  );
+}
+
+/* ----------------------------------------------------------------------------- dark */
+:root.rp-dark {
+  --molt-brand: #17c3a2;
+  --molt-blue: #7ca8d6;
+  --molt-parchment: #c9bc9c;
+  --molt-success: #68d77b;
+  --molt-warning: #e4b75c;
+  --molt-error: #ef7a78;
+  --molt-major: #ef7a78;
+  --molt-minor: #68d77b;
+  --molt-patch: #7ca8d6;
+
+  --rp-c-brand: #17c3a2;
+  --rp-c-brand-light: #3fd9b8; /* --rp-c-link resolves here in dark mode: 10.76:1 */
+  --rp-c-brand-lighter: #7fe8d0;
+  --rp-c-brand-dark: #12a288;
+  --rp-c-brand-darker: #0d7a66;
+  --rp-c-brand-tint: #17c3a229;
+
+  --rp-c-bg: #0c1013;
+  --rp-c-bg-soft: #12181c;
+  --rp-c-bg-mute: #182027;
+  /* Darker than the page in dark mode and lighter in light mode, matching rspress's own
+     defaults. It is what separates the nav and the footer without a border. */
+  --rp-c-bg-alt: #080b0d;
+
+  --rp-c-divider: #2c3841;
+  --rp-c-divider-light: #1e272d;
+
+  --rp-c-text-0: #ffffff;
+  --rp-c-text-1: #e4ebe9;
+  --rp-c-text-2: #a7b5b3;
+  /* Rspress's own text-3 and text-4 are translucent, which makes their effective contrast
+     depend on whatever is painted behind them. Opaque values are what make the palette's
+     contrast budget checkable at all. */
+  --rp-c-text-3: #869492;
+  --rp-c-text-4: #6b7573;
+
+  --rp-c-text-code: #e4ebe9;
+  --rp-c-text-code-bg: #12181c;
+  --rp-c-text-code-border: #1e272d;
+
+  --rp-code-block-bg: #080b0d;
+  --rp-code-title-bg: #12181c;
+
+  --rp-home-background-bg:
+    radial-gradient(
+      42% 56% at 100% 0%,
+      color-mix(in srgb, var(--molt-brand) 14%, transparent) 0%,
+      transparent 100%
+    ),
+    radial-gradient(
+      80% 58% at 0% 0%,
+      color-mix(in srgb, var(--molt-parchment) 9%, transparent) 0%,
+      transparent 100%
+    ),
+    var(--rp-c-bg);
+  --rp-home-feature-bg: linear-gradient(
+    135deg,
+    transparent,
+    color-mix(in srgb, var(--rp-c-text-1) 4%, transparent)
+  );
+}
+
+/*
+ * A filled brand button takes dark text on dark-mode jade and white text on light-mode jade.
+ * Rspress hardcodes white for both, which measures 2.24:1 against #17c3a2. There is no single
+ * "on brand" token in the palette because the right value is the one the mode decides.
+ */
+:root.rp-dark .rp-button--brand {
+  color: var(--rp-c-bg);
+}
+
+:root:not(.rp-dark) .rp-button--brand {
+  color: #ffffff;
+}
+
+/*
+ * The hamburger takes over before the inline menu can collide with it.
+ *
+ * Rspress hides the inline nav menu only below 769px but shows its medium hamburger from
+ * 769px up, so between those points both layouts render at once. With eight top-level items
+ * the menu alone is wider than a tablet, and every route scrolls sideways. Raising the
+ * handover point removes the overlap; nothing changes at desktop width.
+ */
+@media (width <= 1099px) {
+  .rp-nav .rp-nav-menu {
+    display: none;
+  }
+
+  .rp-nav .rp-nav-hamburger__sm {
+    display: block;
+  }
+
+  .rp-nav .rp-nav-hamburger__md {
+    display: none;
+  }
+}
+
+/* Rspress removes the focus outline from every button. */
+:focus-visible {
+  outline: 2px solid var(--molt-brand);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Component transitions are declared on the elements themselves, so this reset has to
+     outrank them rather than a variable. */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  /* The gradient loses its own contrast at the parchment end; flat brand keeps the title
+     readable. `-webkit-text-fill-color` is what actually paints the glyphs here. */
+  .rp-home-hero__title-brand {
+    background: none;
+    color: var(--molt-brand);
+    -webkit-text-fill-color: var(--molt-brand);
+  }
+}

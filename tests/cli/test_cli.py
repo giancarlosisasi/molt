@@ -165,7 +165,7 @@ HEAVY_MODULE_PREFIXES = (
 #: The startup banner (cli-shell spec, "Startup banner gating"). The glyph is written as an escape
 #: on purpose: a raw non-ASCII character in this file would be unreadable on a cp1252 console and
 #: violates the project's ASCII-only test-source rule.
-BANNER_GLYPH = "\U0001f98b"
+BANNER_GLYPH = "\U0001f40d"
 BANNER_TEXT = f"molt v{__version__}"
 
 #: What the glyph may degrade to when the console cannot encode it (overview.md:50, terminal-ui
@@ -685,7 +685,7 @@ def test_banner_is_printed_once_before_a_matched_command(monkeypatch: pytest.Mon
     and the command wrapper (the obvious D2 mistake) would still contain the string.
 
     The glyph is asserted too. ``BANNER_TEXT`` alone is satisfied by a shell that prints a bare
-    ``molt v0.1.0``, but overview.md:50 pins "``molt v<version>``, prefixed with a butterfly
+    ``molt v0.1.0``, but overview.md:50 pins "``molt v<version>``, prefixed with a snake
     glyph" and the terminal-ui spec makes degrading it a *Windows encoding* concession, not a
     free choice -- so a run whose stream can encode the glyph must show it, and one that cannot
     must still show a visible placeholder rather than nothing.
@@ -699,7 +699,7 @@ def test_banner_is_printed_once_before_a_matched_command(monkeypatch: pytest.Mon
     assert text.count(BANNER_TEXT) == 1
     prefix = text.split(BANNER_TEXT, 1)[0].rsplit("\n", 1)[-1]
     assert BANNER_GLYPH in prefix or any(marker in prefix for marker in DEGRADED_GLYPH_MARKERS), (
-        f"the banner leads with the butterfly glyph (overview.md:50); got {prefix!r}"
+        f"the banner leads with the snake glyph (overview.md:50); got {prefix!r}"
     )
 
 

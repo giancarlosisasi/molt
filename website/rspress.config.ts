@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { defineConfig } from '@rspress/core';
 
 // Navigation & sidebar are file-driven (rspress v2 "auto nav/sidebar"):
@@ -23,6 +24,7 @@ export default defineConfig({
   route: {
     cleanUrls: true,
   },
+  globalStyles: path.join(import.meta.dirname, 'theme/molt.css'),
   themeConfig: {
     socialLinks: [
       {
