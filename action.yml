@@ -177,6 +177,13 @@ runs:
         # to no other remote, and appended after any git config the caller already put in the
         # environment rather than replacing it.
         #
+        # Upstream reached the same place independently: `changesets/action` PR #670, "Avoid putting
+        # the github token in the global `.netrc` file" (2026-06-24), deletes the `.netrc` write and
+        # sets the same three environment variables. It writes `http.<server>/.extraheader` where
+        # this writes a credential helper -- a base64 of the token in an environment variable, which
+        # needs a `core.setSecret` call a composite cannot make. Expanding `${GITHUB_TOKEN}` when
+        # git calls the helper keeps the value in the one variable Actions already masks.
+        #
         # Two entries, not one: git *accumulates* credential helpers and takes the first answer, so
         # a runner image with a helper of its own would answer first. An empty value resets the
         # list, which is what makes molt's helper authoritative.
