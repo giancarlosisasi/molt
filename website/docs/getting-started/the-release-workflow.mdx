@@ -41,7 +41,22 @@ On a team, the changeset is a reviewable artifact that travels with the code.
 4. **A release job runs `molt version`** and opens a "Version Packages" pull request containing the version bumps, changelog updates, and lockfile changes -- with the changesets consumed. This PR is the human-readable preview of the next release.
 5. **Merging that PR triggers `molt publish`**, which builds and uploads the changed packages and pushes their tags.
 
-Steps 4 and 5 are wired up for you by the [GitHub Action](/guides/ci-github-action), which draws the whole pull-request flow step by step; the same shape works on any forge, since the [forge is a seam](/forges/overview).
+:::tip Steps 4 and 5 in GitHub Actions
+You do not script steps 4 and 5. The [GitHub Action](/guides/ci-github-action) runs both phases on
+every push to your base branch: it opens and updates the "Version Packages" pull request while
+changesets are pending, and publishes to PyPI over OIDC once you merge it.
+
+```yaml
+- uses: giancarlosisasi/molt-action@v1
+  with:
+    publish: molt publish
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+That guide draws the whole pull-request flow step by step. The same shape works on any forge, since
+the [forge is a seam](/forges/overview).
+:::
 
 ## When to use --dry-run
 
