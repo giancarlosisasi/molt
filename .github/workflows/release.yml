@@ -68,7 +68,9 @@ jobs:
           # molt reads history to decide which packages changed and which commit a changeset came
           # from. A shallow clone gives it neither.
           fetch-depth: 0
-          # molt pushes with the token passed below, not with a credential left in .git/config.
+          # The action supplies its own push credential, from the GITHUB_TOKEN passed below, for
+          # the length of its own step. So the checkout leaves none in .git/config: nothing molt
+          # runs needs one, and no later step in this workflow inherits one it did not ask for.
           persist-credentials: false
 
       # `./` is this repository's own `action.yml`. A user writes a published ref
@@ -104,6 +106,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          # Same as the version job: the action carries its own credential for the tag push, and
+          # the `v1` step below carries its own.
           persist-credentials: false
 
       - name: Publish, tag and cut the release
@@ -122,8 +126,9 @@ jobs:
       # `molt-cli`, the distribution name PyPI refused, so every `@v1` run was broken. Moving it here
       # ties it to the action that matches the molt just published.
       #
-      # `persist-credentials: false` on the checkout means git holds no push credential, so the
-      # token goes on the remote URL for this one command. Actions masks it in the log.
+      # This step is outside the action, so it does not get the action's credential: that one lives
+      # in the action's own step environment and nothing survives it. The token goes on the remote
+      # URL for this one command instead. Actions masks it in the log.
       - name: Move the v1 reference
         if: steps.molt.outputs.published == 'true'
         env:

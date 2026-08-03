@@ -72,8 +72,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 0
-          persist-credentials: false
+          fetch-depth: 0            # molt reads history; a shallow clone gives it none
+          persist-credentials: false  # the Action brings its own push credential
 
       - uses: giancarlosisasi/molt@v1
         with:
@@ -84,6 +84,8 @@ jobs:
 ```
 
 That is the entire release automation for a single package or a monorepo. There is **no separate `astral-sh/setup-uv` step**: the Action installs uv itself, from a commit-pinned copy it owns. In production, pin `actions/checkout` and `giancarlosisasi/molt` to full commit SHAs.
+
+`persist-credentials: false` is deliberate and the Action supports it. Both phases push -- the version phase force-pushes the release branch, the publish phase pushes the tags -- and molt authenticates them from the `GITHUB_TOKEN` you pass, through a credential it puts in the environment for the length of its own step. The token is never written to the runner's disk, and no step you add after molt inherits a credential from it. Leaving the checkout's credentials in place instead (`persist-credentials: true`) also works, but then the push uses the checkout's token rather than the one molt was given, which differ as soon as you pass a GitHub App token or a PAT.
 
 :::warning One repository setting is required
 **Settings → Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests.** It is off by default on personal-account repositories, and without it the version phase fails with `GitHub Actions is not permitted to create or approve pull requests`. Granting `pull-requests: write` above does not substitute for it.

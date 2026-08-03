@@ -3,6 +3,8 @@ title: The changeset workflow
 description: How recording intent per change turns into version numbers at release time.
 ---
 
+import { ChangesetClocks } from '../../components/ChangesetClocks';
+
 # The changeset workflow
 
 Molt is built on one idea: **you declare the intent of a change when you make it, and a separate
@@ -52,16 +54,7 @@ into it; the release manager drains it on their own schedule. Nobody has to deci
 number at the moment they open a pull request, because that number depends on everything shipping in
 the release, which is not known until release time.
 
-```bash
-# Two weeks of development produce a pile of intent...
-.changeset/
-  slow-lions-cough.md      # minor: acme-core
-  brave-mugs-sing.md       # patch: acme-cli
-  tidy-eels-return.md      # patch: acme-core
-
-# ...consumed in one deliberate step
-molt version
-```
+<ChangesetClocks />
 
 If `acme-core` has a pending `minor` and a pending `patch`, molt takes the **highest** bump and moves
 it once. Three changesets do not mean three releases. They mean one release that reflects the most

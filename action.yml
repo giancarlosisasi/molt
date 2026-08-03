@@ -13,10 +13,16 @@
 # documented names, that `runs.using` is composite, and that every `uses:` is pinned to a commit.
 #
 # Ported from `changesets/action` v1.9.0 `action.yml` and `src/index.ts` (read 2026-07-31): the
-# input meanings, the token precedence (`index.ts:14-20`) and the committer identity
-# (`index.ts:39-46`). Not ported: the `.netrc` write (`index.ts:47-53`) and the npm registry
-# plumbing (`index.ts:75-115`) -- molt pushes with the checkout's own credentials and publishes
+# input meanings, the token precedence (`index.ts:14-20`), the committer identity
+# (`index.ts:39-46`) and the push credential (`index.ts:47-53`) -- the last one by a different
+# route, an environment-scoped git credential helper rather than a `~/.netrc` file, for the reasons
+# on the step itself. Not ported: the npm registry plumbing (`index.ts:75-115`); molt publishes
 # over PyPI Trusted Publishing.
+#
+# The credential step is not optional and was once thought to be. Until 2026-08-02 this file said
+# molt "pushes with the checkout's own credentials", which contradicted the `persist-credentials:
+# false` that molt's own guide recommends: the first real run of the version phase died on
+# `could not read Username for 'https://github.com'` after correctly computing the bump.
 name: molt
 description: >-
   Automate a Python release with molt: keep a "Version Packages" pull request in sync with pending
@@ -155,6 +161,41 @@ runs:
         # Token precedence, ported from index.ts:14-20: a GITHUB_TOKEN already in the environment
         # wins, so a workflow written before the input existed keeps working.
         export GITHUB_TOKEN="${GITHUB_TOKEN:-${MOLT_ACTION_TOKEN_INPUT}}"
+
+        # Give git a push credential. Both phases push -- the version phase force-pushes the
+        # release branch, the publish phase pushes the tags -- and `actions/checkout` with
+        # `persist-credentials: false`, which molt's own guide recommends and every workflow here
+        # uses, leaves the checkout with no way to authenticate one. Without this git falls through
+        # to asking for a username on a runner that has no terminal, and reports it as
+        # `could not read Username for 'https://github.com': No such device or address`.
+        #
+        # This is upstream's `.netrc` write (index.ts:47-53) reached by a different route. The token
+        # is carried in the **environment**, not written to `~/.netrc`, to `~/.gitconfig` or onto
+        # the remote URL: `GIT_CONFIG_COUNT` is read by every git this step spawns and by nothing
+        # after it, so the token never lands on the runner's disk and no later step in the caller's
+        # workflow inherits a credential it did not ask for. Scoped to this host, so it is offered
+        # to no other remote, and appended after any git config the caller already put in the
+        # environment rather than replacing it.
+        #
+        # Upstream reached the same place independently: `changesets/action` PR #670, "Avoid putting
+        # the github token in the global `.netrc` file" (2026-06-24), deletes the `.netrc` write and
+        # sets the same three environment variables. It writes `http.<server>/.extraheader` where
+        # this writes a credential helper -- a base64 of the token in an environment variable, which
+        # needs a `core.setSecret` call a composite cannot make. Expanding `${GITHUB_TOKEN}` when
+        # git calls the helper keeps the value in the one variable Actions already masks.
+        #
+        # Two entries, not one: git *accumulates* credential helpers and takes the first answer, so
+        # a runner image with a helper of its own would answer first. An empty value resets the
+        # list, which is what makes molt's helper authoritative.
+        if [ -n "${GITHUB_TOKEN}" ]; then
+          molt_git_host="${GITHUB_SERVER_URL:-https://github.com}"
+          molt_git_index="${GIT_CONFIG_COUNT:-0}"
+          export "GIT_CONFIG_KEY_${molt_git_index}=credential.${molt_git_host}.helper"
+          export "GIT_CONFIG_VALUE_${molt_git_index}="
+          export "GIT_CONFIG_KEY_$((molt_git_index + 1))=credential.${molt_git_host}.helper"
+          export "GIT_CONFIG_VALUE_$((molt_git_index + 1))=!f() { printf 'username=x-access-token\npassword=%s\n' \"\${GITHUB_TOKEN}\"; }; f"
+          export GIT_CONFIG_COUNT=$((molt_git_index + 2))
+        fi
 
         # An empty `molt-version` means "no `==` pin", not `molt-release==`.
         requirement="molt-release"

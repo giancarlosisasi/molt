@@ -188,6 +188,40 @@ def test_the_committer_identity_step_is_conditional_on_the_commit_mode() -> None
     assert "commit-mode" in ACTION["inputs"], "the condition names an input that exists"
 
 
+def test_the_run_step_gives_git_a_push_credential() -> None:
+    """The composite establishes a push credential itself (upstream's ``index.ts:47-53``).
+
+    Both phases push -- the version phase force-pushes ``changeset-release/<base>``, the publish
+    phase pushes the tags -- and the checkout molt's own guide recommends carries
+    ``persist-credentials: false``, which leaves git nothing to authenticate with. The first real
+    run of the version phase proved it: the bump was computed correctly and then
+    ``git push origin HEAD:changeset-release/main --force`` failed with ``could not read Username
+    for 'https://github.com'`` (``openspec/GAPS.md`` ``CO-12``, ``CO-20``).
+
+    Three things are checkable here, and each is a way the fix has already been wrong once:
+
+    1. the credential is configured **through the environment** (``GIT_CONFIG_COUNT``), so the token
+       reaches git without being written to the runner's disk or left behind for a later step;
+    2. the helper reads ``GITHUB_TOKEN`` at call time rather than having a token baked into it,
+       which is what keeps the value out of anything that dumps the resolved git configuration;
+    3. the list of helpers is **reset** before molt's is added -- a runner image carrying a helper
+       of its own would otherwise answer first, and git takes the first answer.
+
+    Whether a runner's git then authenticates a real push is ``CO-12``'s residue, unchanged.
+    """
+    script = str(run_step()["run"])
+
+    assert "GIT_CONFIG_COUNT" in script, (
+        "the push credential must reach git through the environment, not through a file"
+    )
+    assert ".helper" in script, "the credential is supplied by a git credential helper"
+    assert script.count("credential.") >= 2, (
+        "git accumulates helpers and takes the first answer, so molt's has to be preceded by an "
+        "empty value that resets the list"
+    )
+    assert "${GITHUB_TOKEN}" in script, "the helper resolves the token when git calls it"
+
+
 #: The Dependabot configuration that keeps the pin in ``action.yml`` current, resolved from the same
 #: repository-root anchor.
 DEPENDABOT_PATH = ACTION_PATH.parent / ".github" / "dependabot.yml"
