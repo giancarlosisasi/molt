@@ -17,13 +17,13 @@ molt version [OPTIONS]
 `molt version` drains the `.changeset/` buffer. It reads all pending changesets, builds the [release plan](/concepts/release-plan), and applies it:
 
 - **Bumps each package** to its computed version, taking the highest bump among the changesets that touch it.
-- **Propagates through the dependency graph** -- a dependent whose constraint no longer accepts the new version gets released too, and its pin is rewritten. See [Dependency propagation](/guides/dependency-propagation).
+- **Propagates through the dependency graph** -- a dependent whose constraint no longer accepts the new version gets released too, and its pin is rewritten. See [Dependency propagation](/guide/dependency-propagation).
 - **Rewrites internal dependency pins** in every manifest section where a bumped package appears.
 - **Writes changelogs** from the changeset summaries, correct Markdown emitted directly.
 - **Updates the lockfile** (for uv, one `uv lock` call) so `uv.lock` never goes stale. Molt **never deletes a lockfile it cannot read**: if `uv.lock` will not parse, molt leaves the file exactly as it found it, warns, skips the refresh, and finishes the release -- your manifests and changelogs are still correct. Run `uv lock` yourself once the file is readable again. A lockfile that will not parse is as often a half-finished merge as it is corruption, and the bytes are not molt's to throw away.
 - **Deletes the consumed changesets.**
 
-Running `molt version` with **no pending changesets exits 1** with `No unreleased changesets found.` This is v3 semantics (v2 exited 0); CI pipelines must tolerate that code. See [Versioning](/guides/versioning).
+Running `molt version` with **no pending changesets exits 1** with `No unreleased changesets found.` This is v3 semantics (v2 exited 0); CI pipelines must tolerate that code. See [Versioning](/guide/versioning).
 
 ### Atomicity
 
@@ -57,7 +57,7 @@ fails the run. See [Dynamic versions](/ecosystems/dynamic-versions).
 | `--snapshot` | flag | off | Cut an unnamed snapshot release. Optional-value flag -- see the note below. |
 | `--snapshot-name <name>` | string | -- | Cut a snapshot release with the given name. Numeric-looking names stay strings. |
 | `--ignore <name>` | list | -- | Skip a package this run. Repeatable. Mutually exclusive with the config `ignore` list. |
-| `--dry-run` | flag | off | Print the release plan; write nothing. See [Dry runs and plans](/guides/dry-run-and-plans). |
+| `--dry-run` | flag | off | Print the release plan; write nothing. See [Dry runs and plans](/guide/dry-run-and-plans). |
 | `--cwd <path>` | path | current directory | Directory to run in; root discovery starts here. |
 | `-h`, `--help` | flag | -- | Show help and exit. |
 
@@ -128,7 +128,7 @@ molt version --ignore internal-scratch
 
 ## See also
 
-- [Versioning](/guides/versioning) -- the release-time guide.
-- [The release plan](/concepts/release-plan) and [Dependency propagation](/guides/dependency-propagation).
+- [Versioning](/guide/versioning) -- the release-time guide.
+- [The release plan](/concepts/release-plan) and [Dependency propagation](/guide/dependency-propagation).
 - [Versioning and PEP 440](/concepts/versioning-pep440), [Prerelease mode](/concepts/prerelease), [Snapshot releases](/concepts/snapshots).
 - [molt publish](/cli/publish) -- ship what `version` bumped.

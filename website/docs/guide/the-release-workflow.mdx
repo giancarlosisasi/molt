@@ -8,7 +8,7 @@ import { ChangesetClocks } from '../../components/ChangesetClocks';
 
 molt splits releasing into three verbs on two clocks: `add` records intent as you work, `version` consumes accumulated intent into concrete releases, and `publish` ships them.
 
-If [The changeset workflow](/introduction/the-changeset-workflow) explains *why* intent-based versioning works, this page explains *how* to run it day to day -- as a solo maintainer and as a team on a pull-request flow.
+If [The changeset workflow](/guide/the-changeset-workflow) explains *why* intent-based versioning works, this page explains *how* to run it day to day -- as a solo maintainer and as a team on a pull-request flow.
 
 ## Three verbs
 
@@ -36,16 +36,31 @@ Nobody has to pick a final version number when they open a pull request, because
 On a team, the changeset is a reviewable artifact that travels with the code.
 
 1. **A contributor opens a PR** with their change and a changeset committed alongside it (`molt add`). A reviewer can see at a glance that this PR intends, say, a minor bump to `acme-core`.
-2. **CI gates the PR** with [`molt status`](/guides/status). It fails when a versionable package changed but no changeset was added -- a prompt to run `molt add`, or `molt add --empty` if the change genuinely needs no release.
+2. **CI gates the PR** with [`molt status`](/guide/status). It fails when a versionable package changed but no changeset was added -- a prompt to run `molt add`, or `molt add --empty` if the change genuinely needs no release.
 3. **Changesets accumulate** on the default branch as PRs merge. Nothing is released yet; intent is just piling up in `.changeset/`.
 4. **A release job runs `molt version`** and opens a "Version Packages" pull request containing the version bumps, changelog updates, and lockfile changes -- with the changesets consumed. This PR is the human-readable preview of the next release.
 5. **Merging that PR triggers `molt publish`**, which builds and uploads the changed packages and pushes their tags.
 
-Steps 4 and 5 are wired up for you by the [GitHub Action](/guides/ci-github-action), which draws the whole pull-request flow step by step; the same shape works on any forge, since the [forge is a seam](/forges/overview).
+:::tip Steps 4 and 5 in GitHub Actions
+You do not script steps 4 and 5. The [GitHub Action](/guide/ci-github-action) runs both phases on
+every push to your base branch: it opens and updates the "Version Packages" pull request while
+changesets are pending, and publishes to PyPI over OIDC once you merge it.
+
+```yaml
+- uses: giancarlosisasi/molt-action@v1
+  with:
+    publish: molt publish
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+That guide draws the whole pull-request flow step by step. The same shape works on any forge, since
+the [forge is a seam](/forges/overview).
+:::
 
 ## When to use --dry-run
 
-Every mutating command -- `add`, `version`, `publish`, `build`, `git-tag` -- can build its [plan](/guides/dry-run-and-plans) and print it *without executing*. Reach for `--dry-run` when you want to look before you leap:
+Every mutating command -- `add`, `version`, `publish`, `build`, `git-tag` -- can build its [plan](/guide/dry-run-and-plans) and print it *without executing*. Reach for `--dry-run` when you want to look before you leap:
 
 - **Before a release**, `molt version --dry-run` shows every version bump and file it would write. `molt status` answers the same question and is the read-only, CI-friendly form.
 - **Before publishing**, `molt publish --dry-run` shows exactly which packages and versions would be uploaded, and in what order.
@@ -65,7 +80,7 @@ The full contract is in the [CLI overview](/cli/overview).
 
 ## Where to go next
 
-- [Adding a changeset](/guides/adding-a-changeset) -- interactive and non-interactive `molt add`.
-- [Versioning](/guides/versioning) -- everything `molt version` does, and how to preview it.
-- [CI: GitHub Action](/guides/ci-github-action) -- automate steps 4 and 5.
-- [Dry runs and plans](/guides/dry-run-and-plans) -- the plan object behind every command.
+- [Adding a changeset](/guide/adding-a-changeset) -- interactive and non-interactive `molt add`.
+- [Versioning](/guide/versioning) -- everything `molt version` does, and how to preview it.
+- [CI: GitHub Action](/guide/ci-github-action) -- automate steps 4 and 5.
+- [Dry runs and plans](/guide/dry-run-and-plans) -- the plan object behind every command.

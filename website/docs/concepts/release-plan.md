@@ -45,7 +45,7 @@ molt version --dry-run
 }
 ```
 
-Only one changeset was written (a `major` on `acme-core`), yet three packages release. `acme-http` and `acme-cli` carry `changesets: []` -- their releases were *derived*, not requested. Working out those derived releases correctly is the whole job of the engine. You can inspect the same plan on `add`, `publish`, and `build`; see [Dry runs and plans](/guides/dry-run-and-plans).
+Only one changeset was written (a `major` on `acme-core`), yet three packages release. `acme-http` and `acme-cli` carry `changesets: []` -- their releases were *derived*, not requested. Working out those derived releases correctly is the whole job of the engine. You can inspect the same plan on `add`, `publish`, and `build`; see [Dry runs and plans](/guide/dry-run-and-plans).
 
 ## A worked example
 
@@ -92,7 +92,7 @@ The output is the plan shown above. Two rules are doing the work here, and both 
 - **Propagation is by out-of-range, and it is always a patch.** A dependent is released only when a dependency's new version leaves the dependent's declared range, and the resulting bump is always `patch` -- never more. If you want a bigger bump on the dependent, add a changeset for it explicitly. When "out of range" fires depends on the range shape: an exact pin breaks on any change, `~=` (tilde) breaks on minor or major, and a caret-style `>=x,<x+1` range breaks only on major. That table is exactly [PEP 440 range satisfaction](/concepts/versioning-pep440), which is the same math throughout molt.
 - **Whether the pin is rewritten is a separate decision.** Releasing a dependent and rewriting the version constraint in its manifest are two different questions, governed by two different (unhappily similar) options -- [`update_internal_dependents`](/concepts/glossary#updateinternaldependents) and [`update_internal_dependencies`](/concepts/glossary#updateinternaldependencies).
 
-For a guide-level walkthrough of propagation across a larger graph, see [Dependency propagation](/guides/dependency-propagation).
+For a guide-level walkthrough of propagation across a larger graph, see [Dependency propagation](/guide/dependency-propagation).
 
 ## The engine: three passes to a fixpoint
 
@@ -138,8 +138,8 @@ They look almost identical. The precise difference, and why the same setup produ
 
 ## Where to go next
 
-- [Dependency propagation](/guides/dependency-propagation) -- a hands-on tour of how bumps travel the workspace graph.
-- [Dry runs and plans](/guides/dry-run-and-plans) -- inspecting the plan on every command before you run it.
+- [Dependency propagation](/guide/dependency-propagation) -- a hands-on tour of how bumps travel the workspace graph.
+- [Dry runs and plans](/guide/dry-run-and-plans) -- inspecting the plan on every command before you run it.
 - [Linked vs fixed packages](/concepts/linked-vs-fixed) -- the two grouping mechanisms, precisely distinguished.
 - [Versioning and PEP 440](/concepts/versioning-pep440) -- the bump arithmetic and range math the engine runs on.
 - [Glossary](/concepts/glossary) -- release plan, dependent, `update_internal_*`, and the rest.

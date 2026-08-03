@@ -771,7 +771,7 @@ def _plan_changelogs(
 class _ChangelogConfigView:
     """What a changelog template sees as ``config``.
 
-    The ``changelog`` scope of ``website/docs/guides/changelog-templates.md``, whose worked example
+    The ``changelog`` scope of ``website/docs/guide/changelog-templates.md``, whose worked example
     writes ``{% if config.dates %}``. Since the 2026-07-30 ruling closing ``VC-4`` the written key
     is ``changelog = { dates = true }``, so this is a **scope narrowing**, not a rename: the
     template reads the member under exactly the name the user wrote it under. The narrowing is the

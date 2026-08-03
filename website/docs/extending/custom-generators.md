@@ -12,7 +12,7 @@ This is the hands-on companion to [Changelog plugins](/extending/changelog-plugi
 
 A generator controls the **text of each changelog line** -- how a single changeset's summary becomes a bullet, and how a dependency bump is phrased. You need one when you want to change that text: link to a different forge, add attribution, prefix a category emoji, or reshape the bullet.
 
-If you only want to change the **structure around the lines** -- the version heading, section titles, dates, ordering -- you do not need a generator at all. That is a [changelog template](/guides/changelog-templates), a Jinja2 file with no code. Reach for a generator only when the per-line text is what you want to change.
+If you only want to change the **structure around the lines** -- the version heading, section titles, dates, ordering -- you do not need a generator at all. That is a [changelog template](/guide/changelog-templates), a Jinja2 file with no code. Reach for a generator only when the per-line text is what you want to change.
 
 ## 1. Lay out the package
 
@@ -144,6 +144,6 @@ A typed, importable generator gives you the same power with none of those costs:
 ## Where to go next
 
 - [Changelog plugins](/extending/changelog-plugins) -- the contract and resolution rules in full.
-- [Changelog templates](/guides/changelog-templates) -- change entry structure without writing code.
+- [Changelog templates](/guide/changelog-templates) -- change entry structure without writing code.
 - [GitHub](/forges/github) -- the forge adapter your generator receives.
 - [Options reference](/config/options) -- the `changelog` option.

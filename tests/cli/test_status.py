@@ -4,7 +4,7 @@ Ports the 12 rows of ``packages/cli/src/commands/status/__tests__/status.test.ts
 ``roadmap/research/test-suite/06-cli-commands.md`` (status section), against the behaviour spec in
 ``roadmap/research/changesets-03-cli-and-ux.md`` section 5 -- 5.1 (flow), 5.2 (the CI exit-code
 contract), 5.3 (the exact ``--output`` JSON schema), 5.4 (human output) -- plus gotcha 10.11.
-Website docs: ``website/docs/cli/status.md`` and ``website/docs/guides/status.md``.
+Website docs: ``website/docs/cli/status.md`` and ``website/docs/guide/status.md``.
 
 Deviations from the group file, all deliberate
 ----------------------------------------------

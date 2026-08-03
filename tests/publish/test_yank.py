@@ -4,7 +4,7 @@ There is nothing to port here. ``roadmap/research/test-suite/07-publish-pack.md`
 yank`` under "New in molt", research README 4.3 explains why it exists ("PyPI has no unpublish...
 our worst constraint becomes a feature") and README section 5 item 11 lists it as differentiator
 #11, marked "Impossible on npm". The specification is therefore the documentation:
-``website/docs/cli/yank.md`` (flags, exit codes) and ``website/docs/guides/yank.md`` (semantics).
+``website/docs/cli/yank.md`` (flags, exit codes) and ``website/docs/guide/yank.md`` (semantics).
 
 ``molt yank`` does NOT perform the yank -- owner ruling, Session 6
 -----------------------------------------------------------------

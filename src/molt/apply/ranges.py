@@ -21,7 +21,7 @@ Declared                      New version     molt                       upstrea
 
 The escaped two-sided row is the one that has to move **both** bounds. Rewriting only the lower one
 yields the unsatisfiable ``>=2.0.0,<2.0.0``; dropping the upper one reintroduces the widening bug.
-``>=2.0.0,<3.0.0`` is the answer ``website/docs/guides/dependency-propagation.md`` ("Out of range:
+``>=2.0.0,<3.0.0`` is the answer ``website/docs/guide/dependency-propagation.md`` ("Out of range:
 cascade + rewrite") documents, and it is the PEP 440 spelling of upstream's ``^1.0.3 -> ^2.0.0``.
 
 Comparator **order is the author's** and is preserved, which is why the region text is read through

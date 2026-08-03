@@ -3,7 +3,7 @@
 Ports ``packages/cli/src/commands/status/index.ts`` @ v3.0.0-next.9 against the behaviour spec in
 ``roadmap/research/changesets-03-cli-and-ux.md`` section 5 -- 5.1 (flow), 5.2 (the exit-code
 contract), 5.3 (the ``--output`` payload) and 5.4 (human output). Website docs:
-``website/docs/cli/status.md`` and ``website/docs/guides/status.md``. The conformance suite is
+``website/docs/cli/status.md`` and ``website/docs/guide/status.md``. The conformance suite is
 ``tests/cli/test_status.py``.
 
 ``status`` writes nothing. It is the read-only face of the computation ``molt version`` performs,

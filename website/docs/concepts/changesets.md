@@ -6,7 +6,7 @@ title: Changesets
 
 A changeset is a small, human-written file that records the **intent** of a change: which packages it affects, how much each one moves, and what the changelog should say.
 
-You never edit a version number by hand in molt. Instead, as part of the work itself, you drop a changeset into the `.changeset/` directory. It sits there, committed alongside your code, until release time -- when [`molt version`](/cli/version) reads every accumulated changeset at once and turns that pile of intent into concrete version bumps and changelog entries. See [The changeset workflow](/introduction/the-changeset-workflow) for why that two-step split is the whole point.
+You never edit a version number by hand in molt. Instead, as part of the work itself, you drop a changeset into the `.changeset/` directory. It sits there, committed alongside your code, until release time -- when [`molt version`](/cli/version) reads every accumulated changeset at once and turns that pile of intent into concrete version bumps and changelog entries. See [The changeset workflow](/guide/the-changeset-workflow) for why that two-step split is the whole point.
 
 ## What a changeset contains
 
@@ -80,7 +80,7 @@ Three changesets do not mean three releases. They mean one release at the right 
 
 Because the intent lives in a committed file rather than in commit messages, squash-merging, amending, and rebasing a branch cannot change what a release does. The file survives every history rewrite, and it is reviewed like any other file in the pull request.
 
-Molt reads commit history once, as a [migration aid](/guides/migrating-from-changesets), to propose a starting pile of changesets when you adopt it mid-project. It does not derive versions from commit messages on an ongoing basis. [The changeset workflow](/introduction/the-changeset-workflow#changesets-and-commit-derived-versioning) sets the two models side by side.
+Molt reads commit history once, as a [migration aid](/guide/migrating-from-changesets), to propose a starting pile of changesets when you adopt it mid-project. It does not derive versions from commit messages on an ongoing basis. [The changeset workflow](/guide/the-changeset-workflow#changesets-and-commit-derived-versioning) sets the two models side by side.
 
 ## The lifecycle of a changeset
 
@@ -97,6 +97,6 @@ The `.changeset/` directory is the buffer between the two clocks of the workflow
 
 - [Changeset format](/config/changeset-format) -- the full file grammar and parsing rules.
 - [`molt add`](/cli/add) -- the interactive (and non-interactive) flow that writes changesets.
-- [Adding a changeset](/guides/adding-a-changeset) -- a hands-on walkthrough.
+- [Adding a changeset](/guide/adding-a-changeset) -- a hands-on walkthrough.
 - [The release plan](/concepts/release-plan) -- how accumulated changesets become version numbers, including cross-package propagation.
 - [Glossary](/concepts/glossary) -- precise definitions for changeset, bump type, and the rest.

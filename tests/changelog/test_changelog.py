@@ -894,7 +894,7 @@ def test_regex_replacement_syntax_in_a_summary_survives_linkification(
     ``re.sub`` with a replacement **string** expands ``\1`` and ``\g<0>``; a summary is
     author-controlled prose that may legitimately contain them (a regex tip, a sed snippet).
     molt must substitute through a **callable**, so this payload lands byte-for-byte while
-    the ``#42`` beside it is still linkified. ``website/docs/guides/changelog-templates.md``
+    the ``#42`` beside it is still linkified. ``website/docs/guide/changelog-templates.md``
     promises exactly this: "Your summaries are preserved literally."
 
     Scope note, from a mutation run against a reference implementation: in Python the

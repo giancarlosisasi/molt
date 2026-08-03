@@ -21,7 +21,7 @@ The Action's version and the CLI's version are separate. `v1` versions the YAML 
 Every push to your base branch triggers one of two behaviors, and molt decides which:
 
 - **Version phase** -- there are pending changesets. Molt opens (or updates) a **release pull request** titled "Version Packages". That PR contains exactly what [`molt version`](/cli/version) would do: bumped manifests, rewritten changelogs, an updated lockfile. As more changesets merge, the same PR is kept up to date -- it is reused, never re-created, so its number and review history survive.
-- **Publish phase** -- there are no pending changesets but there *are* versions on disk that are not yet on PyPI. That is the state right after the release PR merges. Molt builds and [publishes](/guides/publishing) the changed packages, git-tags each one, and creates a GitHub Release per package with its changelog entry as the body.
+- **Publish phase** -- there are no pending changesets but there *are* versions on disk that are not yet on PyPI. That is the state right after the release PR merges. Molt builds and [publishes](/guide/publishing) the changed packages, git-tags each one, and creates a GitHub Release per package with its changelog entry as the body.
 
 So the human loop is simply: merge feature PRs (each carrying a changeset), watch the "Version Packages" PR accumulate, and merge it when you want to cut a release. Merging it is the release.
 
@@ -83,7 +83,7 @@ jobs:
 
       - uses: giancarlosisasi/molt-action@v1
         with:
-          molt-version: "0.1.2"   # pin molt; keeps the Action and the tool in lockstep
+          molt-version: "0.1.3"   # pin molt; keeps the Action and the tool in lockstep
           publish: molt publish   # the command to run in the publish phase
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -105,7 +105,7 @@ Every input is optional. Supplying only a token runs the version phase with the 
 
 | Input | Default | What it does |
 |---|---|---|
-| `molt-version` | latest release | The exact `molt-release` version to install, for example `"0.1.1"`. Empty installs the latest release. See [Pinning molt](#pinning-molt). |
+| `molt-version` | latest release | The exact `molt-release` version to install, for example `"0.1.3"`. Empty installs the latest release. See [Pinning molt](#pinning-molt). |
 | `publish` | *(empty)* | The command that publishes the release, for example `molt publish`. Leave it empty to run the version phase only -- supplying it is also what makes the publish phase reachable at all. |
 | `version-command` | *(empty)* | The command that versions the release, for example `molt version --snapshot canary`. Empty runs molt's own `molt version`. Split with POSIX shell rules, so a quoted argument stays one argument. |
 | `title` | `Version Packages` | The title of the release pull request. |
@@ -115,7 +115,7 @@ Every input is optional. Supplying only a token runs the version phase with the 
 | `commit-mode` | `git-cli` | How the version commit reaches the remote. `git-cli` commits and force-pushes from the runner; `api` sends the changes to GitHub instead, so GitHub authors and **signs** the commit. See [Signed commits](#signed-commits). Anything else fails the run. |
 | `github-token` | `${{ github.token }}` | The token molt uses to open the pull request and create releases. A `GITHUB_TOKEN` already in the step's environment wins over this input. |
 
-You also configure PyPI Trusted Publishing once, on PyPI itself, to trust this repository and workflow. After that there is no API token anywhere in the workflow -- see [Publishing](/guides/publishing#trusted-publishing-over-oidc----no-long-lived-token).
+You also configure PyPI Trusted Publishing once, on PyPI itself, to trust this repository and workflow. After that there is no API token anywhere in the workflow -- see [Publishing](/guide/publishing#trusted-publishing-over-oidc----no-long-lived-token).
 
 ## Understanding the permissions
 
@@ -137,7 +137,7 @@ Pin it. A pinned version is what stops your releases from changing behavior on a
 
 ## Molt is not tied to GitHub Actions
 
-The Action is a convenience, not a dependency. Every phase above is a plain molt command, and `molt publish` -- including [`--filter`](/guides/publishing#publishing-a-subset-with---filter) -- runs the same everywhere. You can drive releases from GitLab CI, a Jenkins box, a cron job, or your laptop with nothing more than uv installed:
+The Action is a convenience, not a dependency. Every phase above is a plain molt command, and `molt publish` -- including [`--filter`](/guide/publishing#publishing-a-subset-with---filter) -- runs the same everywhere. You can drive releases from GitLab CI, a Jenkins box, a cron job, or your laptop with nothing more than uv installed:
 
 ```bash
 # Anywhere uv is available -- no GitHub, no Action
@@ -262,7 +262,7 @@ The release branch name is unchanged -- `changeset-release/<base>` -- so an open
 
 ## See also
 
-- [Publishing](/guides/publishing) -- the OIDC upload flow the publish phase runs.
+- [Publishing](/guide/publishing) -- the OIDC upload flow the publish phase runs.
 - [`molt version`](/cli/version) -- what the "Version Packages" PR contains.
 - [Forges](/forges/overview) -- the seam behind PR creation and release notes.
-- [The changeset workflow](/introduction/the-changeset-workflow) -- the add / version / publish loop this automates.
+- [The changeset workflow](/guide/the-changeset-workflow) -- the add / version / publish loop this automates.

@@ -1,4 +1,15 @@
 [
+  { "type": "section-header", "label": "Introduction" },
+  { "type": "file", "name": "what-is-molt", "label": "Overview" },
+  { "type": "file", "name": "the-changeset-workflow", "label": "The changeset workflow" },
+
+  { "type": "section-header", "label": "Getting started" },
+  { "type": "file", "name": "installation", "label": "Installation" },
+  { "type": "file", "name": "quickstart-single-package", "label": "Quickstart: single package" },
+  { "type": "file", "name": "quickstart-monorepo", "label": "Quickstart: monorepo" },
+  { "type": "file", "name": "the-release-workflow", "label": "The release workflow" },
+
+  { "type": "section-header", "label": "Guides" },
   { "type": "file", "name": "adding-a-changeset", "label": "Adding a changeset" },
   { "type": "file", "name": "versioning", "label": "Versioning" },
   { "type": "file", "name": "status", "label": "Checking status" },

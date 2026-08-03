@@ -56,9 +56,9 @@ __all__ = ["app", "main", "normalize_options"]
 # Constants
 # ======================================================================================
 
-#: U+1F98B BUTTERFLY -- the changesets mascot, kept (research doc 03 §1.2). Written as an escape so
-#: this source file stays ASCII-only; the console adapter degrades it on a legacy code page.
-_BANNER_GLYPH: Final = "\U0001f98b"
+#: U+1F40D SNAKE -- molt's mark. Written as an escape so this source file stays ASCII-only; the
+#: console adapter degrades it on a legacy code page.
+_BANNER_GLYPH: Final = "\U0001f40d"
 
 #: Where a molt bug is reported. The internal-error funnel pre-fills an issue here.
 _ISSUES_URL: Final = "https://github.com/giancarlosisasi/molt/issues/new"

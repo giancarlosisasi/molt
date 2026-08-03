@@ -46,7 +46,7 @@ owner sign-off -- research doc 03 section 11.7):
 
 Deliberate molt divergences that are *not* upstream bugs:
 * changed-package detection is skipped entirely on the flag-driven path
-  (``website/docs/guides/adding-a-changeset.md``: "this form does no 'changed packages' detection
+  (``website/docs/guide/adding-a-changeset.md``: "this form does no 'changed packages' detection
   and never blocks on a prompt"). Upstream runs it unconditionally (``add/index.ts:72-89``).
 * package-name matching is PEP 503-normalized at lookup time (research README section 4.5).
 """
@@ -800,7 +800,7 @@ def test_without_changed_packages_only_one_group_is_offered(tmp_project: Project
 def test_release_type_flags_skip_changed_package_detection(tmp_project: ProjectBuilder) -> None:
     """Deliberate molt divergence: the flag path does no changed-package detection.
 
-    ``website/docs/guides/adding-a-changeset.md``: "Because you name the packages explicitly, this
+    ``website/docs/guide/adding-a-changeset.md``: "Because you name the packages explicitly, this
     form does no 'changed packages' detection and never blocks on a prompt -- safe to run in CI."
     Upstream runs the detection unconditionally for non-``--empty`` runs (``add/index.ts:72-89``)
     and simply ignores the result in Flow C, paying a git round-trip for nothing.
@@ -1184,7 +1184,7 @@ def test_package_and_bump_write_a_changeset_without_prompting(
     """molt-NEW: ``--package ... --bump <type>`` (``website/docs/cli/add.md`` Options table).
 
     ``--bump`` is a **single** value applied to every ``--package`` selection. Source conflict:
-    ``website/docs/guides/adding-a-changeset.md`` describes repeating the ``--package``/``--bump``
+    ``website/docs/guide/adding-a-changeset.md`` describes repeating the ``--package``/``--bump``
     pair "matched in order"; ``cli/add.md`` is the authoritative flag surface and says
     "Bump type applied to every ``--package`` selection", so that is what is pinned here.
     """
@@ -1314,7 +1314,7 @@ def test_empty_flag_writes_an_empty_changeset_with_no_prompts(
 
     ``--empty`` short-circuits everything (``add/index.ts:66-71``): no changed-package detection,
     no prompts, no summary panel. It is the CI-safe way to record "no release needed" and satisfy
-    the ``status`` gate (``website/docs/guides/adding-a-changeset.md``).
+    the ``status`` gate (``website/docs/guide/adding-a-changeset.md``).
     """
     root = monorepo(tmp_project, "pkg-a", "pkg-b")
     prompts = ScriptedPrompts()
@@ -1354,7 +1354,7 @@ def test_stdin_payload_writes_a_changeset_without_prompting(
 
     Schema from ``website/docs/cli/add.md``:
     ``{"releases": [{"name": ..., "bump": ...}], "summary": ...}``. Source conflict:
-    ``website/docs/guides/adding-a-changeset.md`` shows a mapping form
+    ``website/docs/guide/adding-a-changeset.md`` shows a mapping form
     (``{"releases": {"pip-audit": "patch"}}``); ``cli/add.md`` is authoritative for the payload
     surface, so the list form is what is pinned. Flagged for the owner as a docs fix.
     """

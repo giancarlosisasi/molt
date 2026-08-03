@@ -17,7 +17,7 @@ molt                       # same as: molt add
 
 ## Description
 
-`molt add` writes one changeset file into `.changeset/`, named with a random three-word slug (for example `.changeset/tidy-eels-return.md`). The file records a bump type per affected package plus a human-written summary. You commit it alongside your code. See [Changesets](/concepts/changesets) and [Adding a changeset](/guides/adding-a-changeset) for the full walkthrough, and [Changeset file format](/config/changeset-format) for the grammar.
+`molt add` writes one changeset file into `.changeset/`, named with a random three-word slug (for example `.changeset/tidy-eels-return.md`). The file records a bump type per affected package plus a human-written summary. You commit it alongside your code. See [Changesets](/concepts/changesets) and [Adding a changeset](/guide/adding-a-changeset) for the full walkthrough, and [Changeset file format](/config/changeset-format) for the grammar.
 
 There are three ways to drive it.
 
@@ -156,6 +156,6 @@ echo '{"releases":[{"name":"acme-core","bump":"patch"}],"summary":"Fix off-by-on
 
 ## See also
 
-- [Adding a changeset](/guides/adding-a-changeset) -- the hands-on guide.
+- [Adding a changeset](/guide/adding-a-changeset) -- the hands-on guide.
 - [Changesets](/concepts/changesets) and [Changeset file format](/config/changeset-format).
 - [molt version](/cli/version) -- consume the changesets `add` writes.

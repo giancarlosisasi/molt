@@ -101,11 +101,11 @@ Chained groups (where one group depends on another) resolve through the same loo
 
 - Reach for **fixed** when the packages are conceptually one release with one version number, and you accept publishing all of them whenever any of them changes.
 - Reach for **linked** when you want matching version numbers *among whatever is releasing*, without minting releases for untouched packages.
-- If neither fits, plain [dependent propagation](/guides/dependency-propagation) already keeps a workspace correct -- most workspaces need no groups at all.
+- If neither fits, plain [dependent propagation](/guide/dependency-propagation) already keeps a workspace correct -- most workspaces need no groups at all.
 
 ## Where to go next
 
 - [The release plan](/concepts/release-plan) -- the fixpoint loop that resolves both mechanisms.
-- [Versioning](/guides/versioning) -- running `molt version` and reading the result.
+- [Versioning](/guide/versioning) -- running `molt version` and reading the result.
 - [Options](/config/options) -- the `fixed` and `linked` config keys.
 - [Glossary](/concepts/glossary) -- fixed, linked, dependent, and the rest.

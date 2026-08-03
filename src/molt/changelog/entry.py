@@ -327,7 +327,7 @@ class ChangelogSections:
     dependency line except inside patch (``get-changelog-entry.ts:95-103``), but that is a
     *presentation* decision, not a structural fact. Handing the two premerged to a template would
     make "move dependency bumps into their own section"
-    (``website/docs/guides/changelog-templates.md``) impossible, which is half of what templating is
+    (``website/docs/guide/changelog-templates.md``) impossible, which is half of what templating is
     for.
 
     Every line is the generator's return value **verbatim**, leading and trailing newlines included.

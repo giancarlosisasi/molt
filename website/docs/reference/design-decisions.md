@@ -49,7 +49,7 @@ For a feature-by-feature view of where molt and changesets land differently, see
 
 **Alternative.** Publish the engine, the CLI, the changelog generators, and each backend as separate distributions.
 
-**Why.** Splitting a tool into many small distributions answers pressures Python does not have, and it would mean a separate PyPI name, changelog, and version matrix for each one. A single distribution with clean internal seams keeps the option open: extracting an importable `molt-core` later is a mechanical split, as long as CLI types never leak into the engine, which an import-boundary lint rule enforces. The distribution is named `molt-release` because `molt` on PyPI belongs to an unrelated project; the distribution name and the console script are independent, so users still type `molt`. See [Overview](/introduction/what-is-molt).
+**Why.** Splitting a tool into many small distributions answers pressures Python does not have, and it would mean a separate PyPI name, changelog, and version matrix for each one. A single distribution with clean internal seams keeps the option open: extracting an importable `molt-core` later is a mechanical split, as long as CLI types never leak into the engine, which an import-boundary lint rule enforces. The distribution is named `molt-release` because `molt` on PyPI belongs to an unrelated project; the distribution name and the console script are independent, so users still type `molt`. See [Overview](/guide/what-is-molt).
 
 ## Python floor of 3.11
 

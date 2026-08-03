@@ -15,12 +15,12 @@ Two Jinja2 template layers, and they are different seams
 (``changelog = ["github", { template = "..." }]``) and shapes one bullet.
 
 This file covers the **entry** template -- ``[tool.molt.changelog] template = "..."``,
-documented in ``website/docs/guides/changelog-templates.md``, which shapes everything
+documented in ``website/docs/guide/changelog-templates.md``, which shapes everything
 *around* the bullets: the ``## <version>`` heading, the section headings, their order, and
 dates. ``website/docs/extending/changelog-plugins.md`` states the split under "The contract":
 "You return lines, not layout."
 
-The oracle for this file is ``website/docs/guides/changelog-templates.md`` in full. There is
+The oracle for this file is ``website/docs/guide/changelog-templates.md`` in full. There is
 no upstream counterpart to port, because upstream has none -- that is the point.
 
 The seam this file designs against (a TDD target; build step 7)
@@ -75,7 +75,7 @@ This file holds under both. Every assertion is against a hand-written literal, s
 ``get_changelog_entry``, and it is the single test the owner retargets if (a) is chosen.
 
 research README section 5 item 5; P4 shared brief sections 8 and 9;
-``website/docs/guides/changelog-templates.md``.
+``website/docs/guide/changelog-templates.md``.
 """
 
 from __future__ import annotations
@@ -283,7 +283,7 @@ def v(text: str) -> Version:
 
 
 # ======================================================================================
-# The documentation fixture -- website/docs/guides/changelog-templates.md, verbatim
+# The documentation fixture -- website/docs/guide/changelog-templates.md, verbatim
 # ======================================================================================
 
 #: ``changelog-templates.md`` lines 71-88, copied character for character. Reformatting this

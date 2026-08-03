@@ -3,7 +3,7 @@
 Ports ``apply-release-plan/src/index.ts:333-364`` (research doc 04 section 3.3). Three cases, and
 the rule is the same one in all three -- **a new entry goes directly above the newest existing
 version heading**, which is what makes the file newest-first
-(``website/docs/guides/changelog-templates.md``, "The default structure"):
+(``website/docs/guide/changelog-templates.md``, "The default structure"):
 
 =====================================  =====================================================
 No file yet                            ``# <package>``, a blank line, the entry

@@ -46,7 +46,7 @@ Because the counter lives in the version string, not in a state file, iteration 
 - **Each subsequent `--pre` run** increments the counter: `1.1.0rc0` to `1.1.0rc1` to `1.1.0rc2`. The highest bump type across the accumulated changesets is retained, so a major that landed earlier is not lost when a later minor arrives.
 - **Exiting prerelease** is running plain `molt version` (no `--pre`). It finalizes to the stable version, dropping the prerelease identifier: `1.1.0rc1` becomes `1.1.0`, and **this** is the run that consumes the changesets.
 
-Dependents that already opted into prereleases through their own constraints are **not** force-released as a dependency moves `rc0` to `rc1` -- this follows PEP 440's opt-in scoping and is a deliberate divergence from changesets. See [Dependency propagation](/guides/dependency-propagation) and [Versioning and PEP 440](/concepts/versioning-pep440).
+Dependents that already opted into prereleases through their own constraints are **not** force-released as a dependency moves `rc0` to `rc1` -- this follows PEP 440's opt-in scoping and is a deliberate divergence from changesets. See [Dependency propagation](/guide/dependency-propagation) and [Versioning and PEP 440](/concepts/versioning-pep440).
 
 `--pre` cannot be combined with `--snapshot`.
 
@@ -90,5 +90,5 @@ molt version --pre rc --dry-run
 
 - [molt version](/cli/version) -- the command `--pre` lives on.
 - [Prerelease mode](/concepts/prerelease) -- the concept in depth.
-- [Migrating from changesets](/guides/migrating-from-changesets).
+- [Migrating from changesets](/guide/migrating-from-changesets).
 - [Snapshot releases](/concepts/snapshots) -- the other throwaway-version path.

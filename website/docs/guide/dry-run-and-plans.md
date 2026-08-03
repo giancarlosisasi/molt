@@ -19,7 +19,7 @@ molt build --dry-run
 
 Each prints, in human-readable form, exactly what it would do -- and writes nothing, uploads nothing, tags nothing.
 
-To get the plan as **structured data**, use the `--output json` flag of the matching read command; each command's option table says whether it has one of its own. For `version` that command is [`molt status --output json`](/guides/status), which computes and prints the identical release plan -- `molt version` deliberately has no `--output`, because a script should never have to invoke a mutating verb to find out what it would do.
+To get the plan as **structured data**, use the `--output json` flag of the matching read command; each command's option table says whether it has one of its own. For `version` that command is [`molt status --output json`](/guide/status), which computes and prints the identical release plan -- `molt version` deliberately has no `--output`, because a script should never have to invoke a mutating verb to find out what it would do.
 
 ## The plan object
 
@@ -27,7 +27,7 @@ A plan always carries which command produced it and whether it was executed, plu
 
 ### `version`
 
-The `version` plan is the release plan: the changesets it would consume and the releases it would compute. (This is exactly what [`molt status`](/guides/status) prints, since `status` is a permanent dry run of `version`.)
+The `version` plan is the release plan: the changesets it would consume and the releases it would compute. (This is exactly what [`molt status`](/guide/status) prints, since `status` is a permanent dry run of `version`.)
 
 ```json
 {
@@ -92,13 +92,13 @@ Every mutating verb uses the same envelope, the same `--dry-run` switch, and the
 
 - **Preview safely.** See every version bump, upload, or tag before it happens.
 - **Gate in CI.** Parse the JSON and decide whether to proceed. For example, refuse to publish when a plan contains a major bump without human sign-off.
-- **Split build from publish.** Compute a plan in one job and hand it to another. This is how the [publish flow](/guides/publishing) separates building artifacts from uploading them.
+- **Split build from publish.** Compute a plan in one job and hand it to another. This is how the [publish flow](/guide/publishing) separates building artifacts from uploading them.
 - **Diff releases.** Two plans are two JSON documents, so diffing them shows exactly what changed.
 
 The plan is a value molt computes internally on every run. The only difference between a dry run and a real run is whether molt executes the plan after printing it.
 
 ## Where to go next
 
-- [Checking status](/guides/status) -- the read-only plan for the next `version`.
-- [Versioning](/guides/versioning) and [Publishing](/guides/publishing) -- the commands whose plans you preview.
+- [Checking status](/guide/status) -- the read-only plan for the next `version`.
+- [Versioning](/guide/versioning) and [Publishing](/guide/publishing) -- the commands whose plans you preview.
 - [The release plan](/concepts/release-plan) -- how the `version` plan is computed.

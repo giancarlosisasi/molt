@@ -2,7 +2,7 @@
 
 molt-native; there is nothing to port. Everything the command knows lives in
 :func:`molt.publish.yank`; this module is the shell over it. Website docs:
-``website/docs/cli/yank.md`` (flags, exit codes) and ``website/docs/guides/yank.md`` (semantics).
+``website/docs/cli/yank.md`` (flags, exit codes) and ``website/docs/guide/yank.md`` (semantics).
 The conformance suite is ``tests/publish/test_yank.py``.
 
 **It never mutates and needs no credential.** PyPI exposes no supported way for a tool to perform a

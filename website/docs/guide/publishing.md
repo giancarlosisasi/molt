@@ -17,7 +17,7 @@ molt publish
 
 Under the hood, `molt publish` is a pipeline you can also drive stage by stage:
 
-1. **Plan** -- query PyPI for each package to decide what actually needs uploading, then order the work by the dependency graph. `molt publish --dry-run` prints this [plan](/guides/dry-run-and-plans) and uploads nothing.
+1. **Plan** -- query PyPI for each package to decide what actually needs uploading, then order the work by the dependency graph. `molt publish --dry-run` prints this [plan](/guide/dry-run-and-plans) and uploads nothing.
 2. **Build** -- build an sdist and a wheel per package. [`molt build`](/cli/pack) does this on its own and writes the artifacts (plus a checksum for each) into an out directory.
 3. **Publish** -- upload the built artifacts, then git-tag each successfully published package.
 
@@ -44,7 +44,7 @@ Molt authenticates to PyPI with **Trusted Publishing (OIDC)**. In CI, the runner
 
 This is also where a whole subsystem from changesets simply disappears. On npm, `changeset publish` has to thread 2FA through the upload: an `--otp` flag, interactive OTP prompts, web-auth challenges, and concurrency that drops to one while it waits for you to type a code. **PyPI has no 2FA-at-publish**, so molt has none of that machinery. There is nothing to prompt for mid-run -- a publish either has a valid credential before it starts, or it fails before it uploads anything.
 
-A long-lived API token still works for local or non-CI publishes; OIDC is the default and the recommended path for automation. See [CI: GitHub Action](/guides/ci-github-action) for the `id-token: write` permission that enables it.
+A long-lived API token still works for local or non-CI publishes; OIDC is the default and the recommended path for automation. See [CI: GitHub Action](/guide/ci-github-action) for the `id-token: write` permission that enables it.
 
 ## Exhaustive pre-flight validation
 
@@ -113,12 +113,12 @@ See [Snapshot releases](/concepts/snapshots) for how snapshot versions are built
 
 ## When a release goes wrong
 
-You cannot unpublish from PyPI, but you are not stuck with a bad release either. PEP 592 lets you **yank** a version: resolvers stop selecting it while existing pins keep working. Molt exposes this as a first-class verb -- see [Yanking a release](/guides/yank) and [`molt yank`](/cli/yank).
+You cannot unpublish from PyPI, but you are not stuck with a bad release either. PEP 592 lets you **yank** a version: resolvers stop selecting it while existing pins keep working. Molt exposes this as a first-class verb -- see [Yanking a release](/guide/yank) and [`molt yank`](/cli/yank).
 
 ## See also
 
 - [`molt publish`](/cli/publish) -- every flag, exit code, and the plan format.
 - [`molt pack`](/cli/pack) -- building sdists and wheels on their own.
-- [CI: GitHub Action](/guides/ci-github-action) -- the OIDC permissions and the publish-on-merge loop.
+- [CI: GitHub Action](/guide/ci-github-action) -- the OIDC permissions and the publish-on-merge loop.
 - [Snapshot releases](/concepts/snapshots) -- publishing throwaway versions safely.
-- [Yanking a release](/guides/yank) -- the recovery path when a published version is bad.
+- [Yanking a release](/guide/yank) -- the recovery path when a published version is bad.

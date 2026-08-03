@@ -23,7 +23,7 @@
 # does not need, including the pushes that only refresh the release pull request. Splitting on the
 # action's own `has_changesets` output puts the approval on the publish and nowhere else, and keeps
 # `id-token: write` off the job that never uploads. This is the stricter setup
-# `website/docs/guides/ci-github-action.md` recommends.
+# `website/docs/guide/ci-github-action.mdx` recommends.
 #
 # ---------------------------------------------------------------------------------------------
 # What PyPI trusts
@@ -81,15 +81,25 @@ jobs:
       #
       # Pinned to a commit, like every other `uses:` in this repository, because that is the advice
       # molt's own documentation gives. Dependabot refreshes it.
+      #
+      # Neither job passes `molt-version`, which is the input's own default and means "the newest
+      # molt-release on PyPI". That is a different pin from the `uses:` above: this one names the
+      # CLI, that one names the YAML a runner executes.
+      #
+      # molt's guide tells its users to pin the CLI, and this workflow deliberately does not,
+      # because a project releasing itself has the opposite failure. A pin here has to be edited by
+      # hand in the same pull request as every release, forgetting is silent, and forgetting it is
+      # what shipped 0.1.0 through 0.1.3 with no GitHub Release at all: the fix was on PyPI and the
+      # workflow kept installing the version that predated it.
+      #
+      # The risk this takes on is the other direction -- a release that breaks the release loop
+      # becomes the tool that has to cut its own fix. The way out is to add `molt-version` back
+      # naming the last version that worked, ship the fix, and delete the line again.
+      #
+      # This job passes no `publish` input either, so it can only ever run the version phase.
       - name: Run the molt release loop
         id: molt
-        uses: giancarlosisasi/molt-action@93c0d267db3887157a83961eb0f79909d4cd5fa6 # v1.0.0
-        with:
-          # The molt-release version the action installs from PyPI, which is a different thing from
-          # the action code above. Pinned, so a release of molt is cut by a molt already known to
-          # work. Bump it deliberately, once the version it names has proven itself.
-          molt-version: "0.1.0"
-          # No `publish` input, so this job can only ever run the version phase.
+        uses: giancarlosisasi/molt-action@9127d48ea955a62c707d7cf82f001e3f05c0523c # v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -116,10 +126,12 @@ jobs:
 
       - name: Publish, tag and cut the release
         id: molt
-        uses: giancarlosisasi/molt-action@93c0d267db3887157a83961eb0f79909d4cd5fa6 # v1.0.0
+        uses: giancarlosisasi/molt-action@9127d48ea955a62c707d7cf82f001e3f05c0523c # v1
         with:
-          molt-version: "0.1.0"
-          # Supplying this is what makes the publish phase reachable at all.
+          # No `molt-version` here either -- see the version job on why this workflow tracks the
+          # newest release rather than pinning one.
+          #
+          # Supplying `publish` is what makes the publish phase reachable at all.
           publish: molt publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

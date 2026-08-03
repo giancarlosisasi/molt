@@ -45,4 +45,4 @@ Molt resolves a version from the file a `file` version source names, so a `__abo
 - [Poetry, Hatch, PDM & setuptools](/ecosystems/poetry-hatch-pdm-setuptools) -- where each tool's version, members, and pins live.
 - [Dynamic versions](/ecosystems/dynamic-versions) -- packages whose version is not in `[project]`.
 - [Options reference](/config/options) -- pinning or configuring the backend.
-- [Dependency propagation](/guides/dependency-propagation) -- what the engine does with what the backend reports.
+- [Dependency propagation](/guide/dependency-propagation) -- what the engine does with what the backend reports.
