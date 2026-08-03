@@ -1,6 +1,6 @@
 [project]
 name = "molt-release"
-version = "0.1.1"
+version = "0.1.2"
 description = "Changeset-driven versioning and changelogs for Python monorepos"
 readme = "README.md"
 requires-python = ">=3.11"
