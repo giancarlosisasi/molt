@@ -26,6 +26,13 @@ targets PyPI. The workflow itself comes from
 [changesets](https://github.com/changesets/changesets), the release tool for JavaScript monorepos;
 see [Acknowledgements](/reference/acknowledgements).
 
+:::tip Changesets users
+[Molt and changesets](/reference/comparison-with-changesets) maps every command, configuration key,
+and changeset field to its molt equivalent, and marks the places where PEP 440 and PyPI make the two
+tools differ. To convert an existing `.changeset/` directory, follow
+[Migrating from changesets](/guides/migrating-from-changesets).
+:::
+
 ## `molt-release` the package, `molt` the command
 
 There are two names, and the distinction matters when you install:

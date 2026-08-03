@@ -63,7 +63,7 @@ An ordinary developmental release is unaffected -- `1.2.3.dev5` and `0.0.0.dev1`
 
 ### Naming an index turns the pypi.org query off
 
-With `--repository` or `--index-url` pointing anywhere other than pypi.org, molt does **not** query pypi.org for already-published versions, and every local version is planned as unpublished. An explicitly named index is the index; molt does not consult a second one behind your back. Querying a private index for its published version set is not implemented yet.
+With `--repository` or `--index-url` pointing anywhere other than pypi.org, molt does **not** query pypi.org for already-published versions, and every local version is planned as unpublished. An explicitly named index is the index; molt does not consult a second one behind your back. Molt does not query a private index for its published version set.
 
 ## Options
 

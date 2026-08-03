@@ -253,3 +253,32 @@ markers = [
 
 [tool.coverage.run]
 source = ["src/molt"]
+
+[tool.molt]
+# Written by `molt init`, then edited in one place: `changelog`. molt releases itself with this
+# block, so it is also the worked example the docs point at.
+base_branch = "main"
+format = false
+# `molt.changelog.default` (the git generator) is what `molt init` writes, because it needs no
+# network. molt is a public GitHub project, so the github generator is the right one here: it adds
+# the commit and pull-request links and the `Thanks @author!` attribution that a reader of a public
+# changelog expects. `repo` is given explicitly rather than left to `GITHUB_REPOSITORY`, so a local
+# `molt version --dry-run` renders the same entry CI does.
+changelog = ["molt.changelog.github", { repo = "giancarlosisasi/molt" }]
+commit = false
+ignore = []
+fixed = []
+linked = []
+update_internal_dependencies = "patch"
+# Narrowed from `molt init`'s `["**"]` to the files that change what a user installs. Paths are
+# relative to the package directory, which for this single-package project is the repository root.
+# `README.md` is in the list because it is the PyPI long description: the only way to correct that
+# page is to publish again. `website/`, `tests/`, `.github/` and `scripts/` are deliberately out, so
+# a docs or CI pull request does not have to carry a changeset to pass `molt status`.
+changed_file_patterns = ["src/**", "pyproject.toml", "action.yml", "README.md"]
+private_packages = {version = true}
+snapshot = {use_calculated_version = false}
+update_internal_dependents = "out-of-range"
+bump_workspace_sources_only = false
+ecosystem = "auto"
+forge = "github"

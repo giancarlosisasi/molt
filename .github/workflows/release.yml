@@ -1,70 +1,133 @@
-# Publishes molt-release to PyPI over Trusted Publishing.
+# molt releases molt.
 #
-# There is no API token in this repository and no secret for this job to read. PyPI trusts an
-# OpenID Connect token that GitHub mints for this workflow, and exchanges it for an upload token
-# that lives fifteen minutes.
+# This workflow runs molt's own composite action (`action.yml`, at the root of this repository)
+# against this repository. It is the dogfood: the release loop molt documents is the release loop
+# molt uses, so a bug in it is one we hit before anyone else does.
 #
-# PyPI binds that trust to four values: the repository owner, the repository name, THIS FILENAME,
-# and the environment name below. All four are part of the credential. Renaming this file or the
-# `pypi` environment revokes publishing until the configuration at
+# The loop has two phases and molt picks which one runs:
+#
+#   Pending changesets exist -> VERSION. Open or update the "Version Packages" pull request on
+#                               `changeset-release/main`. Nothing is published.
+#   No pending changesets    -> PUBLISH. Build, upload to PyPI over Trusted Publishing, push a
+#                               `v<version>` tag, and cut a GitHub Release. This is the state right
+#                               after the "Version Packages" pull request merges.
+#
+# So merging the "Version Packages" pull request IS the release. There is no tag to push by hand;
+# molt creates the tag itself, after the upload succeeds.
+#
+# ---------------------------------------------------------------------------------------------
+# Two jobs, not one, and why
+# ---------------------------------------------------------------------------------------------
+# The action picks its own phase, so one job would work. It is split because the `pypi` environment
+# carries a required reviewer: with one job, EVERY push to main would sit waiting for an approval it
+# does not need, including the pushes that only refresh the release pull request. Splitting on the
+# action's own `has_changesets` output puts the approval on the publish and nowhere else, and keeps
+# `id-token: write` off the job that never uploads. This is the stricter setup
+# `website/docs/guides/ci-github-action.md` recommends.
+#
+# ---------------------------------------------------------------------------------------------
+# What PyPI trusts
+# ---------------------------------------------------------------------------------------------
+# The Trusted Publisher on PyPI is bound to this repository, THIS FILENAME, and the `pypi`
+# environment. That is why the file kept the name `release.yml` when it stopped being tag-driven:
+# renaming it revokes publishing until
 # https://pypi.org/manage/project/molt-release/settings/publishing/ is changed to match.
 #
-# The publish job is written out here rather than shared with release-testpypi.yml because a
-# reusable workflow cannot be the workflow in a Trusted Publisher configuration
-# (https://docs.pypi.org/trusted-publishers/troubleshooting/). Only the build is shared.
-#
-# A refused publish is almost always a claim that does not match. Compare owner, repository name,
-# workflow filename and environment name against the PyPI page above, character for character:
-# https://docs.pypi.org/trusted-publishers/troubleshooting/
+# The `pypi` environment's deployment rule must allow the **branch `main`**. It was a tag rule
+# (`v*.*.*`) while this workflow was tag-driven, and a tag rule blocks every run of this one.
 name: release
 
 on:
   push:
-    tags:
-      # PEP 440 releases and prereleases alike: v0.1.1, v0.2.0rc1, v1.0.0a2.
-      - "v[0-9]+.[0-9]+.[0-9]+*"
-
-# There is deliberately no workflow_dispatch. One tag is one release, and a PyPI version can never
-# be replaced or reused. A publish that fails after the build is re-run from the run page with
-# "Re-run failed jobs", which keeps the tag as the only thing that starts a release.
+    branches: [main]
 
 permissions: {}
 
 concurrency:
+  # One release at a time. The version phase force-updates `changeset-release/main`, so two runs
+  # doing that at once would race, and a publish must never be cancelled half-way.
   group: release-pypi
   cancel-in-progress: false
 
 jobs:
-  # Lints, type-checks, tests, builds, checks the metadata, smoke-tests the wheel, and refuses a
-  # tag that disagrees with [project].version.
-  build:
-    uses: ./.github/workflows/build.yml
-    # A called workflow can only lower the permissions it is handed, never raise them, and the
-    # workflow-level default above is none. Without this line build.yml's own `contents: read`
-    # reads as an elevation and the run fails before the checkout.
+  version:
+    name: keep the release pull request in sync
+    runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write # push the release branch
+      pull-requests: write # open and update "Version Packages"
+    outputs:
+      # "true" when changesets are pending. The publish job reads it to decide whether this push is
+      # a release. A failed job leaves it empty, which is not "false", so a broken version phase can
+      # never fall through into an upload.
+      has_changesets: ${{ steps.molt.outputs.has_changesets }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # molt reads history to decide which packages changed and which commit a changeset came
+          # from. A shallow clone gives it neither.
+          fetch-depth: 0
+          # molt pushes with the token passed below, not with a credential left in .git/config.
+          persist-credentials: false
+
+      # `./` is this repository's own `action.yml`. A user writes a published ref
+      # (`giancarlosisasi/molt@v1`); molt uses the checkout, so a change to the action is exercised
+      # by the pull request that makes it rather than one release later.
+      - name: Run the molt release loop
+        id: molt
+        uses: ./
+        with:
+          # The molt-release version the action installs from PyPI, which is a different thing from
+          # the action code above. Pinned, so a release of molt is cut by a molt already known to
+          # work. Bump it deliberately, once the version it names has proven itself.
+          molt-version: "0.1.0"
+          # No `publish` input, so this job can only ever run the version phase.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish:
     name: publish to PyPI
-    needs: build
+    needs: version
+    # Only when the version phase found nothing left to version, which is the push that merged the
+    # "Version Packages" pull request.
+    if: needs.version.outputs.has_changesets == 'false'
     runs-on: ubuntu-latest
     environment:
       name: pypi
       url: https://pypi.org/project/molt-release/
     permissions:
-      # The only permission Trusted Publishing needs. Granted per job, never at workflow level: any
-      # job holding it can mint an OIDC token that identifies this repository to PyPI.
-      id-token: write
+      contents: write # push the version tag, create the GitHub Release
+      id-token: write # the OIDC token PyPI exchanges for a 15-minute upload token
     steps:
-      - name: Download the distribution built above
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: dist
-          path: dist/
+          fetch-depth: 0
+          persist-credentials: false
 
-      # The defaults are what this release wants: PyPI as the index, dist/ as the source, and PEP
-      # 740 attestations generated and uploaded. skip-existing stays off, so an attempt to publish
-      # a version that is already on PyPI fails loudly instead of passing in silence.
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+      - name: Publish, tag and cut the release
+        id: molt
+        uses: ./
+        with:
+          molt-version: "0.1.0"
+          # Supplying this is what makes the publish phase reachable at all.
+          publish: molt publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # `v1` is the moving reference users write as `uses: giancarlosisasi/molt@v1`. molt tags the
+      # released VERSION (`v0.1.2`); nothing moves the major reference, so it goes stale in silence.
+      # It already did: through the whole 0.1.0 cycle `v1` pointed at an `action.yml` that installed
+      # `molt-cli`, the distribution name PyPI refused, so every `@v1` run was broken. Moving it here
+      # ties it to the action that matches the molt just published.
+      #
+      # `persist-credentials: false` on the checkout means git holds no push credential, so the
+      # token goes on the remote URL for this one command. Actions masks it in the log.
+      - name: Move the v1 reference
+        if: steps.molt.outputs.published == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git tag -f v1 -m "molt action v1"
+          git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" refs/tags/v1

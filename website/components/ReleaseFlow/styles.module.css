@@ -1,0 +1,308 @@
+/*
+ * Built entirely on rspress's own theme variables (`--rp-c-*`), so the diagram follows the site
+ * into dark mode with no second palette to keep in step. Nothing here sets a raw colour except the
+ * two accents, which are derived from `--rp-c-brand`.
+ */
+
+.wrap {
+  margin: 2rem 0;
+}
+
+/* ---------------------------------------------------------------- tabs */
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--rp-c-divider-light);
+  border-radius: 10px;
+  background: var(--rp-c-bg-soft);
+}
+
+.tab,
+.tabActive {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.tab {
+  background: transparent;
+  color: var(--rp-c-text-2);
+}
+
+.tab:hover {
+  background: var(--rp-c-bg-mute);
+  color: var(--rp-c-text-1);
+}
+
+.tabActive {
+  background: var(--rp-c-bg);
+  color: var(--rp-c-text-1);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
+}
+
+.panel {
+  padding-top: 1.25rem;
+}
+
+.summary {
+  margin: 0 0 1.25rem;
+  color: var(--rp-c-text-2);
+  font-size: 0.9375rem;
+}
+
+/* ---------------------------------------------------------------- cards */
+
+.card {
+  padding: 1rem 1.125rem;
+  border: 1px solid var(--rp-c-divider-light);
+  border-radius: 10px;
+  background: var(--rp-c-bg-soft);
+}
+
+.cardRelease {
+  border-color: var(--rp-c-brand);
+  background: color-mix(in srgb, var(--rp-c-brand) 8%, var(--rp-c-bg-soft));
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--rp-c-text-1);
+}
+
+.cardDetail {
+  margin: 0.5rem 0 0;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--rp-c-text-2);
+}
+
+/* Actor badges. "You" is the one the reader is looking for, so it carries the brand colour and
+   molt's steps stay neutral -- the opposite would make the automated steps shout. */
+
+.badgeYou,
+.badgeMolt {
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.badgeYou {
+  background: color-mix(in srgb, var(--rp-c-brand) 16%, transparent);
+  color: var(--rp-c-brand);
+}
+
+.badgeMolt {
+  background: var(--rp-c-bg-mute);
+  color: var(--rp-c-text-2);
+}
+
+.releaseTag {
+  margin-left: auto;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  background: var(--rp-c-brand);
+  color: #fff;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- file lists */
+
+.files {
+  margin: 0.875rem 0 0;
+  padding: 0;
+  list-style: none;
+  /* A long path must scroll inside the card, never widen the page. */
+  overflow-x: auto;
+}
+
+.file,
+.fileAccent {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.3125rem 0;
+  border-top: 1px solid var(--rp-c-divider-light);
+}
+
+.files > li:first-child {
+  border-top: 0;
+}
+
+.filePath {
+  font-family: var(--rp-font-family-mono);
+  font-size: 0.8125rem;
+  color: var(--rp-c-text-1);
+  background: none;
+  padding: 0;
+}
+
+.fileAccent .filePath {
+  color: var(--rp-c-brand);
+  font-weight: 600;
+}
+
+.fileNote {
+  font-size: 0.8125rem;
+  /* text-2, not text-3. The notes carry the version numbers, which is the thing readers came for;
+     at text-3 (33% alpha in light mode) they were the least legible text on the page. */
+  color: var(--rp-c-text-2);
+}
+
+.bullets {
+  margin: 0.875rem 0 0;
+  padding-left: 1.125rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--rp-c-text-2);
+}
+
+.bullets li + li {
+  margin-top: 0.25rem;
+}
+
+/* ---------------------------------------------------------------- connectors */
+
+.connector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0;
+}
+
+.line {
+  width: 1px;
+  min-height: 0.75rem;
+  flex: 1;
+  background: var(--rp-c-divider);
+}
+
+.connectorLabel {
+  max-width: 34rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 6px;
+  background: var(--rp-c-bg-mute);
+  color: var(--rp-c-text-2);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.chevron {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--rp-c-divider);
+}
+
+/* ---------------------------------------------------------------- the fork */
+
+.fork {
+  padding: 1rem 1.125rem 1.125rem;
+  border: 1px dashed var(--rp-c-divider);
+  border-radius: 10px;
+  background: transparent;
+}
+
+.forkQuestion {
+  margin: 0 0 0.875rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--rp-c-text-1);
+}
+
+.branches {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.branch {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--rp-c-divider-light);
+  border-radius: 8px;
+  background: var(--rp-c-bg-soft);
+}
+
+.branchAnswer {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--rp-c-text-2);
+}
+
+.branchLabel {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--rp-c-text-1);
+}
+
+.branchDetail {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--rp-c-text-2);
+}
+
+.footnote {
+  margin: 1.25rem 0 0;
+  padding-top: 0.875rem;
+  border-top: 1px solid var(--rp-c-divider-light);
+  font-size: 0.8125rem;
+  color: var(--rp-c-text-2);
+}
+
+/* ---------------------------------------------------------------- narrow screens */
+
+@media (max-width: 640px) {
+  .branches {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tabs {
+    flex-direction: column;
+  }
+
+  .releaseTag {
+    margin-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab,
+  .tabActive {
+    transition: none;
+  }
+}

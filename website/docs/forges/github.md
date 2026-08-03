@@ -45,6 +45,45 @@ The GitHub backend authenticates its API calls with a token from the `GITHUB_TOK
 
 Note that this token is **only** for talking to GitHub. Uploading to PyPI is a completely separate credential and uses [OIDC Trusted Publishing](/guides/publishing#trusted-publishing-over-oidc----no-long-lived-token) -- there is no PyPI token in the mix.
 
+## Repository settings
+
+Four settings on the repository decide whether the release loop can do its work. The first one is off by default and stops the version phase dead, so check it before the first run.
+
+### Pull-request creation
+
+**Settings → Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests.**
+
+Turn it on. Without it the version phase fails when it opens the "Version Packages" pull request:
+
+```text
+GitHub Actions is not permitted to create or approve pull requests.
+```
+
+It is **off by default on personal-account repositories**. An organization repository inherits the organization's setting, which an owner sets under the same path in organization settings; a repository cannot turn it on if the organization has turned it off.
+
+Granting `pull-requests: write` in the workflow does not substitute for it. The two are separate gates and the run needs both.
+
+### Workflow permissions
+
+The radio above the checkbox sets the *default* token permissions for workflows that do not state their own. molt's workflows state their own, per job, so the restricted default is the right choice: leave it on **Read repository contents and packages permissions** and let each job grant what it needs.
+
+The release loop needs `contents: write` and `pull-requests: write` on the version phase, and `contents: write` plus `id-token: write` on the publish. See [CI: GitHub Action](/guides/ci-github-action#understanding-the-permissions).
+
+### Branch protection
+
+molt does not push to your base branch. It force-updates `changeset-release/<base>` and opens a pull request from it, so a protection rule on `main` is no obstacle. Two rules do matter:
+
+- A rule covering `changeset-release/*` blocks the version phase. Exclude that pattern, or allow the token to force-push to it.
+- A rule requiring **signed commits** rejects a commit made on the runner. Set `commit-mode: api` so GitHub authors and signs the commit instead. See [Signed commits](/guides/ci-github-action#signed-commits).
+
+### Checks on the release pull request
+
+A pull request opened with `GITHUB_TOKEN` does not start other workflows the way a human's push does. GitHub holds the `pull_request` run for approval rather than starting it, which is its protection against a workflow triggering itself in a loop. Expect to click **Approve and run** on the "Version Packages" pull request, or to see no checks on it at all.
+
+This does not affect the release. Merging that pull request is a push by you, so `release.yml` runs normally and the publish phase goes ahead.
+
+If you want checks to start on their own, open the release pull request with a personal access token instead of `GITHUB_TOKEN`: pass it as `github-token`. A pull request opened with a PAT triggers workflows normally. The cost is a long-lived credential in the repository, which is the thing the rest of this setup exists to avoid.
+
 ## Configuration
 
 The backend resolves its endpoints and repository from the environment, which CI already sets:

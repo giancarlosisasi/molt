@@ -2,6 +2,8 @@
 title: "CI: GitHub Action"
 ---
 
+import { ReleaseFlow } from '../../components/ReleaseFlow';
+
 # CI: GitHub Action
 
 Automate the whole release loop on GitHub: molt keeps a "Version Packages" pull request in sync with your accumulated changesets, and publishes to PyPI over OIDC the moment that PR merges.
@@ -10,9 +12,7 @@ Molt ships a composite GitHub Action that installs itself with [uv](/ecosystems/
 
 The Action lives at the root of the molt repository, so you reference it as `uses: giancarlosisasi/molt@v1` -- there is no separate action repository to keep in step with the CLI.
 
-:::warning The `v1` tag is not published yet
-Everything on this page ships: `action.yml`, its eight inputs, its four outputs, and the release loop behind them. What does not exist yet is the moving **`v1` tag** the line below references, because that is release-process work rather than code. Until it is cut, reference a commit (`uses: giancarlosisasi/molt@<sha>`) -- which is what you should do in production anyway -- or drive the same loop yourself with plain `molt` commands (see [Molt is not tied to GitHub Actions](#molt-is-not-tied-to-github-actions)).
-:::
+`v1` is a **moving** reference: it tracks the newest 1.x action, and molt's own release moves it after each successful publish. Pin a commit in production (`uses: giancarlosisasi/molt@<sha>`) if you would rather decide when the action changes under you. Dependabot updates a commit pin; it cannot tell you a moving tag moved.
 
 ## The two-phase loop
 
@@ -22,6 +22,9 @@ Every push to your base branch triggers one of two behaviors, and molt decides w
 - **Publish phase** -- there are no pending changesets but there *are* versions on disk that are not yet on PyPI. That is the state right after the release PR merges. Molt builds and [publishes](/guides/publishing) the changed packages, git-tags each one, and creates a GitHub Release per package with its changelog entry as the body.
 
 So the human loop is simply: merge feature PRs (each carrying a changeset), watch the "Version Packages" PR accumulate, and merge it when you want to cut a release. Merging it is the release.
+
+<ReleaseFlow />
+
 
 The release PR lives on a dedicated branch, `changeset-release/<base>` (for a `main` base, `changeset-release/main`). Molt owns that branch and force-updates it -- do not hand-edit it, your changes are replaced on the next push. The name is deliberately the one changesets uses, so a repository migrating from changesets keeps its existing release branch, its open release PR, and any branch protection rule written against that name.
 
@@ -74,7 +77,7 @@ jobs:
 
       - uses: giancarlosisasi/molt@v1
         with:
-          molt-version: "0.1.0"   # pin molt; keeps the Action and the tool in lockstep
+          molt-version: "0.1.1"   # pin molt; keeps the Action and the tool in lockstep
           publish: molt publish   # the command to run in the publish phase
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -82,13 +85,19 @@ jobs:
 
 That is the entire release automation for a single package or a monorepo. There is **no separate `astral-sh/setup-uv` step**: the Action installs uv itself, from a commit-pinned copy it owns. In production, pin `actions/checkout` and `giancarlosisasi/molt` to full commit SHAs.
 
+:::warning One repository setting is required
+**Settings → Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests.** It is off by default on personal-account repositories, and without it the version phase fails with `GitHub Actions is not permitted to create or approve pull requests`. Granting `pull-requests: write` above does not substitute for it.
+
+Three more settings shape what the loop can do: branch protection on `changeset-release/*`, a signed-commits rule, and whether checks start on the release pull request. All four are in [Repository settings](/forges/github#repository-settings).
+:::
+
 ## Inputs
 
 Every input is optional. Supplying only a token runs the version phase with the defaults below.
 
 | Input | Default | What it does |
 |---|---|---|
-| `molt-version` | latest release | The exact `molt-release` version to install, for example `"0.1.0"`. Empty installs the latest release. See [Pinning molt](#pinning-molt). |
+| `molt-version` | latest release | The exact `molt-release` version to install, for example `"0.1.1"`. Empty installs the latest release. See [Pinning molt](#pinning-molt). |
 | `publish` | *(empty)* | The command that publishes the release, for example `molt publish`. Leave it empty to run the version phase only -- supplying it is also what makes the publish phase reachable at all. |
 | `version-command` | *(empty)* | The command that versions the release, for example `molt version --snapshot canary`. Empty runs molt's own `molt version`. Split with POSIX shell rules, so a quoted argument stays one argument. |
 | `title` | `Version Packages` | The title of the release pull request. |
@@ -221,9 +230,9 @@ Deliberate omissions, each with the reason -- a changesets user migrating looks 
 | changesets has | molt does not | Why |
 |---|---|---|
 | Pre mode (`pre.json`, a title suffix and a banner on the release PR) | -- | Molt has no pre state at all: `1.0.1-next.0` is not a legal PEP 440 version, so `--pre` is a stateless flag on [`molt version`](/cli/version). |
-| Draft pull requests (`prDraft`) | -- | Not implemented; the release PR is always opened ready for review. |
+| Draft pull requests (`prDraft`) | -- | The release pull request is always opened ready for review. |
 | Signed **tags** in `api` mode (`commitMode` also routes `pushTag`) | -- | Molt pushes tags with git in both modes. A tag ref carries no signature either way -- `git push origin <tag>` and the API create the same object -- so signing the commit solves the problem on its own. |
-| A `cwd` input | -- | The Action runs in the checkout root, so a repository whose Python workspace lives in a subdirectory cannot use it yet. |
+| A `cwd` input | -- | The Action runs in the checkout root, so a repository whose Python workspace lives in a subdirectory cannot use it. |
 
 ## Migrating from `changesets/action`
 
