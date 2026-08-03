@@ -10,9 +10,11 @@ Automate the whole release loop on GitHub: molt keeps a "Version Packages" pull 
 
 Molt ships a composite GitHub Action that installs itself with [uv](/ecosystems/uv) and runs the release loop for you. Because it is the same `molt` you run locally, nothing about the automation is GitHub-specific magic -- the Action just wires molt's own commands into the two events that matter.
 
-The Action lives at the root of the molt repository, so you reference it as `uses: giancarlosisasi/molt@v1` -- there is no separate action repository to keep in step with the CLI.
+The Action lives in [giancarlosisasi/molt-action](https://github.com/giancarlosisasi/molt-action), so you reference it as `uses: giancarlosisasi/molt-action@v1`.
 
-`v1` is a **moving** reference: it tracks the newest 1.x action, and molt's own release moves it after each successful publish. Pin a commit in production (`uses: giancarlosisasi/molt@<sha>`) if you would rather decide when the action changes under you. Dependabot updates a commit pin; it cannot tell you a moving tag moved.
+`v1` is a **moving** reference: it tracks the newest 1.x action and moves when the action itself changes. Pin a commit in production (`uses: giancarlosisasi/molt-action@<sha>`) if you would rather decide when the action changes under you. Dependabot updates a commit pin; it cannot tell you a moving tag moved.
+
+The Action's version and the CLI's version are separate. `v1` versions the YAML a runner executes; `molt-version` pins the `molt-release` release it installs from PyPI. That repository's CI checks the pairing on every push and once a week, by resolving the Action's inputs against an installed `molt-release`.
 
 ## The two-phase loop
 
@@ -75,15 +77,15 @@ jobs:
           fetch-depth: 0            # molt reads history; a shallow clone gives it none
           persist-credentials: false  # the Action brings its own push credential
 
-      - uses: giancarlosisasi/molt@v1
+      - uses: giancarlosisasi/molt-action@v1
         with:
-          molt-version: "0.1.1"   # pin molt; keeps the Action and the tool in lockstep
+          molt-version: "0.1.2"   # pin molt; keeps the Action and the tool in lockstep
           publish: molt publish   # the command to run in the publish phase
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-That is the entire release automation for a single package or a monorepo. There is **no separate `astral-sh/setup-uv` step**: the Action installs uv itself, from a commit-pinned copy it owns. In production, pin `actions/checkout` and `giancarlosisasi/molt` to full commit SHAs.
+That is the entire release automation for a single package or a monorepo. There is **no separate `astral-sh/setup-uv` step**: the Action installs uv itself, from a commit-pinned copy it owns. In production, pin `actions/checkout` and `giancarlosisasi/molt-action` to full commit SHAs.
 
 `persist-credentials: false` is deliberate and the Action supports it. Both phases push -- the version phase force-pushes the release branch, the publish phase pushes the tags -- and molt authenticates them from the `GITHUB_TOKEN` you pass, through a credential it puts in the environment for the length of its own step. The token is never written to the runner's disk, and no step you add after molt inherits a credential from it. Leaving the checkout's credentials in place instead (`persist-credentials: true`) also works, but then the push uses the checkout's token rather than the one molt was given, which differ as soon as you pass a GitHub App token or a PAT.
 
@@ -125,7 +127,7 @@ Starting from `permissions: {}` at the workflow level and granting per job is th
 
 `molt-version` pins the exact molt the Action runs. Left empty, it installs the **latest release** -- it does not read the Action's own ref, because turning a ref like `v1` (or a branch, or a SHA) into a PyPI specifier is guesswork, and guessing a version is the opposite of pinning one.
 
-The Action pins the one third-party action it bundles (`astral-sh/setup-uv`) to a commit SHA, and molt's own repository runs Dependabot weekly against that pin -- so an audit of the third-party actions you inherit has a named owner for the refresh.
+The Action pins the one third-party action it bundles (`astral-sh/setup-uv`) to a commit SHA, and the Action's own repository runs Dependabot weekly against that pin, so an audit of the third-party actions you inherit has a named owner for the refresh.
 
 Pin it. A pinned version is what stops your releases from changing behavior on a day you did not touch anything, and because the Action installs molt with `uvx` from a warm uv cache, a pinned version resolves in seconds. `uvx` also puts that same install on `PATH` for the commands molt spawns, so `publish: molt publish` runs the version you pinned and not some other one.
 
@@ -162,7 +164,7 @@ The Action exposes four outputs so later steps can react to a release:
 | `pull_request_number` | The number of the created or updated "Version Packages" PR. **Empty** when the run opened none, which is every publish run. |
 
 ```yaml
-      - uses: giancarlosisasi/molt@v1
+      - uses: giancarlosisasi/molt-action@v1
         id: molt
         with:
           publish: molt publish
@@ -180,7 +182,7 @@ Every value is written to `GITHUB_OUTPUT` in the delimiter (heredoc) form, so a 
 A publish that uploads three packages out of five fails the step -- and still reports the three. That is the run where reading `published_packages` matters most, so guard the reader with `if: always()` rather than letting it be skipped along with the rest of the job:
 
 ```yaml
-      - uses: giancarlosisasi/molt@v1
+      - uses: giancarlosisasi/molt-action@v1
         id: molt
         with:
           publish: molt publish
@@ -202,7 +204,7 @@ Molt also fails the run when a package published but its GitHub Release could no
 If your release branch is protected by a rule that **requires signed commits**, set `commit-mode: api`:
 
 ```yaml
-      - uses: giancarlosisasi/molt@v1
+      - uses: giancarlosisasi/molt-action@v1
         with:
           commit-mode: api
           publish: molt publish
