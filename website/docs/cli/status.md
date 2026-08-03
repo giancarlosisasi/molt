@@ -108,6 +108,8 @@ As a pull-request gate:
 molt status --since origin/main
 ```
 
+Exclude the release branch, `changeset-release/<base>`; see [Status checks](/guides/status#the-release-pull-request).
+
 ## See also
 
 - [Status checks](/guides/status) -- using `status` as a CI gate.

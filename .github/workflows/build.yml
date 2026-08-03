@@ -117,9 +117,19 @@ jobs:
   # For a change that really does ship nothing, `molt add --empty` records that in one line.
   changeset:
     name: a changeset covers what changed
-    # Pull requests only. On a push to main the changesets have already served their purpose, and
-    # release.yml is what reads them next.
-    if: github.event_name == 'pull_request'
+    # Pull requests only, and never the release pull request. On a push to main the changesets have
+    # already served their purpose, and release.yml is what reads them next.
+    #
+    # On `changeset-release/<base>` the gate contradicts itself. That branch is molt's own output:
+    # the version phase deletes the changesets it consumed and bumps `pyproject.toml`, which is a
+    # `changed_file_patterns` match. So "a package changed and no changeset covers it" is the
+    # correct shape of a release pull request, not a fault in it, and the gate failed every one of
+    # them. The rule the gate enforces is about authored changes, so it applies to authored
+    # branches. The name is derived from the base branch rather than written out, because that is
+    # how molt derives it too (`molt.action.run.VERSION_BRANCH_PREFIX`).
+    if: >-
+      github.event_name == 'pull_request'
+      && github.head_ref != format('changeset-release/{0}', github.base_ref)
     runs-on: ubuntu-latest
     permissions:
       contents: read
