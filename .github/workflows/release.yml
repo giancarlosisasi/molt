@@ -68,8 +68,13 @@ jobs:
           # molt reads history to decide which packages changed and which commit a changeset came
           # from. A shallow clone gives it neither.
           fetch-depth: 0
-          # molt pushes with the token passed below, not with a credential left in .git/config.
-          persist-credentials: false
+          # persist-credentials stays ON, which is the checkout default. In `git-cli` commit mode
+          # molt pushes the release branch with `git push origin`, and git reads its credential from
+          # .git/config, not from GITHUB_TOKEN in the environment. Setting it to false fails the run
+          # with `fatal: could not read Username for 'https://github.com'` AFTER the plan is
+          # computed, which reads like a molt bug and is not one. Turn it off only with
+          # `commit-mode: api`, where the commit and the branch go over the REST API and git never
+          # pushes.
 
       # `./` is this repository's own `action.yml`. A user writes a published ref
       # (`giancarlosisasi/molt@v1`); molt uses the checkout, so a change to the action is exercised
@@ -104,7 +109,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          persist-credentials: false
+          # Same reason as the version job: this one pushes the version tag and the v1 reference.
 
       - name: Publish, tag and cut the release
         id: molt
@@ -122,12 +127,8 @@ jobs:
       # `molt-cli`, the distribution name PyPI refused, so every `@v1` run was broken. Moving it here
       # ties it to the action that matches the molt just published.
       #
-      # `persist-credentials: false` on the checkout means git holds no push credential, so the
-      # token goes on the remote URL for this one command. Actions masks it in the log.
       - name: Move the v1 reference
         if: steps.molt.outputs.published == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git tag -f v1 -m "molt action v1"
-          git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" refs/tags/v1
+          git push -f origin refs/tags/v1

@@ -72,8 +72,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 0
-          persist-credentials: false
+          fetch-depth: 0        # molt reads history; a shallow clone gives it none
+          # persist-credentials is left ON (the default) -- see "Pushing needs a git credential"
 
       - uses: giancarlosisasi/molt@v1
         with:
@@ -108,6 +108,25 @@ Every input is optional. Supplying only a token runs the version phase with the 
 | `github-token` | `${{ github.token }}` | The token molt uses to open the pull request and create releases. A `GITHUB_TOKEN` already in the step's environment wins over this input. |
 
 You also configure PyPI Trusted Publishing once, on PyPI itself, to trust this repository and workflow. After that there is no API token anywhere in the workflow -- see [Publishing](/guides/publishing#trusted-publishing-over-oidc----no-long-lived-token).
+
+## Pushing needs a git credential
+
+Leave `persist-credentials` alone on the checkout step. It defaults to `true`, and that is what the version phase needs.
+
+In the default `git-cli` [commit mode](#signed-commits), molt pushes the release branch with `git push origin`. Git reads its credential from `.git/config`, which `actions/checkout` writes for you. It does **not** read `GITHUB_TOKEN` from the environment: that token is for the API calls, and the two are separate paths to the same host.
+
+Setting `persist-credentials: false` therefore fails the run, and it fails it late -- after molt has read the changesets and computed the plan, so the log shows a correct release and then this:
+
+```text
+info Packages to be bumped:
+  - acme-core 1.2.0 -> 1.3.0 (minor)
+error git push origin HEAD:changeset-release/main --force failed:
+      fatal: could not read Username for 'https://github.com'
+```
+
+That reads like a molt bug. It is a checkout setting.
+
+There is one case where turning it off is correct: `commit-mode: api`, where the commit and the branch update go to GitHub over REST and git never pushes at all. If you want no credential on disk, that is the supported way to have it.
 
 ## Understanding the permissions
 
