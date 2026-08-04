@@ -1,5 +1,11 @@
 # molt-release
 
+## 0.2.0
+
+### Minor Changes
+
+- Add `molt doctor`: a read-only check of your workspace setup. It reports every configuration problem in one pass, names which packages a release would skip, and never prints a credential.
+
 ## 0.1.4
 
 ### Patch Changes
