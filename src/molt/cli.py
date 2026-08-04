@@ -70,6 +70,7 @@ _COMMAND_MODULES: Final[dict[str, str]] = {
     "add": "add",
     "version": "version",
     "status": "status",
+    "doctor": "doctor",
     "publish": "publish",
     "publish-plan": "publish_plan",
     "build": "build",
@@ -531,6 +532,29 @@ def status(
             "output": output,
             "non_interactive": non_interactive,
         },
+        cwd=cwd,
+    )
+
+
+@app.command()
+def doctor(
+    online: Annotated[
+        bool,
+        typer.Option("--online", help="Also check that the package index answers. Off by default."),
+    ] = False,
+    output: OutputOption = None,
+    cwd: CwdOption = None,
+    non_interactive: NonInteractiveOption = False,
+) -> None:
+    """Check whether this workspace is set up correctly, and what a release would skip.
+
+    Read-only, like `yank`: it reports and exits, so every run is already a preview and there is no
+    write to guard. It is also the one command that does not refuse an uninitialized project --
+    being unsure whether the project is set up is why somebody runs it.
+    """
+    _dispatch(
+        "doctor",
+        {"online": online, "output": output, "non_interactive": non_interactive},
         cwd=cwd,
     )
 

@@ -83,12 +83,12 @@ _TAG_ONLY = "tag-only"
 
 #: Environment variables that hold an index API token, in precedence order. ``UV_PUBLISH_TOKEN`` and
 #: ``TWINE_PASSWORD`` are the two spellings a Python project is likely to already have set.
-_TOKEN_ENVIRONMENT = ("MOLT_PUBLISH_TOKEN", "UV_PUBLISH_TOKEN", "TWINE_PASSWORD")
+TOKEN_ENVIRONMENT = ("MOLT_PUBLISH_TOKEN", "UV_PUBLISH_TOKEN", "TWINE_PASSWORD")
 
 #: GitHub Actions' OIDC endpoints, supplied to the job as environment variables when the workflow
 #: requests ``id-token: write``. Their absence means "not running under Trusted Publishing".
-_ACTIONS_ID_TOKEN_URL = "ACTIONS_ID_TOKEN_REQUEST_URL"
-_ACTIONS_ID_TOKEN_TOKEN = "ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+ACTIONS_ID_TOKEN_URL = "ACTIONS_ID_TOKEN_REQUEST_URL"
+ACTIONS_ID_TOKEN_TOKEN = "ACTIONS_ID_TOKEN_REQUEST_TOKEN"
 
 #: Where an OIDC identity is exchanged for a short-lived upload token, per index, with the audience
 #: that index expects. Hardcoded rather than read from ``/_/oidc/audience`` so the exchange is one
@@ -586,7 +586,7 @@ class TrustedPublishingOIDC:
     """Resolve an upload credential without ever asking a human (design D5).
 
     Two sources, in order. An **API token** in the environment
-    (:data:`_TOKEN_ENVIRONMENT`) wins, because a project that has deliberately set one is telling
+    (:data:`TOKEN_ENVIRONMENT`) wins, because a project that has deliberately set one is telling
     molt which credential to use. Otherwise, if the process is running under a workflow that
     requested ``id-token: write``, the OIDC identity is exchanged for a short-lived upload token at
     the index's mint endpoint -- **PyPI Trusted Publishing**, which is the arrangement this project
@@ -605,19 +605,19 @@ class TrustedPublishingOIDC:
         """Return the token to upload with, or raise if there is no identity and no token."""
         import os
 
-        for variable in _TOKEN_ENVIRONMENT:
+        for variable in TOKEN_ENVIRONMENT:
             token = os.environ.get(variable)
             if token:
                 return token
 
-        request_url = os.environ.get(_ACTIONS_ID_TOKEN_URL)
-        request_token = os.environ.get(_ACTIONS_ID_TOKEN_TOKEN)
+        request_url = os.environ.get(ACTIONS_ID_TOKEN_URL)
+        request_token = os.environ.get(ACTIONS_ID_TOKEN_TOKEN)
         endpoint = _MINT_ENDPOINTS.get((repository or "pypi").strip().lower())
         if not request_url or not request_token or endpoint is None:
             raise MoltError(
                 "No upload credential is available: no Trusted Publishing identity in this "
                 "environment and no API token in "
-                f"{', '.join(_TOKEN_ENVIRONMENT)}. molt does not prompt for one -- there is "
+                f"{', '.join(TOKEN_ENVIRONMENT)}. molt does not prompt for one -- there is "
                 "nothing to type at a CI job."
             )
         mint_url, audience = endpoint

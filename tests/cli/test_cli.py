@@ -114,6 +114,7 @@ COMMANDS = (
     "add",
     "version",
     "status",
+    "doctor",
     "publish",
     "publish-plan",
     "build",
@@ -131,8 +132,14 @@ ALLOWED_EXTRA_COMMANDS = frozenset({"tag"})
 #: (``website/docs/cli/overview.md:44``). ``yank`` is deliberately **absent**: PyPI exposes no API
 #: for yanking, so ``molt yank`` only reads the index and prints the browser steps. It never
 #: mutates, so every run is already a dry run and ``--dry-run`` would be noise
-#: (``website/docs/cli/yank.md``, "Why this is a manual step").
+#: (``website/docs/cli/yank.md``, "Why this is a manual step"). ``doctor`` is absent for the same
+#: reason: it reports and exits, and writing nothing is the promise it makes.
 MUTATING_COMMANDS = ("add", "version", "publish", "git-tag", "build")
+
+#: Commands that write nothing and therefore must **not** declare ``--dry-run``. The positive list
+#: above cannot express that: a command missing from it is untested either way, which is how a
+#: read-only command grows a flag that guards nothing.
+READ_ONLY_COMMANDS = ("status", "doctor", "yank", "publish-plan")
 
 #: CLI command name -> the ``molt.commands`` module that implements it (pinned decision 1).
 COMMAND_MODULES = {
@@ -140,6 +147,7 @@ COMMAND_MODULES = {
     "add": "add",
     "version": "version",
     "status": "status",
+    "doctor": "doctor",
     "publish": "publish",
     "publish-plan": "publish_plan",
     "build": "build",
@@ -152,6 +160,7 @@ COMMAND_MODULES = {
 #: ``molt.commands`` package is allowed -- it is an empty namespace; only its *members* are heavy.
 HEAVY_MODULE_PREFIXES = (
     "molt.commands.",
+    "molt.doctor",
     "molt.engine",
     "molt.config",
     "molt.apply",
@@ -457,6 +466,11 @@ COMMAND_FLAG_CASES = [
         "because the routing row below types `-o` -- the docs need the alias added",
     ),
     (
+        "doctor",
+        ("--output", "--online"),
+        "cli-shell delta: --output plus the network opt-in; --dry-run is deliberately absent",
+    ),
+    (
         "publish",
         ("--filter", "--repository", "--index-url", "--from-pack-dir", "--git-tag", "--output"),
         "publish.md:42-50",
@@ -526,6 +540,16 @@ def test_global_options_are_on_every_command(command: str) -> None:
 def test_dry_run_is_on_every_mutating_command(command: str) -> None:
     """overview.md:44 -- ``--dry-run`` prints the plan and writes nothing."""
     assert "--dry-run" in option_flags(command)
+
+
+@pytest.mark.parametrize("command", READ_ONLY_COMMANDS)
+def test_dry_run_is_on_no_read_only_command(command: str) -> None:
+    """A command that writes nothing has nothing to guard, so it declares no ``--dry-run``.
+
+    ``overview.md`` states this for ``yank``; the ``doctor-command`` spec states it for ``doctor``
+    with the same reasoning -- every run is already a dry run.
+    """
+    assert "--dry-run" not in option_flags(command)
 
 
 def test_program_version_flag_is_not_declared_on_a_command() -> None:

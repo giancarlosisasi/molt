@@ -16,6 +16,7 @@ You install the distribution `molt-release` and type the command `molt`. See [In
 | `molt add` | Record a changeset: affected packages, bump types, and a summary. **The default command** -- bare `molt` runs this. | [molt add](/cli/add) |
 | `molt version` | Consume pending changesets: bump versions, propagate to dependents, rewrite pins, write changelogs, update the lockfile. | [molt version](/cli/version) |
 | `molt status` | Report pending changesets and the projected release, as text or JSON. Doubles as a CI gate. | [molt status](/cli/status) |
+| `molt doctor` | Check the workspace setup and report which packages a release would skip. Read-only. | [molt doctor](/cli/doctor) |
 | `molt publish` | Build, then upload changed packages to PyPI via OIDC Trusted Publishing, in dependency order. | [molt publish](/cli/publish) |
 | `molt publish-plan` | Print or emit the resolved publish plan without uploading anything. | [molt publish](/cli/publish) |
 | `molt build` | Build sdist and wheel artifacts for the packages a plan will publish. (The "pack" stage.) | [molt build](/cli/pack) |
@@ -43,8 +44,8 @@ These options are accepted by every command (subject to the command actually hav
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `--non-interactive`, `--yes` | flag | off | Never block on a prompt. Each prompt resolves to its documented default, or the command exits non-zero naming the missing input. Required for CI, Dependabot, Renovate, and codegen. |
-| `--dry-run` | flag | off | On any mutating command (`add`, `version`, `publish`, `git-tag`, `build`), print the [plan](/concepts/release-plan) the command would execute and write nothing. (`yank` has none: it never mutates, so every run is already a dry run.) See [Dry runs and plans](/guide/dry-run-and-plans). |
-| `--output json` | string | human-readable | Where supported (`status`, `publish-plan`), emit the plan as a JSON document to stdout instead of the rendered view. See [Machine-readable output](#machine-readable-output). |
+| `--dry-run` | flag | off | On any mutating command (`add`, `version`, `publish`, `git-tag`, `build`), print the [plan](/concepts/release-plan) the command would execute and write nothing. (`yank` and `doctor` have none: they never mutate, so every run is already a dry run.) See [Dry runs and plans](/guide/dry-run-and-plans). |
+| `--output json` | string | human-readable | Where supported (`status`, `publish-plan`, `doctor`), emit the document to stdout instead of the rendered view. See [Machine-readable output](#machine-readable-output). |
 | `--cwd <path>` | path | current directory | Directory to run in. Root discovery walks up from here to the workspace root. |
 | `--version` | flag | -- | Print the bare version string (for example `0.1.0`) and exit 0. No banner, no prefix. |
 | `-h`, `--help` | flag | -- | Show help for the program or a command and exit 0. |
@@ -78,6 +79,7 @@ So a script may treat stdout as parseable without filtering it, and may show std
 Molt produces a machine-readable [plan object](/concepts/release-plan) on every mutating command, and structured output on read commands:
 
 - **`molt status` and `molt publish-plan`** accept `--output json` (short: `-o`) to print the plan as a JSON document to stdout. Plan keys are **snake_case** -- `old_version`, `new_version`, `package_name`.
+- **`molt doctor`** accepts `--output json` to print its check report to stdout, with the same snake_case convention. See [molt doctor](/cli/doctor#machine-readable-output).
 - **`molt publish` and `molt git-tag`** accept `--output <file>` to write an NDJSON event stream -- one `{"type":"git-tag", ...}` object per line -- to a file.
 - The **`MOLT_OUTPUT`** environment variable back-fills `--output` when the flag is not passed, so CI can set it once for the whole pipeline.
 
@@ -99,6 +101,7 @@ The same argument-handling rules apply across every command:
 | Prompt cancelled with Ctrl-C | 0 (a deliberate, documented divergence from POSIX 130) |
 | Any validation failure or user-facing error | 1 |
 | `molt status` finds changed packages but no changesets (CI gate) | 1 |
+| `molt doctor` reports at least one failed check (warnings never count) | 1 |
 | `molt status` when nothing relevant changed (or only ignored, private, or unmatched files) | 0 |
 | `molt version` when there are no unreleased changesets | 1 |
 | `molt publish` when there is nothing to publish | 0 |

@@ -110,8 +110,20 @@ molt status --since origin/main
 
 Exclude the release branch, `changeset-release/<base>`; see [Status checks](/guide/status#the-release-pull-request).
 
+## `status` or `doctor`?
+
+Molt has two read-only commands and they answer different questions. Wiring the wrong one into a pull-request job leaves you with no changeset gate:
+
+| Command | Question | Fails when |
+|---|---|---|
+| `molt status` | *Is this change releasable?* | A package changed and no changeset covers it. |
+| [`molt doctor`](/cli/doctor) | *Is my setup sane?* | A configuration, a manifest, a version source or a changeset file is broken. |
+
+`molt status` is the gate for every pull request. `molt doctor` is what you run when something is wrong, after a migration, or before opening an issue.
+
 ## See also
 
 - [Status checks](/guide/status) -- using `status` as a CI gate.
+- [molt doctor](/cli/doctor) -- the setup diagnostic.
 - [CI: GitHub Action](/guide/ci-github-action).
 - [The release plan](/concepts/release-plan) -- the object `--output json` prints.

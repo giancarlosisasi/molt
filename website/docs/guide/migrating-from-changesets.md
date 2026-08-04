@@ -63,6 +63,8 @@ Python has no `peerDependencies`, so molt drops the concept, along with the expe
 
 This is the one step of the migration that is not a paste, and it is worth doing first because nothing else runs until it is done. **Molt refuses a configuration it cannot fully honour**, naming the key or the value and what to write instead. It does not warn and carry on: a setting molt silently ignored would be a release molt got wrong, and by the time you read the warning the version is in a manifest and possibly on an index.
 
+> **Run [`molt doctor`](/cli/doctor) here.** It reports **every** rejected key and value in one pass, each naming the replacement, so you edit the file once instead of once per failed run. It also names every package your workspace has and tells you which ones a release would skip -- worth reading before your first `molt version`, because a package with no version, or a version derived from a git tag, is skipped and is invisible until a release is already going.
+
 The keys a changesets configuration may carry that molt does not accept:
 
 | In `.changeset/config.json` | What to write instead |
