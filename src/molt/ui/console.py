@@ -22,6 +22,7 @@ differentiator (repo ``CLAUDE.md``); upstream only added Windows CI in 2026-07.
 
 from __future__ import annotations
 
+import sys
 from contextlib import contextmanager
 from typing import IO, TYPE_CHECKING, Final, Protocol
 
@@ -32,7 +33,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from contextlib import AbstractContextManager
 
-__all__ = ["Console", "RichConsole", "console"]
+__all__ = ["Console", "RichConsole", "can_encode", "console", "console_encoding"]
 
 
 #: Level -> ``rich`` style. The label *text* is what makes the levels distinguishable; the style is
@@ -44,6 +45,32 @@ _LEVEL_STYLES: Final[dict[str, str]] = {
     "warn": "bold yellow",
     "error": "bold red",
 }
+
+
+def console_encoding(file: IO[str] | None = None) -> str | None:
+    """The encoding molt's output stream encodes to, or ``None`` for a stream that has none.
+
+    ``file=None`` resolves to ``sys.stderr``, which is where every human-facing byte goes. Resolved
+    at call time rather than cached: a test's capture fixture may have replaced the stream.
+    """
+    stream = sys.stderr if file is None else file
+    return getattr(stream, "encoding", None)
+
+
+def can_encode(text: str, encoding: str | None) -> bool:
+    """Whether ``text`` survives ``encoding`` intact.
+
+    ``None`` and the empty string mean "no limits" -- an in-memory stream has neither an encoding
+    nor a character it cannot hold. This is the one place the question is answered, so
+    :class:`RichConsole` and ``molt doctor`` cannot form different opinions about the same terminal.
+    """
+    if not encoding:
+        return True
+    try:
+        text.encode(encoding)
+    except (UnicodeEncodeError, LookupError):
+        return False
+    return True
 
 
 class Console(Protocol):
@@ -164,15 +191,10 @@ class RichConsole:
         silently would not be a degradation, it would be a different message (``terminal-ui`` spec,
         "Emoji banner on a legacy code page").
         """
-        encoding = getattr(self._backend.file, "encoding", None)
-        if not encoding:
-            # An in-memory stream (``io.StringIO``) has no encoding and no limits.
+        encoding = console_encoding(self._backend.file)
+        if encoding is None or can_encode(text, encoding):
             return text
-        try:
-            text.encode(encoding)
-        except (UnicodeEncodeError, LookupError):
-            return text.encode(encoding, errors="replace").decode(encoding, errors="replace")
-        return text
+        return text.encode(encoding, errors="replace").decode(encoding, errors="replace")
 
 
 #: The one adapter instance the shell and every command write through. Swap this attribute (not the

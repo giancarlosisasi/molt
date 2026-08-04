@@ -4,6 +4,7 @@
   { "type": "file", "name": "add", "label": "molt add" },
   { "type": "file", "name": "version", "label": "molt version" },
   { "type": "file", "name": "status", "label": "molt status" },
+  { "type": "file", "name": "doctor", "label": "molt doctor" },
   { "type": "file", "name": "publish", "label": "molt publish" },
   { "type": "file", "name": "pack", "label": "molt pack" },
   { "type": "file", "name": "yank", "label": "molt yank" },

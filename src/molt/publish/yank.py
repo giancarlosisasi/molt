@@ -45,6 +45,7 @@ __all__ = [
     "IndexRelease",
     "PyPIIndex",
     "YankReport",
+    "index_origin",
     "yank",
 ]
 
@@ -136,7 +137,7 @@ def yank(
     """
     normalized = normalize_name(package)
     target = (repository or DEFAULT_REPOSITORY).strip() or DEFAULT_REPOSITORY
-    origin = _index_origin(target)
+    origin = index_origin(target)
     host = _host_of(origin)
 
     if index is None:
@@ -259,7 +260,7 @@ def _steps(
     return tuple(steps)
 
 
-def _index_origin(repository: str) -> str:
+def index_origin(repository: str) -> str:
     """The origin whose management page a maintainer must open for ``repository``.
 
     A repository *name* is resolved through :data:`_KNOWN_INDEXES`; a URL is reduced to its origin,
@@ -333,4 +334,4 @@ class PyPIIndex:
 
 def _json_base_of(repository: str) -> str:
     """The JSON API base for a URL-shaped repository -- its origin plus Warehouse's ``/pypi``."""
-    return _index_origin(repository) + "/pypi"
+    return index_origin(repository) + "/pypi"
