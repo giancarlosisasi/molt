@@ -25,6 +25,10 @@ export default defineConfig({
     cleanUrls: true,
   },
   globalStyles: path.join(import.meta.dirname, 'theme/molt.css'),
+  // Mounted on every route, including the home page and 404. The banner is what loads Google
+  // Analytics: no tag is requested and no analytics cookie is written until a reader accepts,
+  // so this entry is the site's only path to a third-party request.
+  globalUIComponents: [path.join(import.meta.dirname, 'components/CookieConsent/index.tsx')],
   themeConfig: {
     socialLinks: [
       {
