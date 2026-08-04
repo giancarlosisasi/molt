@@ -1,0 +1,99 @@
+/*
+ * The consent banner sits above the nav bar (z-index 60) and below the mobile nav screen (70), so
+ * an open hamburger menu covers it instead of fighting it for the same corner.
+ *
+ * Colours are `--rp-c-*` and `--molt-*` only. `--molt-shadow-raised` is defined per mode in
+ * theme/molt.css, which is where every literal in this site lives.
+ */
+
+.banner {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  left: 1rem;
+  z-index: 65;
+  margin-inline: auto;
+  max-width: 46rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.875rem 1.5rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--rp-c-divider);
+  border-radius: 12px;
+  background: var(--rp-c-bg-alt);
+  box-shadow: var(--molt-shadow-raised);
+  animation: rise 160ms ease-out;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+}
+
+.text {
+  flex: 1 1 20rem;
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--rp-c-text-2);
+}
+
+.link {
+  color: var(--rp-c-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/*
+ * Reject and Accept share one class on purpose. A filled brand Accept next to an outlined Reject
+ * is the exact asymmetry the EDPB cookie banner taskforce reports as an invalid choice, so the
+ * two differ by their label and by nothing else.
+ */
+.choice,
+.settings {
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 0.5rem 1.125rem;
+  border: 1px solid var(--rp-c-divider);
+  border-radius: 8px;
+  background-color: var(--rp-c-bg-soft);
+  color: var(--rp-c-text-1);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+.choice:hover,
+.settings:hover {
+  border-color: var(--rp-c-text-3);
+  background-color: var(--rp-c-bg-mute);
+}
+
+@media (width <= 640px) {
+  .banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* The basis is a width in the row layout and a height in the column one, so it has to go
+     with the direction. Left in place it paints 20rem of empty banner under the text. */
+  .text {
+    flex-basis: auto;
+  }
+
+  .actions > button {
+    flex: 1;
+  }
+}

@@ -130,6 +130,9 @@ html:root {
   --rp-c-text-code-bg: #f2f0ea;
   --rp-c-text-code-border: #e5e2d9;
 
+  --molt-on-brand: #ffffff;
+  --molt-shadow-raised: 0 8px 28px #12171a24;
+
   --rp-code-block-bg: #f2f0ea;
   --rp-code-title-bg: #e7e4db;
 
@@ -197,6 +200,9 @@ html:root {
   --rp-c-text-code-bg: #12181c;
   --rp-c-text-code-border: #1e272d;
 
+  --molt-on-brand: #0c1013;
+  --molt-shadow-raised: 0 8px 28px #00000080;
+
   --rp-code-block-bg: #080b0d;
   --rp-code-title-bg: #12181c;
 
@@ -221,15 +227,13 @@ html:root {
 
 /*
  * A filled brand button takes dark text on dark-mode jade and white text on light-mode jade.
- * Rspress hardcodes white for both, which measures 2.24:1 against #17c3a2. There is no single
- * "on brand" token in the palette because the right value is the one the mode decides.
+ * Rspress hardcodes white for both, which measures 2.24:1 against #17c3a2. `--molt-on-brand`
+ * carries whichever the mode calls for; the selector stays mode-split because that is the
+ * specificity the shipped rule has to be outranked by.
  */
-:root.rp-dark .rp-button--brand {
-  color: var(--rp-c-bg);
-}
-
+:root.rp-dark .rp-button--brand,
 :root:not(.rp-dark) .rp-button--brand {
-  color: #ffffff;
+  color: var(--molt-on-brand);
 }
 
 /*
