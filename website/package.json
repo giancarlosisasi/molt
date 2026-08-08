@@ -11,5 +11,8 @@
   },
   "devDependencies": {
     "@rspress/core": "^2.0.18"
+  },
+  "dependencies": {
+    "@vercel/analytics": "^2.0.1"
   }
 }

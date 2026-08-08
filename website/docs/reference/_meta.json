@@ -2,6 +2,5 @@
   { "type": "file", "name": "comparison-with-changesets", "label": "Molt and changesets" },
   { "type": "file", "name": "design-decisions", "label": "Design decisions" },
   { "type": "file", "name": "acknowledgements", "label": "Acknowledgements" },
-  { "type": "file", "name": "troubleshooting", "label": "Troubleshooting" },
-  { "type": "file", "name": "privacy", "label": "Privacy" }
+  { "type": "file", "name": "troubleshooting", "label": "Troubleshooting" }
 ]
