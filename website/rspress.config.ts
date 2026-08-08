@@ -25,10 +25,10 @@ export default defineConfig({
     cleanUrls: true,
   },
   globalStyles: path.join(import.meta.dirname, 'theme/molt.css'),
-  // Mounted on every route, including the home page and 404. The banner is what loads Google
-  // Analytics: no tag is requested and no analytics cookie is written until a reader accepts,
-  // so this entry is the site's only path to a third-party request.
-  globalUIComponents: [path.join(import.meta.dirname, 'components/CookieConsent/index.tsx')],
+  // Mounted on every route, including the home page and 404. Vercel Web Analytics writes no
+  // cookie and reads no client-side storage, so the site needs no consent banner, and in
+  // production its script is served first-party from `/_vercel/insights/`.
+  globalUIComponents: [path.join(import.meta.dirname, 'components/Analytics/index.tsx')],
   themeConfig: {
     socialLinks: [
       {
